@@ -13,6 +13,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
+import { canaryFamilyIds } from '~/lib/channel/canary/config';
 import { REGISTRATION_VERIFY_ROUTE } from '~/lib/registration/verify-sweep';
 import { resolveMetricsExclusions } from './metrics-scope';
 import type { MedicalAnswers, RadarVerification, RetentionCohort } from './scorecard-rubric';
@@ -85,6 +86,9 @@ export async function aggregateW4Retention(
   // household by forgetting an argument. METRICS_EXCLUDED_FAMILY_IDS is part of that
   // set: an empty env counts the QA households.
   const excluded = await resolveMetricsExclusions(database);
+  // The canary texts on a clock. Leaving it in the cohort makes week 4 look kept
+  // for a household that is not a family. The probe number, not the message.
+  for (const id of await canaryFamilyIds(database)) excluded.add(id);
 
   const provisionedAt = schema.families.createdAt;
   const weekN = sql`w.n`;

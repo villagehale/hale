@@ -4,6 +4,13 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { LoginCardText } from '../login-link/store';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from '../site-choices';
+import {
+  MAX_PAGE_QUOTE_CHARS,
+  SIGNUP_PAGE_WORDS_SKILL,
+  markedSiteChoice,
+  untrustedPageWords,
+} from '../terms/page-words';
 import { asBubbles } from './bubbles';
 import type { PlanPrepDraft, PlanPrepFacts, PlanPrepWriter } from './prep';
 import { clocksIn, moneyCentsIn, planReplyText, planReplyViolations } from './writer';
@@ -87,7 +94,37 @@ export function loginCardViolations(card: LoginCardText, facts: PlanPrepFacts): 
 
 /** The user turn: the facts, and on the one retry why the last draft could not go. */
 export function providerNoticeUserMessage(facts: PlanPrepFacts, violation: string | null): string {
-  return JSON.stringify(violation === null ? { facts } : { facts, violation });
+  const seen = facts.labelsFromPage ? markedNoticeFacts(facts) : facts;
+  return JSON.stringify(violation === null ? { facts: seen } : { facts: seen, violation });
+}
+
+/** What the site wrote, as the writer sees it on an offer with terms. */
+function markedNoticeFacts({
+  labelsFromPage: _labelsFromPage,
+  siteChoices,
+  askedStart,
+  sessionLabel,
+  passwordRejectionMessage,
+  passwordRule,
+  loginCard,
+  ...facts
+}: PlanPrepFacts) {
+  const label = (raw: string | null | undefined) =>
+    untrustedPageWords(raw ?? null, SITE_CHOICE_LABEL_MAX_CHARS);
+  const quote = (raw: string | null | undefined) =>
+    untrustedPageWords(raw ?? null, MAX_PAGE_QUOTE_CHARS);
+  return {
+    ...facts,
+    siteChoices: siteChoices?.map(markedSiteChoice),
+    untrusted_asked_start: label(askedStart),
+    untrusted_session_label: label(sessionLabel),
+    untrusted_password_rejection_message: quote(passwordRejectionMessage),
+    untrusted_password_rule: quote(passwordRule),
+    loginCard: loginCard && {
+      opensAt: loginCard.opensAt,
+      untrusted_session_label: label(loginCard.sessionLabel),
+    },
+  };
 }
 
 /**
@@ -139,8 +176,12 @@ export function createProviderNoticeWriter(
       }
       if (!resolved) return null;
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(skillName);
+        system = facts.labelsFromPage
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PAGE_WORDS_SKILL)).instructions}`
+          : skill.instructions;
       } catch {
         return null;
       }
@@ -152,7 +193,7 @@ export function createProviderNoticeWriter(
           const { value } = await forceToolJson({
             client: resolved,
             lane: pickLane(skill.meta.task),
-            system: skill.instructions,
+            system,
             userMessage: providerNoticeUserMessage(facts, note),
             toolName: SIGNUP_PROVIDER_NOTICE_TOOL,
             toolDescription: SIGNUP_PROVIDER_NOTICE_TOOL_DESCRIPTION,

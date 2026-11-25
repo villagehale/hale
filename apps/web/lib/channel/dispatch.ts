@@ -7,16 +7,18 @@ import { isGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type BubbleGaps, readBubbleGaps, sentUnlessThrown } from '~/lib/channel/linq/bubble-gap';
 import { GARBLED_TEXT, type LinqChatService } from '~/lib/channel/linq/transport';
 import { proactiveQuietNow } from '~/lib/channel/outbound-gate';
+import { billingTextConflict } from '~/lib/channel/reconcile/billing-text';
 import type { DispatchClaimEnforce } from '~/lib/channel/reconcile/claim-enforce';
 import type { DispatchClaimShadow } from '~/lib/channel/reconcile/claim-shadow';
-import { billingTextConflict } from '~/lib/channel/reconcile/billing-text';
 import { claimsNoLedgerCanBack } from '~/lib/channel/reconcile/claims';
 import { type LoopPrefsView, categoryEnabled, deliverableNow } from '~/lib/loop/prefs';
 import { isCaregiverTemplateKey } from '~/lib/loop/templates/caregiver/keys';
 import type { OpsPager, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { SEND_RETRIES_EXHAUSTED } from './config';
 import { SENT_STATUSES, acceptedStatus } from './ledger';
-import { sendTexts } from './outbound-transport';
+import { parentSendReceiptEnabled } from './linq/config';
+import { sendTexts, textDedupeKey } from './outbound-transport';
+import { parentLinqKey } from './parent-send';
 import type {
   Channel,
   ChannelKind,
@@ -51,6 +53,17 @@ import type {
 /** The one leg the dispatch sends on. A sent row records the pipe the adapter names
  * instead (`ChannelSendOutcome.transport`). */
 const EXCHANGE_CHANNEL: ChannelKind = 'sms';
+
+/**
+ * Linq's key for this leg. A caller that already named one keeps it. With the
+ * receipt flag on and no key of its own, every retry of this logical text uses
+ * the same family-scoped key. Off, a missing key stays missing.
+ */
+function loopLegSendKey(msg: LoopMessage, legKey: string | null): string | undefined {
+  if (msg.sendKey) return msg.sendKey;
+  if (!legKey || !parentSendReceiptEnabled()) return undefined;
+  return parentLinqKey(msg.familyId, legKey);
+}
 
 /**
  * VIL-562 · why a leg was held for quiet hours, stored in `channel_messages.error_code`
@@ -381,10 +394,11 @@ async function dispatchLeg(
     return dispatchTexts(msg, channel, rendered, rendered.texts, legKey, now, ports, adapter);
   }
 
+  const sendKey = loopLegSendKey(msg, legKey);
   const result = await adapter.send({
     userId: msg.parentUserId,
     rendered,
-    ...(msg.sendKey ? { sendKey: msg.sendKey } : {}),
+    ...(sendKey ? { sendKey } : {}),
   });
   if (result.status === 'error' && result.transient) {
     throw new ChannelRetryableError(channel, result.code, result.message);
@@ -506,6 +520,10 @@ async function dispatchTexts(
     send: async (text, index) => {
       // By position, not by text: two identical texts must not both carry the bold.
       const bolded = index === boldAt ? rendered.bold : undefined;
+      const textKey =
+        parentSendReceiptEnabled() && legKey
+          ? parentLinqKey(msg.familyId, textDedupeKey(legKey, index))
+          : undefined;
       const result = await adapter.send({
         userId: msg.parentUserId,
         rendered: {
@@ -515,6 +533,7 @@ async function dispatchTexts(
           recordBody: rendered.recordBody,
           ...(bolded ? { bold: bolded } : {}),
         },
+        ...(textKey ? { sendKey: textKey } : {}),
       });
       if (result.status === 'error' && result.transient) {
         throw new ChannelRetryableError(channel, result.code, result.message);

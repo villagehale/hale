@@ -58,6 +58,22 @@ export async function claimIntakeTurn(
 }
 
 /**
+ * Whether an earlier delivery already ran this provider id as a claimed turn. Read-only,
+ * for the known-number path, which must not take a claim (it can fall through to C1) and
+ * is where the resend of an answer lands once that answer seated the number.
+ */
+export async function intakeTurnClaimed(
+  database: Database,
+  providerMessageId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ providerMessageId: schema.smsIntakeTurnClaims.providerMessageId })
+    .from(schema.smsIntakeTurnClaims)
+    .where(eq(schema.smsIntakeTurnClaims.providerMessageId, providerMessageId));
+  return rows.some((row) => row.providerMessageId === providerMessageId);
+}
+
+/**
  * Gives the provider id back, so a turn that could not be written can be re-driven.
  * A crash still leaves the claim (completed_at NULL). An unwritten moment is not a
  * crash: the same text must run again once the model is back, and a claim that

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./canary-analytics": {
+      "types": "./dist/canary-analytics.d.ts",
+      "default": "./dist/canary-analytics.js"
     }
   },
   "scripts": {

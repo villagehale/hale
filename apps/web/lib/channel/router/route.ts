@@ -4,7 +4,14 @@ import { waitUntil } from '@vercel/functions';
 import { eq } from 'drizzle-orm';
 import { noteMessage, noteSendFailed, noteTurnFailed } from '~/lib/analytics/product-hooks';
 import { captureAgentError } from '~/lib/analytics/server-capture';
+import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
+import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
+import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import type { WeekdayCare, WeekdayCareWriteOutcome } from '~/lib/care/weekday';
+import { type AckEtaRouterPorts, armAckEta } from '~/lib/channel/ack-eta/arm';
+import { ackEtaEnabled } from '~/lib/channel/ack-eta/flag';
+import { ACK_ETA_TEMPLATE_KEY } from '~/lib/channel/ack-eta/promise';
+import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
 import type {
   ActivityPromise,
   ActivityPromiseRecordOutcome,
@@ -21,7 +28,6 @@ import {
 } from '~/lib/channel/calendar-ask';
 import { isCanaryTurn } from '~/lib/channel/canary/config';
 import type { CapabilityNotes, CapabilityNotesOutcome } from '~/lib/channel/capabilities/ledger';
-import { scopedReply } from '~/lib/channel/caregiver/copy';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { isGmailDraftNoticeUnsent } from '~/lib/channel/coach/gmail-draft-notice';
 import { REPLY_BUBBLE_BREAK, splitReplyBubbles } from '~/lib/channel/coach/reply';
@@ -40,6 +46,7 @@ import { readConsent } from '~/lib/channel/consent-reply';
 import type { ConsentReader } from '~/lib/channel/consent-reply';
 import { coparentDutyMemoryEnabled } from '~/lib/channel/coparent/duty/flag';
 import { settleDutyMemory } from '~/lib/channel/coparent/duty/settle';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import type { InboundMediaPart } from '~/lib/channel/inbound-media';
 import type { ChannelMessageReceivedJob } from '~/lib/channel/inbound-route';
 import {
@@ -90,17 +97,13 @@ import {
   ParentReactionUnsent,
   considerLinqReply,
 } from '~/lib/channel/linq/moments';
-import { type AckEtaRouterPorts, armAckEta } from '~/lib/channel/ack-eta/arm';
-import { ackEtaEnabled } from '~/lib/channel/ack-eta/flag';
-import { ACK_ETA_TEMPLATE_KEY } from '~/lib/channel/ack-eta/promise';
-import { ackWindowMinutes } from '~/lib/channel/ack-eta/window';
-import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import {
   LINQ_TYPING_REFRESH_MS,
   LINQ_TYPING_SHOW_DELAY_MS,
   signalImessageTyping,
 } from '~/lib/channel/linq/presence';
 import { sharedLinqStickerDecider } from '~/lib/channel/linq/sticker';
+import type { ParentReaction, ParentReactionSend } from '~/lib/channel/linq/tapback';
 import { GARBLED_TEXT, LinqSendError, refuseGarbledText } from '~/lib/channel/linq/transport';
 import {
   type VoiceReplyOutcome,
@@ -118,7 +121,7 @@ import {
 } from '~/lib/channel/off-domain/lane';
 import type { MedicalReplySource } from '~/lib/channel/off-domain/medical';
 import type { LaneReading } from '~/lib/channel/off-domain/screen';
-import { sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
+import { linqSendMayHaveLanded, sendTexts, textDedupeKey } from '~/lib/channel/outbound-transport';
 import { observeParentLanguage } from '~/lib/channel/parent-language';
 import type { PlanOffer } from '~/lib/channel/plan/offer';
 import type { ClaimEnforceFailure, ClaimEnforcer } from '~/lib/channel/reconcile/claim-enforce';
@@ -149,14 +152,11 @@ import type { SpotWatchIntent, WatchedSpotArmOutcome } from '~/lib/channel/spots
 import type { StatedStateOutcome } from '~/lib/channel/stated-state';
 import type { CrisisPager, SaidLineWriter } from '~/lib/channel/voice/said-line';
 import type { WeekdayCareReader } from '~/lib/channel/weekday-care/reply';
-import type { SchoolBreakWrite } from '~/lib/care/school-break/facts';
-import { schoolBreakEnabled } from '~/lib/care/school-break/flag';
-import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
-import type { SchoolBreakReplyReader } from '~/lib/care/school-break/reply';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { appendMessage, resolveOrCreateNoteConversation } from '~/lib/coach/conversation';
 import { channelThreadNoteKey } from '~/lib/coach/note-key';
+import { DEFAULT_TIMEZONE, dayKeyOf } from '~/lib/format/datetime';
 import type { CalendarOfferPorts } from '~/lib/integrations/calendar-offer-read';
 import {
   expireEmailAlertOffer,
@@ -173,6 +173,8 @@ import { foldPassportIntoOutbound } from '~/lib/passport/fold';
 import type { RateLimiter } from '~/lib/rate-limit/limiter';
 import type { RecordedSignupOffer } from '~/lib/signup/offer-tool';
 import { AskOrderUnmarked, type SendStamp, askStamp } from '~/lib/signup/store';
+import { registrationPreflightEnabled } from '~/lib/signup/terms/flag';
+import { termsAskStamp } from '~/lib/signup/terms/store';
 import type { ApologyFallback, TurnApology } from './apology';
 import { type InboundBurst, mergeBurstContext } from './burst';
 import {
@@ -243,7 +245,7 @@ import { pageUnwrittenCrisis } from './unwritten-moment';
  * answers the next three questions, and the ORDER it answers them in is the whole
  * design:
  *
- *   1. WHO IS TALKING?   A caregiver is answered with M6's one static line and stops
+ *   1. WHO IS TALKING?   A caregiver is answered with M6's one scoped line and stops
  *      here. The webhook already refuses to enqueue a non-parent, so this is the second
  *      of two gates — deliberately, because the cost of the pair being wrong is a
  *      household agent answering a babysitter's question about a child (rule #1), and
@@ -454,6 +456,11 @@ export type HandlerVerdict =
        * 1:1, it is the ordinary answer.
        */
       onlyToAsker?: true;
+      /**
+       * VIL-706 · a door line this turn owed and did not send, and why. Set only when
+       * one was held, so a claim that sent nothing is never reported as a plain answer.
+       */
+      lineHeld?: DoorLineHold;
     };
 
 /**
@@ -952,6 +959,12 @@ export interface RouterResult {
   /** Which lane deflected it, when one did. Null for every other status — including an
    * in-domain turn, which is not an unmet intent and is counted as nothing. */
   lane: UnmetIntentLane | null;
+  /**
+   * VIL-706 · on `not_a_parent` for a caregiver Hale may answer: null when the scoped
+   * line went out, or why it did not (`flag_off`, or `unwritten` after #ops was paged).
+   * On a `handled` turn, set only when the handler held a door line. Absent otherwise.
+   */
+  lineHeld?: DoorLineHold | null;
 }
 
 /**
@@ -1207,24 +1220,40 @@ async function routeChannelMessageInner(
   // GATE 1 — who is talking. Before the thread is opened, so a non-parent's message can
   // never appear in the parents' Ask history.
   if (context.role === null || !PARENT_ROLES.has(context.role)) {
+    let scopedHeld: DoorLineHold | null | undefined;
     if (context.reply && isOutsiderWeMayAnswer(context.role)) {
       // Ledgered and audited like every other outbound (rule #6) — but with NO
       // conversation, because a caregiver's exchange must never appear in the parents'
       // Ask history. That is the one difference between this send and a parent's.
-      await sendReply(deps, {
-        route: context.reply,
-        body: scopedReply(context.primaryParentName),
-        job,
-        conversationId: null,
-        claim: claimAnswer,
-        openAsks: { leaves: null },
+      // The model writes it from the parent's name alone (VIL-706): what the caregiver
+      // asked is never in the facts, so it cannot be repeated back.
+      const line = await composeDoorLine({
+        purpose: 'caregiver_scoped_reply',
+        language: await familySpeechLanguage(deps.database, job.family_id),
+        facts: { parentName: context.primaryParentName ?? '' },
       });
+      if (line.sent) {
+        await sendReply(deps, {
+          route: context.reply,
+          body: line.body,
+          job,
+          conversationId: null,
+          claim: claimAnswer,
+          openAsks: { leaves: null },
+        });
+      } else {
+        // Nothing goes out, and the composer logged why. The answer is still claimed,
+        // so a re-driven turn does not try again and text the caregiver twice.
+        await claimAnswer();
+      }
+      scopedHeld = lineHeld(line);
     }
     return done(deps, job, {
       status: 'not_a_parent',
       handler: null,
       conversationId: null,
       lane: null,
+      ...(scopedHeld === undefined ? {} : { lineHeld: scopedHeld }),
     });
   }
 
@@ -1702,6 +1731,7 @@ async function routeChannelMessageInner(
         handler: handler.name,
         conversationId,
         lane: null,
+        ...(verdict.lineHeld ? { lineHeld: verdict.lineHeld } : {}),
       });
     }
   }
@@ -2757,13 +2787,13 @@ function signupStamps(
     const offerIds = offers
       .filter((offer) => through.includes(offer.text.trim()) && !before.includes(offer.text.trim()))
       .map((offer) => offer.offerId);
-    return offerIds.length > 0
-      ? askStamp(deps.database, {
-          familyId: turn.familyId,
-          parentUserId: turn.parentUserId,
-          offerIds,
-        })
-      : undefined;
+    if (offerIds.length === 0) return undefined;
+    const asked = { familyId: turn.familyId, parentUserId: turn.parentUserId, offerIds };
+    // VIL-715: this bubble carries the offer's own text, so it is what records the terms as
+    // received. Flag off, the terms table is never touched from a turn.
+    return registrationPreflightEnabled(turn.familyId)
+      ? termsAskStamp(deps.database, asked)
+      : askStamp(deps.database, asked);
   });
 }
 
@@ -3307,7 +3337,8 @@ async function runAgentTurn(
     } else if (
       err instanceof ClaimReadFailed ||
       err instanceof AskOrderUnmarked ||
-      disposition.reason === GARBLED_TEXT
+      disposition.reason === GARBLED_TEXT ||
+      disposition.reason === 'send_unconfirmed'
     ) {
       // Nothing was sent, and the coach's writes landed: claim the turn so a redelivery
       // reads `answered` and never reruns it (#973's rule).
@@ -3845,6 +3876,18 @@ async function disposeOfFailedTurn(
       reply: null,
       reason: GARBLED_TEXT,
       log: { garbledText: true },
+    };
+  }
+
+  // A 408, 409, 425, timeout or 5xx may mean Linq already took the reply. An apology
+  // or a drafts receipt would be a second text. The turn is claimed so the coach
+  // does not run again.
+  if (linqSendMayHaveLanded(err)) {
+    return {
+      outcome: 'agent_failed',
+      reply: null,
+      reason: 'send_unconfirmed',
+      log: { send: 'unconfirmed' },
     };
   }
 

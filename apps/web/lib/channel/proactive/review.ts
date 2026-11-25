@@ -99,6 +99,7 @@ import {
   type ProactiveCadence,
   familyDecisionCapEnabled,
   proactiveCadence,
+  proactiveNoRepeatEnabled,
   proactiveReviewGuardsEnabled,
   requestedCadence,
   unroutedKinds,
@@ -108,6 +109,7 @@ import { sendingLineE164 } from './line-health';
 import { type CadenceNotKept, type CadencePreference, cadencePreference } from './preference';
 import { errorLabel } from './queue';
 import { FLORIDA_OKLAHOMA_QUIET_START } from './quiet';
+import { recentAssistantTexts } from './recent-texts';
 import {
   type FamilySnapshot,
   SNAPSHOT_DAYS,
@@ -183,6 +185,7 @@ export interface ProactiveReviewDeps {
     items: readonly ToolCandidate[];
     client: AgentClient | null;
     language?: string | null;
+    recentTexts?: readonly string[];
   }): Promise<WriterResult>;
   buildGate(database: Database): OutboundGatePorts;
   resolveSendablePhone(database: Database, parentUserId: string): Promise<string | null>;
@@ -780,6 +783,7 @@ type SettledReason =
   | 'already_asked'
   | 'requested_drop_after_parent_text'
   | 'hold_past_last_send'
+  | 'repeat'
   | OpenAskClosedReason;
 
 /**
@@ -1571,17 +1575,47 @@ async function sendChosen(
       target.channel === 'group'
         ? (input.language ?? null)
         : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
-    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}`;
+    // A group copy is read by every member. The 1:1 thread is that parent's alone
+    // (rule #5), so it is not material for a text the group will see.
+    const recentTexts =
+      proactiveNoRepeatEnabled() && target.channel !== 'group'
+        ? await recentAssistantTexts(database, {
+            familyId,
+            parentUserId: copy.parentUserId,
+            now,
+          })
+        : [];
+    const setKey = `${language ?? ''}\n\n${[...distinct.keys()].sort().join('\n\n')}${
+      recentTexts.length > 0 ? `\n\n${recentTexts.join('\n')}` : ''
+    }`;
     let written = writtenFor.get(setKey);
     if (!written) {
       written = await deps.compose({
         items: [...distinct.values()],
         client: deps.client,
         language,
+        ...(recentTexts.length > 0 ? { recentTexts } : {}),
       });
       writtenFor.set(setKey, written);
     }
     if ('skipped' in written) {
+      if (written.skipped === 'repeat') {
+        const itemIds = rest.map((item) => item.id);
+        await mark(database, familyId, itemIds, {
+          status: 'dropped',
+          reason: 'repeat',
+          decision: 'send_now',
+          holdUntil: null,
+          now,
+        });
+        await audit(database, familyId, 'proactive_cadence_skipped', {
+          reason: 'repeat',
+          itemIds,
+          mode: 'live',
+        });
+        summary.dropped += 1;
+        continue;
+      }
       await holdByName(database, familyId, rest, `unvoiced:${written.skipped}`, now);
       summary.held += 1;
       continue;

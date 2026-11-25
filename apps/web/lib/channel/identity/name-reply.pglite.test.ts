@@ -26,6 +26,8 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  // Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
   vi.stubEnv('APP_ENCRYPTION_KEY', KEY);
 });
 

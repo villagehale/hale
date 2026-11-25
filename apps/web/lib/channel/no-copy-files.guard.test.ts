@@ -13,8 +13,6 @@ import { describe, expect, it } from 'vitest';
  * so the scan does not list it.
  */
 const ALLOWED = [
-  'apps/web/lib/channel/caregiver/copy.test.ts',
-  'apps/web/lib/channel/caregiver/copy.ts',
   'apps/web/lib/channel/checkin/copy.test.ts',
   'apps/web/lib/channel/checkin/copy.ts',
   'apps/web/lib/channel/connect/connect-page-copy.ts',
@@ -29,7 +27,6 @@ const ALLOWED = [
   'apps/web/lib/channel/how-it-went-copy.ts',
   'apps/web/lib/channel/intake/copy.test.ts',
   'apps/web/lib/channel/intake/copy.ts',
-  'apps/web/lib/channel/join/copy.ts',
   'apps/web/lib/channel/linq/group-coparent-copy.ts',
   'apps/web/lib/channel/off-domain/copy.test.ts',
   'apps/web/lib/channel/off-domain/copy.ts',

@@ -23,6 +23,7 @@ import {
 } from '~/lib/channel/caregiver/route';
 import { coachBubblesEnabled } from '~/lib/channel/coach/bubbles';
 import { readConsent } from '~/lib/channel/consent-reply';
+import { joinDoorModelCopyEnabled } from '~/lib/channel/door-line';
 import { defaultFounderPingPorts, offerFounderWelcome } from '~/lib/channel/founder/ping';
 import { isGarbledRefusal, recordGarbledRefusal } from '~/lib/channel/garbled-refusal';
 import { type HealthPlace, healthLineFacts } from '~/lib/channel/health-line';
@@ -103,10 +104,15 @@ import {
   findRevokedChannelOwner,
   reenrolOnStart,
 } from './channel-state';
+import {} from '~/lib/channel/connect/detect';
 import { coldStartLadderEnabled } from './cold-start/flags';
 import { ageCorrectionFact, kidFirstName } from './cold-start/ladder';
 import { declineOptionalAsk, gateOptionalAsk, recordOptionalAsk } from './cold-start/ledger';
-import { type ConnectorOfferLabel, sendYearConnectorCards } from './connector-offer';
+import {
+  type ConnectorOfferLabel,
+  sendGoogleConnectorCard,
+  sendYearConnectorCards,
+} from './connector-offer';
 import {
   INTAKE_COPARENT_ASK_TEMPLATE_KEY,
   type IntakeGap,
@@ -141,18 +147,25 @@ import { householdGroupForTurn } from './household-group';
 import { identityChallengeReply } from './identity-challenge';
 import { intakePhotoReadEnabled } from './intake-photo';
 import type { ReplyIntent, ReplyIntentReader } from './intent';
+import { keepKidActivities } from './kid-activity-facts';
+import { keepKidProfiles } from './kid-profile-facts';
 import { type NumberOrigin, sourceCodeIsQr } from './number-origin';
 import {
   type CoparentGroupMode,
+  type KidActivity,
   type OnboardingCapture,
   type OnboardingChecklist,
   type OnboardingItem,
+  activitiesAnswered,
   agesAreComplete,
   coldStartQuestionIsStale,
+  googleAnswered,
   kidsAreNamed,
   lastTranscriptAt,
+  newActivities,
   onboardingMissing,
   storedFromCapture,
+  threadV2Checklist,
 } from './onboarding-turn';
 import {
   holdSender,
@@ -202,8 +215,15 @@ import {
   intakeStatedPlaceEnabled,
   resolveStatedPlace,
 } from './stated-place';
+import { threadOnboardingV2Enabled } from './thread-onboarding-v2';
+import { type WalkHandOff, walkHandOffFrom, walkTurnHandedOff } from './walk-hand-off';
 import type { ChannelTransport } from './transport';
-import { claimIntakeTurn, completeIntakeTurn } from './turn-claim';
+import {
+  claimIntakeTurn,
+  completeIntakeTurn,
+  intakeTurnClaimed,
+  releaseIntakeTurn,
+} from './turn-claim';
 import { IMPLIED_WATCH_BASIS, recordWatchConsent } from './watch-consent';
 
 /**
@@ -455,6 +475,8 @@ export type IntakeOutcome =
        * the text, so no ask moves on it whether or not the hold row was written.
        */
       optOutUnread?: true;
+      /** VIL-721. On the hand-off only: the model read this text as leaving the walk. */
+      walkHandOff?: WalkHandOff;
     }
   // VIL-241 · M6 — the caregiver branches. They share this entry point because a
   // caregiver texts the SAME number a parent does; what differs is who the number
@@ -746,11 +768,20 @@ async function runIntakeTurn(
     // starting an intake and they would be asked for their children's names.
     const invite = await loadOpenInviteByPhone(database, phoneE164, now);
     if (invite?.state === 'awaiting_caregiver_reply') {
-      return handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
+      const answer = () =>
+        handleInviteReply(database, { invite, phoneE164, inbound, now }, caregiverPorts(deps));
+      // With the door lines lit, the line an answer earns is a model write inside Linq's
+      // webhook window, and the answer has already closed the invite: an unclaimed resend
+      // finds nothing open and greets the person who just said no.
+      return joinDoorModelCopyEnabled() ? claimedTurn(database, inbound, now, answer) : answer();
     }
 
     const existing = await resolveVerifiedChannelByPhone(database, phoneE164);
     if (existing) {
+      // A yes above seated this number, so its resend arrives here rather than at the invite.
+      if (joinDoorModelCopyEnabled() && (await intakeTurnClaimed(database, inbound.providerId))) {
+        return { status: 'duplicate' };
+      }
       // Either a caregiver (who gets the one scoped line) or a parent adding one. Any
       // other message keeps the old silence.
       const outcome = await handleKnownNumberInbound(
@@ -851,10 +882,11 @@ async function runIntakeTurn(
  * Run one intake turn under the P1-4 provider-id claim (turn-claim.ts): the first
  * delivery to claim the sid runs; every later one — including a Linq resend racing
  * this very turn — is the same named 'duplicate' step 4 has always produced. Wraps
- * ONLY the branches where intake itself acts (greet, the model-bound session turns):
- * keywords stay unclaimed (a STOP resend must always be honoured), token-redeeming
- * turns ride their own consume-once claims, and the C1 fall-through claims nothing so
- * the hand-off's 0085 arbitration and its crash-heal retry stay untouched.
+ * ONLY the branches where intake itself acts (greet, an invite answer with the door
+ * flag lit, the model-bound session turns): keywords stay unclaimed (a STOP resend must
+ * always be honoured), token-redeeming turns ride their own consume-once claims, and the
+ * C1 fall-through claims nothing so the hand-off's 0085 arbitration and its crash-heal
+ * retry stay untouched.
  */
 async function claimedTurn(
   database: Database,
@@ -866,6 +898,12 @@ async function claimedTurn(
     return { status: 'duplicate' };
   }
   const outcome = await run();
+  // The router's record of a hand-off is written after this returns, so a claim kept here
+  // would answer the resend of a failed write `duplicate`, and nothing would re-drive it.
+  if (outcome.status === 'ignored' && outcome.walkHandOff) {
+    await releaseIntakeTurn(database, inbound.providerId);
+    return outcome;
+  }
   // Stamped only on a turn that returned: a claim whose completed_at stays NULL is
   // the named crash residue (rule #11), visible to an operator, never a silence.
   await completeIntakeTurn(database, inbound.providerId, now);
@@ -1589,7 +1627,10 @@ const REASK_CAP = 2;
 
 async function friendSpeak(
   deps: IntakeDeps,
-  transcript: readonly { direction: 'in' | 'out'; body: string }[],
+  heard: {
+    transcript: readonly Pick<TranscriptEntry, 'direction' | 'body' | 'inGroup'>[];
+    inGroup: boolean;
+  },
   input: Omit<FriendVoiceInput, 'recentTurns'>,
   options?: Omit<SpeakOptions, 'page'> & {
     /** The family or session a miss is paged for: #ops hears once per kind per day. */
@@ -1609,9 +1650,21 @@ async function friendSpeak(
     );
   return speakFriend(
     deps.friendVoice,
-    { ...input, identityAsked, recentTurns: turnsFromTranscript(transcript) },
+    { ...input, identityAsked, recentTurns: turnsFromTranscript(sayableHere(heard)) },
     pageScope ? { ...speak, page: pageOncePerDay(deps.limiter, pageScope) } : speak,
   );
+}
+
+/**
+ * VIL-721. A group turn is handed only what was said in that group: an entry with no bit
+ * predates it and is not assumed to be. Dark, the transcript goes through untouched.
+ */
+function sayableHere<T extends Pick<TranscriptEntry, 'inGroup'>>(heard: {
+  transcript: readonly T[];
+  inGroup: boolean;
+}): readonly T[] {
+  if (!heard.inGroup || !threadOnboardingV2Enabled()) return heard.transcript;
+  return heard.transcript.filter((entry) => entry.inGroup === true);
 }
 
 /** A judged model reply. Empty means the retries already paged #ops. */
@@ -1793,18 +1846,28 @@ function threadForNext(
   transcript: TranscriptEntry[],
   inboundBody: string,
   inboundAt: string,
-  outboundBody: string,
+  outboundBody: string | null,
   now: Date,
   asked = false,
+  /** Lit only: where this turn was said. Undefined keeps a dark entry's bytes. */
+  inGroup?: boolean,
 ): TranscriptEntry[] {
+  const heard = inGroup === undefined ? {} : { inGroup };
   const last = transcript.at(-1);
   const base =
     last?.direction === 'in' && last.body === inboundBody
       ? transcript
       : [
           ...transcript,
-          { direction: 'in' as const, body: inboundBody, providerId: null, at: inboundAt },
+          {
+            direction: 'in' as const,
+            body: inboundBody,
+            providerId: null,
+            at: inboundAt,
+            ...heard,
+          },
         ];
+  if (outboundBody === null) return base;
   return [
     ...base,
     {
@@ -1813,6 +1876,7 @@ function threadForNext(
       providerId: null,
       at: now.toISOString(),
       ...(asked ? { asked: true } : {}),
+      ...heard,
     },
   ];
 }
@@ -1829,6 +1893,10 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
       return 'email';
     case 'calendar':
       return 'calendar';
+    case 'activities':
+      return 'activities';
+    case 'google':
+      return 'google';
     case 'schedule':
       return 'schedule';
     case 'coparent':
@@ -1838,6 +1906,35 @@ function friendStepForGap(gap: OnboardingItem | undefined, card: boolean): Frien
     default:
       return card ? 'place_card' : 'place';
   }
+}
+
+/**
+ * VIL-721. What the kids already do, as the model is handed it. Lit only, so a dark
+ * turn's input (and its prompt bytes) is what it was.
+ */
+function kidActivitiesFor(
+  given: FirstTouchGiven | null,
+  inGroup: boolean,
+): { kidActivities?: KidActivity[] } {
+  if (!threadOnboardingV2Enabled()) return {};
+  const activities = given?.activities ?? [];
+  // Health stays in DMs: what a group turn is not handed, the model cannot say there.
+  return { kidActivities: inGroup ? activities.filter((item) => !item.health) : activities };
+}
+
+/**
+ * VIL-721. The two lit checklist items from what the session holds. Dark adds nothing.
+ * A group turn holds the Google item as settled so the walk moves past it: its link signs
+ * the holder in, so the ask waits for this parent's own thread.
+ */
+function threadV2Known(
+  given: FirstTouchGiven | null,
+  inGroup: boolean,
+): ReturnType<typeof threadV2Checklist> {
+  return threadV2Checklist({
+    activities: activitiesAnswered(given),
+    google: inGroup || googleAnswered(given),
+  });
 }
 
 /** Hale's iMessage line and the group phrase, when the chat is iMessage and the line is configured. */
@@ -1937,10 +2034,24 @@ function givenFromStored(
     scheduleDone: boolean;
     coparentGroup: boolean | null;
     coparentGroupMode: CoparentGroupMode | null;
+    activities?: KidActivity[];
+    activitiesNone?: boolean;
+    connectGoogle?: boolean | null;
+    googleLater?: boolean;
   },
   extra: { scheduled?: FirstTouchScheduled[]; coarseCodeAsked?: boolean } = {},
 ): FirstTouchGiven | null {
   const scheduled = [...(prior?.scheduled ?? []), ...(extra.scheduled ?? [])];
+  // VIL-721. Kept from earlier turns plus what this message added, by kid and phrase.
+  const priorActivities = prior?.activities ?? [];
+  const activities = [
+    ...priorActivities,
+    ...newActivities(priorActivities, capture.activities ?? []),
+  ];
+  const activitiesNone =
+    activities.length === 0 && (prior?.activitiesNone === true || capture.activitiesNone === true);
+  const connectGoogle = capture.connectGoogle ?? prior?.connectGoogle ?? null;
+  const googleLater = prior?.googleLater === true || capture.googleLater === true;
   const given: FirstTouchGiven = {
     parentName: stored.parentName,
     activityPick: prior?.activityPick ?? null,
@@ -1957,6 +2068,11 @@ function givenFromStored(
     scheduled,
     coparentGroup: capture.coparentGroup ?? prior?.coparentGroup ?? null,
     coparentGroupMode: capture.coparentGroupMode ?? prior?.coparentGroupMode ?? null,
+    // Absent unless set, so a dark session stores what it stored before.
+    ...(activities.length > 0 ? { activities } : {}),
+    ...(activitiesNone ? { activitiesNone } : {}),
+    ...(connectGoogle != null ? { connectGoogle } : {}),
+    ...(googleLater ? { googleLater } : {}),
   };
   if (
     !given.parentName &&
@@ -1972,7 +2088,11 @@ function givenFromStored(
     !given.gmailLater &&
     !given.scheduleDone &&
     scheduled.length === 0 &&
-    given.coparentGroup == null
+    given.coparentGroup == null &&
+    activities.length === 0 &&
+    !activitiesNone &&
+    connectGoogle == null &&
+    !googleLater
   ) {
     return null;
   }
@@ -2124,6 +2244,7 @@ async function friendOnboardingTurn(
     calendar: calendarAnswered(priorGiven),
     schedule: false,
     coparent: false,
+    ...threadV2Known(priorGiven, ctx.pipe.isGroup),
   };
   const prior = {
     children: session.collected.children,
@@ -2144,7 +2265,7 @@ async function friendOnboardingTurn(
   };
   const spoken = await friendSpeak(
     deps,
-    transcript,
+    { transcript, inGroup: ctx.pipe.isGroup },
     friendFields(
       friendStepForGap(onboardingMissing(checklist)[0], card),
       language,
@@ -2165,6 +2286,7 @@ async function friendOnboardingTurn(
         checklist,
         ...(priorGiven?.coarseCodeAsked ? { coarseCodeAsked: true } : {}),
         ...(priorGiven?.placeDeclined ? { placeDeclined: true } : {}),
+        ...kidActivitiesFor(priorGiven, ctx.pipe.isGroup),
       },
     ),
     {
@@ -2487,10 +2609,19 @@ async function recordOnboardingChoices(
       scheduleDone?: boolean;
       scheduleAdds?: readonly unknown[];
       coparentGroup?: boolean | null;
+      connectGoogle?: boolean | null;
+      googleLater?: boolean;
     };
   },
 ): Promise<void> {
   const choices: { ask: string; choice: 'no' | 'later' }[] = [];
+  // VIL-721. The one Google link: a no or a later, recorded like the two it replaces.
+  if (args.capture.connectGoogle === false && args.prior?.connectGoogle !== false) {
+    choices.push({ ask: 'google', choice: 'no' });
+  }
+  if (args.capture.googleLater && args.prior?.googleLater !== true) {
+    choices.push({ ask: 'google', choice: 'later' });
+  }
   if (
     args.capture.scheduleDone &&
     (args.capture.scheduleAdds ?? []).length === 0 &&
@@ -2567,6 +2698,11 @@ async function friendColdTurn(
     );
     return { status: 'ignored', reason: 'no_open_conversation' };
   }
+  // A hand-off gave its claim back, so its redelivery arrives here. The router has it.
+  const handedOff = async () =>
+    threadOnboardingV2Enabled() && (await walkTurnHandedOff(database, inbound.providerId));
+  if (await handedOff()) return { status: 'duplicate' };
+  const linkIsOut = progress.googleOffered === true;
   const language = session.ladderLanguage ?? session.firstTouch?.language ?? null;
   const ctx = sendContext(args);
   const safety = await crisisReply(database, session, inbound, language, deps);
@@ -2588,7 +2724,7 @@ async function friendColdTurn(
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
-      session.transcript,
+      { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
       friendFields('find_show', language, friendAddress(ctx), {
         parentWords: inbound.body,
         placeLabel:
@@ -2607,8 +2743,16 @@ async function friendColdTurn(
         now,
         timeZone,
       }),
-      { pageScope: familyId },
+      {
+        pageScope: familyId,
+        replyDiscardedWhen: (capture) => walkHandOffFrom(capture, linkIsOut) !== null,
+      },
     );
+    const owedHandOff = walkHandOffFrom(owed.capture, linkIsOut);
+    if (owedHandOff) {
+      return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: owedHandOff };
+    }
+    if (await handedOff()) return { status: 'duplicate' };
     if (owed.source === 'unsent') {
       await recordInbound(database, ctx, inbound, session.transcript);
       await saveSession(database, session, { lastProviderId: inbound.providerId }, now);
@@ -2643,6 +2787,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(given),
     schedule: scheduleKnown(given, lines.length),
     coparent: coparentKnown(given),
+    ...threadV2Known(given, ctx.pipe.isGroup),
   };
   const gap = onboardingMissing(checklist)[0];
   const step = friendStepForGap(gap, false);
@@ -2653,7 +2798,7 @@ async function friendColdTurn(
   });
   const spoken = await friendSpeak(
     deps,
-    session.transcript,
+    { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
@@ -2677,18 +2822,33 @@ async function friendColdTurn(
       coparentJoin: join,
       checklist,
       householdGroup,
+      ...kidActivitiesFor(given, ctx.pipe.isGroup),
     }),
     {
       // A card rides only the ask for its own connector, and only the first time.
       linkFollows: (judged) =>
         (judged === 'email' && !progress.emailOffered) ||
-        (judged === 'calendar' && !progress.calendarOffered),
+        (judged === 'calendar' && !progress.calendarOffered) ||
+        (judged === 'google' && !progress.googleOffered),
       linkAbove:
         (gap === 'gmail' && progress.emailOffered === true) ||
-        (gap === 'calendar' && progress.calendarOffered === true),
+        (gap === 'calendar' && progress.calendarOffered === true) ||
+        (gap === 'google' && progress.googleOffered === true),
       pageScope: familyId,
+      // Once this turn's map went, the inbound row is the walk's: the router cannot take it.
+      ...(alreadyRecorded
+        ? {}
+        : {
+            replyDiscardedWhen: (capture: OnboardingCapture) =>
+              walkHandOffFrom(capture, linkIsOut) !== null,
+          }),
     },
   );
+  const handOff = alreadyRecorded ? null : walkHandOffFrom(spoken.capture, linkIsOut);
+  if (handOff) {
+    return { status: 'ignored', reason: 'no_open_conversation', walkHandOff: handOff };
+  }
+  if (!alreadyRecorded && (await handedOff())) return { status: 'duplicate' };
   if (spoken.capture.stopAsking) {
     const recorded =
       alreadyRecorded ?? (await recordInbound(database, ctx, inbound, session.transcript));
@@ -2724,6 +2884,20 @@ async function friendColdTurn(
       mergedChildren,
       now,
     );
+    // VIL-721. What the model just read about these kids, kept with where it came from.
+    if (threadOnboardingV2Enabled()) {
+      await keepKidProfiles(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        children: mergedChildren.filter((child, index) => {
+          const before = session.collected.children[index];
+          return child.name !== before?.name || child.ageMonths !== before?.ageMonths;
+        }),
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
   }
   if (agesChanged) {
     const corrected = mergedChildren.find(
@@ -2752,6 +2926,21 @@ async function friendColdTurn(
     });
   }
   await keepParentRole(database, { familyId, userId, guess: stored.parentRole });
+  // VIL-721. What the kids do is a fact the parent stated: kept whether or not this
+  // reply goes out, like their names. Only what this message added is written.
+  const freshActivities = threadOnboardingV2Enabled()
+    ? newActivities(given?.activities ?? [], spoken.capture.activities ?? [])
+    : [];
+  if (freshActivities.length > 0) {
+    await keepKidActivities(database, {
+      familyId,
+      parentUserId: userId,
+      sessionId: session.id,
+      activities: freshActivities,
+      heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+      now,
+    });
+  }
   // A reminder is written only when the reply that confirms it goes out.
   const written =
     lines.length > 0 && spoken.capture.scheduleAdds.length > 0 && friendOutbound(spoken)
@@ -2790,6 +2979,7 @@ async function friendColdTurn(
     calendar: calendarAnswered(nextGiven),
     schedule: scheduleKnown(nextGiven, lines.length) || everyLineScheduled,
     coparent: coparentKnown(nextGiven),
+    ...threadV2Known(nextGiven, ctx.pipe.isGroup),
   };
   const next = onboardingMissing(after)[0];
   const nextProgress: ColdStartProgress = {
@@ -2844,9 +3034,62 @@ async function friendColdTurn(
       ? 'gmail'
       : spoken.step === 'calendar' && next === 'calendar' && !progress.calendarOffered
         ? 'gcal'
-        : null;
-  const pending = pendingConnector(nextGiven, progress) ?? askCard;
-  if (pending) {
+        : spoken.step === 'google' && next === 'google' && !progress.googleOffered
+          ? 'google'
+          : null;
+  const wantedCard = pendingConnector(nextGiven, progress) ?? askCard;
+  // The one link never goes into a group. The reply still does, and the card waits for
+  // this parent's own thread.
+  const pending = ctx.pipe.isGroup && wantedCard === 'google' ? null : wantedCard;
+  const googleOwedInOwnThread =
+    ctx.pipe.isGroup &&
+    threadOnboardingV2Enabled() &&
+    (wantedCard === 'google' || !googleAnswered(nextGiven));
+  let voicedOut = true;
+  if (pending === 'google') {
+    // VIL-721. The one card: this reply, then one link for Gmail and the calendar. The
+    // ledger's send class is CHECK-constrained (migration 0145), so the ask rides the
+    // existing connector class; its own key keeps its declines and repeats apart.
+    const gate = await gateOptionalAsk(database, {
+      familyId,
+      now,
+      sendClass: 'calendar',
+      askKey: 'google',
+    });
+    if (gate.allow) {
+      const label = await sendGoogleConnectorCard(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164: session.phoneE164,
+          now,
+          ridesReply: true,
+          inGroup: ctx.pipe.isGroup,
+          voice: spoken.prose,
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      if (label === 'sent' || label === 'link_unconfirmed') {
+        await recordOptionalAsk(database, {
+          familyId,
+          now,
+          sendClass: 'calendar',
+          askKey: 'google',
+        });
+        nextProgress.googleOffered = true;
+      } else {
+        console.info({ google: label }, 'onboarding-friend: google card not sent');
+        if (label === 'already_sent') nextProgress.googleOffered = true;
+      }
+      // The ask rides its card or does not go: prose pointing at a link that never went is
+      // a promise nothing backs, and the card's own key is what makes its retry safe.
+      voicedOut = label === 'sent' || label === 'link_unconfirmed' || label === 'link_unsent';
+    } else {
+      console.info({ reason: gate.reason, ask: 'google' }, 'onboarding-friend: connector held');
+      await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
+    }
+  } else if (pending) {
     const provider = pending;
     const ask = provider === 'gmail' ? 'email' : 'calendar';
     const gate = await gateOptionalAsk(database, {
@@ -2886,7 +3129,7 @@ async function friendColdTurn(
     await sendAndRecord(database, ctx, voiced, deps, recorded.transcript);
   }
   // A connector card is its own turn. The next ask rides the receipt or the next text.
-  const complete = next == null && !pending;
+  const complete = next == null && !pending && !googleOwedInOwnThread;
   await saveSession(
     database,
     session,
@@ -2897,9 +3140,10 @@ async function friendColdTurn(
         session.transcript,
         inbound.body,
         inbound.receivedAt.toISOString(),
-        voiced,
+        voicedOut ? voiced : null,
         now,
         spoken.asks,
+        threadOnboardingV2Enabled() ? ctx.pipe.isGroup : undefined,
       ),
       firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
       ...(complete ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
@@ -2915,8 +3159,13 @@ async function friendColdTurn(
  */
 function pendingConnector(
   given: FirstTouchGiven | null,
-  progress: Pick<ColdStartProgress, 'emailOffered' | 'calendarOffered'> | null,
-): 'gmail' | 'gcal' | null {
+  progress: Pick<ColdStartProgress, 'emailOffered' | 'calendarOffered' | 'googleOffered'> | null,
+): 'gmail' | 'gcal' | 'google' | null {
+  // VIL-721. Lit, the walk has ONE link: no per-provider card goes from here, even if
+  // a capture carried a per-provider yes.
+  if (threadOnboardingV2Enabled()) {
+    return given?.connectGoogle === true && !progress?.googleOffered ? 'google' : null;
+  }
   if (given?.connectGmail === true && !progress?.emailOffered) return 'gmail';
   if (given?.connectCalendar === true && !progress?.calendarOffered) return 'gcal';
   return null;
@@ -3255,6 +3504,7 @@ async function sendPostYearFindLadder(
       transcript: [],
       parentWords: args.inbound.body,
       address: pipe.isGroup ? 'vous' : 'tu',
+      inGroup: pipe.isGroup,
     },
   });
   // No voice, no fixed line: the ask is skipped and the ladder moves on.
@@ -3371,6 +3621,8 @@ async function provision(
     : undefined;
   let friendCold: ColdStartProgress | null = null;
   let connectorSent = false;
+  // VIL-721. The one Google card reached the parent with its link (or already had).
+  let googleCardOut = false;
   let mapOwed: 'unsent' | 'send_failed' | null = null;
   {
     const given = session.firstTouch?.given ?? null;
@@ -3382,6 +3634,29 @@ async function provision(
       });
     }
     await keepParentRole(database, { familyId, userId, guess: given?.parentRole });
+    // VIL-721. The kids' names and ages the model read, and anything they do that the
+    // parent said before the family existed, kept now that there is a family to keep
+    // them on. A miss is named and logged there.
+    if (threadOnboardingV2Enabled()) {
+      await keepKidProfiles(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        children,
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
+    if (threadOnboardingV2Enabled() && (given?.activities?.length ?? 0) > 0) {
+      await keepKidActivities(database, {
+        familyId,
+        parentUserId: userId,
+        sessionId: session.id,
+        activities: given?.activities ?? [],
+        heardIn: ctx.pipe.isGroup ? 'family' : 'one_to_one',
+        now,
+      });
+    }
     const empty = findLines.length === 0;
     const nameKnown = Boolean(given?.parentName) || given?.nameDeclined === true;
     const checklist: OnboardingChecklist = {
@@ -3393,6 +3668,7 @@ async function provision(
       calendar: calendarAnswered(given),
       schedule: empty,
       coparent: false,
+      ...threadV2Known(given, ctx.pipe.isGroup),
     };
     const gap = onboardingMissing(checklist)[0];
     const common = {
@@ -3405,6 +3681,7 @@ async function provision(
       checklist,
       // Dated facts need the family's own clock. No zone: none is read, and none is guessed.
       ...(location?.timezone ? { now, timeZone: location.timezone } : {}),
+      ...kidActivitiesFor(given, ctx.pipe.isGroup),
     };
     // Step 4: the map, as two or three bubbles with no question, then the next
     // ask as its own message. Both are written at once so this turn costs one
@@ -3421,7 +3698,7 @@ async function provision(
       discoveryOn && !empty
         ? friendSpeak(
             deps,
-            thread,
+            { transcript: thread, inGroup: ctx.pipe.isGroup },
             friendFields('find_show', language, friendAddress(ctx), {
               ...common,
               parentWords: inbound.body,
@@ -3433,7 +3710,7 @@ async function provision(
         : Promise.resolve(null),
       friendSpeak(
         deps,
-        thread,
+        { transcript: thread, inGroup: ctx.pipe.isGroup },
         friendFields(step, language, friendAddress(ctx), {
           ...common,
           introduce: !discoveryOn && step === 'names',
@@ -3442,7 +3719,8 @@ async function provision(
           listKind: 'none',
         }),
         {
-          linkFollows: (judged) => judged === 'email' || judged === 'calendar',
+          linkFollows: (judged) =>
+            judged === 'email' || judged === 'calendar' || judged === 'google',
           pageScope: familyId,
         },
       ),
@@ -3465,7 +3743,29 @@ async function provision(
     }
     if (!discoveryOn) outboundKey = PARENT_NAME_ASK_TEMPLATE_KEY;
     const cardStep = spoken.step;
-    if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
+    if (cardStep === 'google' && outboundBody) {
+      // VIL-721. The one card: the ask, then one link for Gmail and the calendar.
+      const google = await sendGoogleConnectorCard(
+        database,
+        {
+          familyId,
+          parentUserId: userId,
+          phoneE164,
+          now,
+          ridesReply: true,
+          inGroup: ctx.pipe.isGroup,
+          voice: spoken.prose,
+        },
+        { transport: deps.transport, threadMessage: deps.threadMessage },
+      );
+      console.info({ google }, 'onboarding-friend: google card after the map');
+      // The ask rides its card or does not go: prose pointing at a link that never
+      // went is a promise nothing backs. A card that did not go leaves the ask open,
+      // so the next turn writes it again with its link.
+      connectorSent = true;
+      googleCardOut =
+        google === 'sent' || google === 'already_sent' || google === 'link_unconfirmed';
+    } else if ((cardStep === 'calendar' || cardStep === 'email') && outboundBody) {
       const provider = cardStep === 'calendar' ? 'gcal' : 'gmail';
       await sendYearConnectorCards(
         database,
@@ -3498,6 +3798,7 @@ async function provision(
         emailAsked: gmailAnswered(given),
         ...(connectorSent && cardStep === 'calendar' ? { calendarOffered: true } : {}),
         ...(connectorSent && cardStep === 'email' ? { emailOffered: true } : {}),
+        ...(googleCardOut ? { googleOffered: true } : {}),
         schoolMentioned: false,
       };
     }
@@ -3703,7 +4004,9 @@ async function handleWatchReply(
   // A session left waiting on it still gets an answer, written by the model,
   // and is closed so the next text reaches the family's own thread.
   const safety = await crisisReply(database, session, inbound, language, deps);
-  const body = safety ? safety.body : await helpBody(deps, session, language, inbound.body);
+  const body = safety
+    ? safety.body
+    : await helpBody(deps, session, language, inbound.body, ctx.pipe.isGroup);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
     database,
@@ -3819,6 +4122,7 @@ async function handleLadder(
         transcript: recorded.transcript,
         parentWords: inbound.body,
         address: friendAddress(ctx),
+        inGroup: ctx.pipe.isGroup,
       },
     });
     next = asked ? 'name_reply' : 'gmail';
@@ -3853,7 +4157,7 @@ async function handleLadder(
     const join = coparentJoinFor(ctx, language);
     const spoken = await friendSpeak(
       deps,
-      recorded.transcript,
+      { transcript: recorded.transcript, inGroup: ctx.pipe.isGroup },
       friendFields('coparent', language, friendAddress(ctx), {
         parentWords: inbound.body,
         coparentJoin: join,
@@ -3927,7 +4231,7 @@ async function sendLadderFriendCard(
     : null;
   const spoken = await friendSpeak(
     deps,
-    args.transcript,
+    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
     friendFields(step, args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
       parentName: held ? safeGivenName(held.googleGivenName) : null,
@@ -3965,7 +4269,7 @@ async function sendLadderFriendCard(
   }
   const retry = await friendSpeak(
     deps,
-    args.transcript,
+    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
     friendFields('link_retry', args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
     }),
@@ -3989,6 +4293,7 @@ async function askParentCallName(
       transcript: TranscriptEntry[];
       parentWords: string;
       address: 'tu' | 'vous';
+      inGroup: boolean;
     };
   },
 ): Promise<boolean> {
@@ -4011,7 +4316,7 @@ async function askParentCallName(
         }
         const spoken = await friendSpeak(
           friend.deps,
-          friend.transcript,
+          { transcript: friend.transcript, inGroup: friend.inGroup },
           friendFields(
             decision.kind === 'confirm' ? 'name_confirm' : 'names',
             args.language,
@@ -4043,6 +4348,7 @@ async function helpBody(
   session: IntakeSession | null,
   language: ReplyLanguage | null,
   parentWords: string,
+  inGroup: boolean,
 ): Promise<string | null> {
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
@@ -4058,10 +4364,11 @@ async function helpBody(
       linesOfFind(session?.firstTouch?.coldStart?.findBody ?? '').length,
     ),
     coparent: coparentKnown(given),
+    ...threadV2Known(given, inGroup),
   };
   const spoken = await friendSpeak(
     deps,
-    session?.transcript ?? [],
+    { transcript: session?.transcript ?? [], inGroup },
     friendFields('help', language, 'tu', {
       parentWords,
       placeLabel:
@@ -4070,6 +4377,7 @@ async function helpBody(
       agesLabel: summarizeChildren(children),
       parentName: given?.parentName ?? null,
       checklist,
+      ...kidActivitiesFor(given, inGroup),
     }),
   );
   return friendOutbound(spoken);
@@ -4268,9 +4576,10 @@ export async function handleStop(
   // not answer — no roster yet, a roster that is not open, an unclaimed chat — takes this
   // path, so a STOP never does less than it did before the roster existed.
 
-  // VIL-241 · "Reply STOP anytime" is printed on the invite, so it has to reach the
+  // VIL-241 · the invite tells a stranger they can opt out, so a STOP has to reach the
   // invite: a STOP from someone we asked but who never accepted closes the invitation
-  // itself. Otherwise the only promise we made them would cover nothing.
+  // itself. Otherwise the only promise we made them would cover nothing. (VIL-706: lit,
+  // the invite says it in plain words and names no keyword; any wording still counts.)
   await declineOpenInviteOnStop(database, phoneE164, now);
 
   // VIL-245 · the same promise, printed on every party-guest text. A guest is not a

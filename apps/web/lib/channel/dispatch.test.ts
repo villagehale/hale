@@ -15,9 +15,10 @@ import {
   recordAbandonedDispatch,
 } from './dispatch';
 import { fakeChannel, fakeRenderer } from './fakes';
+import { parentLinqKey } from './parent-send';
 import type { DispatchShadowInput } from './reconcile/claim-shadow';
 import { claimsNoLedgerCanBack } from './reconcile/claims';
-import type { LoopMessage, RenderedContent, VoiceOutcome } from './types';
+import type { Channel, LoopMessage, RenderedContent, VoiceOutcome } from './types';
 
 /**
  * VIL-213 · A2 dispatch policy. Deterministic (no LLM) → plain Vitest with Fakes +
@@ -90,6 +91,49 @@ function message(over: Partial<LoopMessage> = {}): LoopMessage {
     ...over,
   };
 }
+
+describe('parent send receipt', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('with the flag off, a reminder with no key of its own still sends without one', async () => {
+    vi.stubEnv('PARENT_SEND_RECEIPT_ENABLED', '');
+    const seen: Array<string | undefined> = [];
+    const channel: Channel = {
+      kind: 'sms',
+      async send(input) {
+        seen.push(input.sendKey);
+        return { status: 'sent', providerMessageId: 'm-1', transport: 'sms' };
+      },
+    };
+    const { ports } = makePorts({ channels: { sms: channel } });
+    await dispatchLoopMessage(message({ dedupeKey: 'reminder:k' }), ports);
+    expect(seen).toEqual([undefined]);
+  });
+
+  it('with the flag on, a retry of the same reminder reuses one Linq key', async () => {
+    vi.stubEnv('PARENT_SEND_RECEIPT_ENABLED', 'true');
+    const seen: Array<string | undefined> = [];
+    const channel: Channel = {
+      kind: 'sms',
+      async send(input) {
+        seen.push(input.sendKey);
+        if (seen.length === 1) {
+          return { status: 'error', transient: true, code: 'timeout', message: 'timeout' };
+        }
+        return { status: 'sent', providerMessageId: 'm-1', transport: 'imessage' };
+      },
+    };
+    const { ports } = makePorts({ channels: { sms: channel } });
+    const job = message({ familyId: 'fam-1', dedupeKey: 'reminder:k' });
+    await expect(dispatchLoopMessage(job, ports)).rejects.toBeInstanceOf(ChannelRetryableError);
+    const retry = await dispatchLoopMessage(job, ports);
+    expect(retry.legs).toEqual([{ channel: 'sms', outcome: 'sent', voice: undefined }]);
+    const key = parentLinqKey('fam-1', 'reminder:k:sms');
+    expect(seen).toEqual([key, key]);
+  });
+});
 
 describe('suppression matrix — every refusal writes a per-leg ledger row and sends nothing', () => {
   it('suppressed_pref when the category is disabled', async () => {

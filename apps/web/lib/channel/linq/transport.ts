@@ -10,7 +10,12 @@ import {
   previewGroupCaptureOpen,
 } from '~/lib/channel/preview-linq-capture';
 import { proactiveCadence } from '~/lib/channel/proactive/flag';
-import { linqApiKey, linqFromE164, linqVoiceMemosEnabled } from './config';
+import {
+  linqApiKey,
+  linqFromE164,
+  linqVoiceMemosEnabled,
+  parentSendReceiptEnabled,
+} from './config';
 
 /**
  * VIL-335 — the outbound Linq leg. Raw `fetch`, no SDK. Every partner call
@@ -96,12 +101,21 @@ const LINQ_CERTAIN_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 
  */
 export function linqRefusedForCertain(err: unknown): boolean {
   if (!(err instanceof LinqSendError) || !err.permanent) return false;
-  return linqStatusRefusedForCertain(err.httpStatus);
+  return err.httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(err.httpStatus);
 }
 
-/** The status half of {@link linqRefusedForCertain}, for a caller left only the status. */
-export function linqStatusRefusedForCertain(httpStatus: number): boolean {
-  return httpStatus === 0 || LINQ_CERTAIN_REFUSALS.has(httpStatus);
+/**
+ * A Linq answer that does not prove the text stayed home, while the receipt flag is on.
+ * The caller must not send a second bubble, including an apology, in its place.
+ */
+export function linqSendMayHaveLanded(err: unknown): boolean {
+  if (!parentSendReceiptEnabled()) return false;
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current != null; depth += 1) {
+    if (current instanceof LinqSendError) return !linqRefusedForCertain(current);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /**
@@ -605,7 +619,8 @@ export async function sendLinqChatMessage(input: {
       input.mention &&
       err instanceof LinqSendError &&
       err.permanent &&
-      MENTION_REFUSED.has(err.code)
+      MENTION_REFUSED.has(err.code) &&
+      (!parentSendReceiptEnabled() || linqRefusedForCertain(err))
     ) {
       // Code and status only. The handle, the body, and the chat id stay out (rule #1).
       console.warn(
@@ -628,7 +643,8 @@ export async function sendLinqChatMessage(input: {
       !(err instanceof LinqSendError) ||
       !err.permanent ||
       err.httpStatus < 400 ||
-      (input.plainResendOnlyIfRefused && !linqRefusedForCertain(err))
+      ((input.plainResendOnlyIfRefused || parentSendReceiptEnabled()) &&
+        !linqRefusedForCertain(err))
     ) {
       throw err;
     }
@@ -1645,6 +1661,26 @@ export function createLinqPhoneTransport(deps: { fetch?: typeof fetch } = {}): C
         chatId,
       };
     },
+    // VIL-715: into this parent's existing 1:1 only. A number with no 1:1 on this line is
+    // refused by name, and an image never opens a chat or reaches a group.
+    async sendImage({ to, png, filename }) {
+      const from = linqFromE164();
+      if (!from) throw new LinqSendError('not_configured', 0, true);
+      const chatId = await findLinqDirectChat({ from, to, fetch: deps.fetch });
+      if (!chatId) throw new LinqSendError('media_on_new_chat', 400, true);
+      const { attachmentId } = await putLinqAttachment({
+        bytes: png,
+        contentType: 'image/png',
+        filename,
+        fetch: deps.fetch,
+      });
+      const sent = await sendLinqParts({
+        chatId,
+        parts: [{ type: 'media', attachmentId }],
+        fetch: deps.fetch,
+      });
+      return { providerMessageId: sent.providerMessageId, transport: 'imessage' as const, chatId };
+    },
   };
 }
 
@@ -1738,6 +1774,7 @@ export function createLinqTextTransport(deps: {
   fetch?: typeof fetch;
 }): ChannelTransport {
   return {
+    boundToChat: true,
     async send(input) {
       if (input.mediaUrls) {
         throw new LinqSendError('media_unsupported', 400, true);
@@ -1923,6 +1960,20 @@ export async function uploadLinqAttachment(input: {
   fetch?: typeof fetch;
 }): Promise<{ attachmentId: string }> {
   if (!linqVoiceMemosEnabled()) throw new LinqSendError('voice_memos_dark', 0, true);
+  return putLinqAttachment(input);
+}
+
+/**
+ * The upload itself, ungated: `uploadLinqAttachment` holds the voice-memo gate, and the
+ * one-to-one receipt image (VIL-715) has its own flag. Private bytes, a private id: no
+ * public URL is ever made for them.
+ */
+async function putLinqAttachment(input: {
+  bytes: Uint8Array;
+  contentType: string;
+  filename: string;
+  fetch?: typeof fetch;
+}): Promise<{ attachmentId: string }> {
   if (input.bytes.byteLength === 0) throw new LinqSendError('empty_attachment', 0, true);
   const result = await linqRequest({
     method: 'POST',

@@ -24,9 +24,11 @@ import {
   type PlanEngineOutcome,
   TAKEOVER_RESUME_SKILL,
   planFacts,
+  priceUnstated,
   queueTakeoverTurn,
   runBrowserUsePlanSignup,
   takeoverResumeText,
+  withPriceUnstated,
 } from './plan-engine';
 
 /**
@@ -185,7 +187,10 @@ async function driveAssisted(
       if (!profile.ok) return end('error', profile.detail);
 
       const run = await deps.api.createRun({
-        task: taskWithFacts(await deps.loadTask(ASSISTED_SIGNUP_SKILL), assistedFacts(input)),
+        task: taskWithFacts(
+          await withPriceUnstated(input, deps, await deps.loadTask(ASSISTED_SIGNUP_SKILL)),
+          assistedFacts(input),
+        ),
         outputSchema: BROWSER_USE_ASSISTED_OUTPUT_SCHEMA,
         ...ACTION_MODEL,
         browserSettings: {
@@ -254,11 +259,16 @@ async function driveAssisted(
       choiceIndex,
       checkoutUrl: sameProviderHttpsUrl(output.page_url, input.registrationUrl),
     };
-    if (output.fee_cents !== null && output.fee_cents > input.maxPriceCents) {
+    const unstated = priceUnstated(input);
+    if (!unstated && output.fee_cents !== null && output.fee_cents > input.maxPriceCents) {
       return end('needs_human', 'price_change', ready);
     }
     await input.onStep({ step: 'ready', choiceIndex, feeCents: output.fee_cents });
-    return end('ready_for_parent', 'none', ready);
+    return end(
+      'ready_for_parent',
+      input.binding?.approved.hold ?? (unstated ? 'price_unstated' : 'none'),
+      ready,
+    );
   } catch (error) {
     if (runId) await deps.api.cancelRun(runId).catch(() => undefined);
     if (error instanceof BrowserUseApiError) return end('error', 'api_error');

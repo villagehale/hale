@@ -136,6 +136,9 @@ describe('runOrchestrator — fix-wave B structural gates', () => {
 
   beforeEach(() => {
     vi.stubEnv('AUTONOMOUS_EXECUTE_ENABLED', 'true');
+    // VIL-719: these cases use send_email, an ask-first kind under the ask policy, as the
+    // generic autonomous action, so they pin the policy off (ask-policy-gate.test.ts has it on).
+    vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
     recordActionGate.mockClear();
     recordExecution.mockClear();
     runExecutor.mockClear();

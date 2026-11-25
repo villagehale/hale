@@ -4,7 +4,7 @@ import type { ActionType } from '@hale/types';
 import { AUTONOMY_STREAK_REQUIRED } from '@hale/worker/autonomy-gate';
 import { loadAutonomyStanding, recordHumanApproval } from '@hale/worker/memory-writer';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type SeededFamily, type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { declineDraftedAction } from './decline';
 import { reverseExecutedCalendarAction } from './reverse-calendar';
@@ -113,6 +113,15 @@ async function grants(familyId: string) {
       ),
     );
 }
+
+// VIL-719: the streak cases arm send_email, an ask-first kind under the ask policy, so
+// they pin the policy off (apps/worker/src/services/ask-policy-grant.pglite.test.ts has it on).
+beforeEach(() => {
+  vi.stubEnv('ASK_POLICY_TIERS_ENABLED', 'false');
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('a draft dismissed through declineDraftedAction breaks the approval streak', () => {
   it('four approvals, one dismissal, one approval: the kind is not armed', async () => {

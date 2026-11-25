@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Here's the link to forward to your partner: [[link]] Whoever opens it joins your family here, so send it only to them. It works for 7 days."
+  },
+  "latencyMs": 2271,
+  "usage": {
+    "input_tokens": 1236,
+    "output_tokens": 53,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 1505
+  }
+}

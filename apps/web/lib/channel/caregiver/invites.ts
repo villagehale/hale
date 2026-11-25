@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { isEnabled } from '@hale/flags';
 import { and, eq, gte, isNull } from 'drizzle-orm';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
@@ -10,8 +11,14 @@ import { maskPhoneE164 } from '~/lib/channels/phone';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
-import { ROLE_LABEL } from './copy';
 import type { AddRole, ParsedCaregiverAdd, ParsedCoParentAdd } from './parse';
+
+/** How a caregiver role is named in consent evidence. Not a text. */
+const ROLE_LABEL: Record<CaregiverRole, string> = {
+  grandparent: 'grandparent',
+  nanny: 'nanny',
+  babysitter: 'babysitter',
+};
 
 /**
  * VIL-241 · M6 — the caregiver invite's state transitions and the rows they write.
@@ -90,6 +97,16 @@ export type CaregiverInviteState =
    * is the one thing this whole command is built not to do
    * ({@link loadLapsedInviteByPhone}, CO_PARENT_UNAVAILABLE_BY_LANGUAGE). */
   | 'expired_unsent';
+
+/** Exact `true` only. Off, every invite path is what it was before this flag. */
+export function thirdPartyInviteRouteEnabled(): boolean {
+  return isEnabled('third-party-invite-route');
+}
+
+/** One Linq key per invite row, so a retried text that did land cannot arrive twice. */
+export function inviteSendKey(invite: { id: string; role: AddRole }): string {
+  return `${invite.role === 'co_parent' ? 'co_parent' : 'caregiver'}_invite:${invite.id}`;
+}
 
 /** Either side silent for this long and the invite lapses. */
 export const INVITE_SILENCE_MS = 72 * 60 * 60 * 1000;
@@ -342,8 +359,8 @@ export async function startCaregiverInvite(
   const { parsed, now } = input;
   if (parsed.phoneE164 === input.inviterPhoneE164) return { status: 'own_number' };
 
-  // THE REFUSAL BINDS THIS DOOR TOO (VIL-355). "Reply STOP anytime" rides on the
-  // co-parent invite, and a promise that only covered the lane it was written on would
+  // THE REFUSAL BINDS THIS DOOR TOO (VIL-355). The co-parent invite promises a stranger
+  // they can opt out, and a promise that only covered the lane it was written on would
   // be no promise at all: without this, somebody who replied STOP could be re-texted a
   // minute later as a nanny, five a day, on a path that bypasses the outbound gate.
   const refusedBefore = await refusalBlock(database, {
@@ -890,8 +907,27 @@ export async function recordParentAssent(
     role: invite.role,
   });
   if (!body) return { status: 'unwritten' };
-  await database.transaction(async (rawTx) => {
+  const routed = thirdPartyInviteRouteEnabled();
+  const claimed = await database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    if (routed) {
+      const advanced = await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'awaiting_caregiver_reply',
+          expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, invite.id),
+            eq(schema.caregiverInvites.state, 'awaiting_parent_assent'),
+            isNull(schema.caregiverInvites.closedAt),
+          ),
+        )
+        .returning({ id: schema.caregiverInvites.id });
+      if (advanced.length === 0) return false;
+    }
     await tx.insert(schema.consentRecords).values({
       userId: invite.invitedByUserId,
       familyId: invite.familyId,
@@ -908,14 +944,16 @@ export async function recordParentAssent(
       },
     });
 
-    await tx
-      .update(schema.caregiverInvites)
-      .set({
-        state: 'awaiting_caregiver_reply',
-        expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
-        updatedAt: now,
-      })
-      .where(eq(schema.caregiverInvites.id, invite.id));
+    if (!routed) {
+      await tx
+        .update(schema.caregiverInvites)
+        .set({
+          state: 'awaiting_caregiver_reply',
+          expiresAt: new Date(now.getTime() + INVITE_SILENCE_MS),
+          updatedAt: now,
+        })
+        .where(eq(schema.caregiverInvites.id, invite.id));
+    }
 
     await tx.insert(schema.auditLog).values({
       familyId: invite.familyId,
@@ -925,9 +963,10 @@ export async function recordParentAssent(
       targetId: invite.id,
       after: { role: invite.role, maskedPhone: maskPhoneE164(invite.phoneE164) },
     });
+    return true;
   });
 
-  return { status: 'ready', body };
+  return claimed ? { status: 'ready', body } : { status: 'already_claimed' };
 }
 
 export type SeatGrant = { inviteId: string; grantedByUserId: string; open: boolean };
@@ -1180,6 +1219,9 @@ async function ensureCaregiverUser(
   return row.id;
 }
 
+/** The row stopped waiting on this person before their yes reached the seat. */
+export class InviteNotAwaitingReply extends Error {}
+
 export interface AcceptResult {
   caregiverUserId: string;
 }
@@ -1199,6 +1241,20 @@ export async function acceptInvite(
 
   return database.transaction(async (rawTx) => {
     const tx = rawTx as unknown as Database;
+    if (thirdPartyInviteRouteEnabled()) {
+      const live = await tx
+        .update(schema.caregiverInvites)
+        .set({ updatedAt: now })
+        .where(
+          and(
+            eq(schema.caregiverInvites.id, invite.id),
+            eq(schema.caregiverInvites.state, 'awaiting_caregiver_reply'),
+            isNull(schema.caregiverInvites.closedAt),
+          ),
+        )
+        .returning({ id: schema.caregiverInvites.id });
+      if (live.length === 0) throw new InviteNotAwaitingReply();
+    }
     const caregiverUserId = await ensureCaregiverUser(
       tx,
       `sms:${hash}`,
@@ -1296,8 +1352,8 @@ export async function acceptInvite(
  *
  * `loadOpenInviteByPhone` answers a different question — "is there an invitation this
  * number can still say YES to" — and its sweep closes a lapsed row as 'expired' and
- * returns null. Reading a refusal through it made "Reply STOP anytime", printed verbatim
- * on the one cold text this feature sends, expire with the invitation: a STOP arriving at
+ * returns null. Reading a refusal through it made the opt-out promised on the one cold
+ * text this feature sends expire with the invitation: a STOP arriving at
  * 72h + 1 minute wrote no memory, and the same household opened a fresh invite and texted
  * the same stranger again an hour later. Under CASL a withdrawal is effective when it is
  * sent, not while a timer happens to be running.
@@ -1365,8 +1421,8 @@ export async function hasInviteAStopWouldClose(
 }
 
 /**
- * A STOP from a number that was asked something. "Reply STOP anytime" is on the invite
- * itself, so it has to close the invite too — otherwise the one thing we promised
+ * A STOP from a number that was asked something. The invite itself promises they can
+ * opt out, so it has to close the invite too — otherwise the one thing we promised
  * them would only cover messages we had already stopped sending.
  */
 export async function declineOpenInviteOnStop(

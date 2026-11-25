@@ -398,8 +398,10 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
       .where(eq(schema.children.familyId, familyId))
   ).filter((row) => row.familyId === familyId && row.name);
   const teens = teenChildIds(children, now);
-  const childNames = children.map((row) => row.name);
-  const teenNames = children.filter((row) => teens.has(row.id)).map((row) => row.name);
+  const childNames = children.flatMap((row) => (row.name ? [row.name] : []));
+  const teenNames = children
+    .filter((row) => teens.has(row.id))
+    .flatMap((row) => (row.name ? [row.name] : []));
   const named =
     parentIds.length === 0
       ? []

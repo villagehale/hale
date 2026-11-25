@@ -178,6 +178,13 @@ export const OPS_PAGE_VOCABULARY = {
   group_plan_unwritten: { change: ['added', 'moved', 'cancelled'] },
   group_conflict_unwritten: { stage: ['skill_load', 'after_retry'] },
   spoken_line_unwritten: { stage: ['skill_load', 'after_retry'] },
+  /** VIL-721 · the one Google link's text: the model could not write it, so it did not go. */
+  connector_link_unwritten: { reason: ['write_failed', 'writer_absent'] },
+  /** VIL-721 · a text the one Google link adds did not reach the parent. */
+  google_connect_text_unsent: {
+    surface: ['card', 'fresh_link', 'receipt', 'ask'],
+    failure: ['refused', 'unconfirmed', 'no_link'],
+  },
   shared_group_unwritten: {
     kind: ['intro', 'who_confirmed', 'answer', 'member_stop', 'family_left', 'family_ask'],
     fallback: ['voice_unavailable', 'skill_unavailable', 'model_failed', 'unusable', 'declined'],
@@ -199,6 +206,11 @@ export const OPS_PAGE_VOCABULARY = {
   party_guest_unwritten: {
     why: ['asked_for_reminder', 'host_cancelled'],
     stage: ['skill_load', 'after_retry'],
+  },
+  /** VIL-759 · an invite Linq did not accept. `unclear` may still have reached the phone. */
+  third_party_invite_unsent: {
+    lane: ['co_parent', 'caregiver'],
+    why: ['refused', 'unclear'],
   },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
@@ -235,9 +247,40 @@ export const OPS_PAGE_VOCABULARY = {
   },
   /** A co-parent duty ask or ack Linq never accepted: nothing reached the parents. */
   duty_unsent: { surface: ['ask', 'ack'], reason: ['send_refused', 'not_confirmed'] },
+  /**
+   * VIL-749 / VIL-753. A parent text on the shared receipt that Linq refused, or
+   * that a one-shot sender will not try again after an answer that did not prove
+   * a refusal. Nothing in the facts is a body, a name, or a phone.
+   */
+  parent_send_unsent: {
+    surface: ['one_to_one', 'group_line'],
+    reason: ['send_refused', 'not_confirmed'],
+  },
   /** VIL-732 · a refused dispatch leg whose verdict could not be stored. The refusal stands. */
   claim_refusal_unstored: {},
   erasure_intake_undecodable: { number: ['released', 'still_held'] },
+  /** VIL-715 · a registration text the model could not write: nothing was sent. */
+  registration_text_unwritten: { moment: ['offer', 'reply', 'run_notice'] },
+  /** VIL-715 · a plan with no readable approval: it was handed back, nothing was charged. */
+  registration_terms_unreadable: {},
+  /** VIL-715 · a registration went through and its masked receipt did not reach the parent. */
+  registration_receipt_unsent: {
+    reason: [
+      'card_shaped',
+      'not_a_confirmation',
+      'no_browser',
+      'no_cdp',
+      'attach_failed',
+      'no_page',
+      'verify_failed',
+      'capture_failed',
+      'too_large',
+      'transport_unsupported',
+      'send_failed',
+    ],
+  },
+  /** VIL-760 · a receipt ledger write failed. A text already sent stands. */
+  registration_receipt_unrecorded: {},
   registration_review_placed_order: {},
   registration_review_unread: {},
   // VIL-718 · a takeover text the model could not write: nothing went to the parent.
@@ -271,7 +314,43 @@ export const OPS_PAGE_VOCABULARY = {
       'claim_stuck',
     ],
   },
+  // VIL-728. A group chat went quiet: Hale reached the loop guard's cap with no verified
+  // person speaking. `count` is how many Hale messages did it. No chat id, no family id.
+  group_loop_guard_tripped: {},
   proactive_decider_failed: { reason: ['model_failed', 'unparsed'] },
+  // VIL-719 · a tell-after text (the text after Hale did a tell-after action) the model
+  // could not write. Nothing was sent; the action stands. Paged only while
+  // ASK_POLICY_TIERS_ENABLED is on for the family. One site per lane, so one lane's hour
+  // does not hide another's.
+  autonomy_acted_unwritten: {
+    reason: ['no_client', 'skill_unavailable', 'model_failed', 'unparsed', 'invented'],
+  },
+  calendar_invite_unwritten: {
+    method: ['REQUEST', 'CANCEL'],
+    reason: [
+      'client_unavailable',
+      'skill_unavailable',
+      'model_failed',
+      'gate_exhausted',
+      'time_unjudged',
+      'summary_too_long',
+      'summary_carries_destination',
+    ],
+  },
+  calendar_write_notice_unwritten: { op: ['create', 'update', 'delete'] },
+  team_schedule_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  team_schedule_driver_unwritten: { change: ['time', 'location', 'both', 'cancel'] },
+  /** A team-schedule change under a grant whose execution failed. The email notice still goes. */
+  team_schedule_not_applied: { change: ['time', 'location', 'both', 'cancel'] },
+  /** Linq took a team-schedule ask and its draft could not join the yes list. */
+  team_schedule_ask_unbound: { change: ['time', 'location', 'both', 'cancel'] },
+  offer_receipt_unwritten: {},
+  /** VIL-762 · an email alert the appointment read could not judge, or whose clash
+   * could not be written. Nothing was sent. */
+  email_alert_once_unsent: {
+    stage: ['judgment', 'clash_notice'],
+    reason: ['skill_unavailable', 'model_failed', 'unusable'],
+  },
   /** A proactive nudge the model could not write: nothing was sent. */
   nudge_unwritten: {
     kind: ['registration', 'weather_swap', 'weekday_dropin', 'weekday_care', 'empty_saturday'],
@@ -329,8 +408,15 @@ const OPS_PAGE_PER_REF = [
   'checkout_duplicate_payment',
   'registration_review_placed_order',
   'registration_review_unread',
+  // VIL-715: one family's registration each, so a second family's in the same hour pages too.
+  'registration_text_unwritten',
+  'registration_terms_unreadable',
+  'registration_receipt_unsent',
+  'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  // VIL-759: one family's invite each.
+  'third_party_invite_unsent',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

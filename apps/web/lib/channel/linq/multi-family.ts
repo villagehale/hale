@@ -52,9 +52,6 @@ import {
 import { familyFreeBusy, formatWhen } from './household-calendar';
 import { type ParticipantRead, listedReaders } from './participant-readers';
 import type { ListChatHandles } from './roster';
-import type { SharedGroupVoiceRequest } from './shared-group-line-input';
-import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
-import { familyClaimOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import {
   type SecretSantaLineWriter,
   type SecretSantaTurnModel,
@@ -66,6 +63,9 @@ import {
   sharedSecretSantaLineWriter,
   stopSecretSantaPerson,
 } from './secret-santa';
+import type { SharedGroupVoiceRequest } from './shared-group-line-input';
+import type { RuledOutSpan, SharedGroupReader, SharedGroupReading } from './shared-group-reading';
+import { familyClaimOf, reactionAsVote, sharedGroupReader } from './shared-group-reading';
 import type { SharedGroupComposer } from './shared-group-voice';
 import { composeSharedGroupLine } from './shared-group-voice';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
@@ -814,8 +814,11 @@ export async function forgetSharedGroupPeople(
  * its parent said it is out of this chat (`includeLeft`), and a person who stopped Hale here
  * does not keep their household in (`includeStopped`).
  */
+/** A connection or the transaction it is already inside. The quiet-mark audit writes on the transaction. */
+type DbOrTx = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+
 export async function presentHouseholds(
-  database: Database,
+  database: DbOrTx,
   chatId: string,
   options: { includeStopped: boolean; includeLeft: boolean },
 ): Promise<string[]> {
@@ -981,7 +984,9 @@ async function readFamilyPrivateSlice(
 
   return {
     familyId: familyId,
-    children: kids.filter((row) => row.familyId === familyId).map((row) => row.name),
+    children: kids
+      .filter((row) => row.familyId === familyId)
+      .flatMap((row) => (row.name ? [row.name] : [])),
     memory: facts.filter((row) => row.familyId === familyId).map((row) => row.factKey),
     // A 13+ child's or sensitive row never enters the slice (isPrivateEvent), and
     // one parent's own Google mirror is excluded by the household-row predicate.
@@ -1746,20 +1751,18 @@ export async function takeMultiFamilyTurn(
         }
       : null;
   const santaRead = santaContext
-    ? readSecretSantaTurn(
-        database,
-        santaContext,
-        wired.santaTurn ?? secretSantaTurnModel(),
-      ).catch((err: unknown) => {
-        console.error(
-          {
-            outcome: 'secret_santa_read_failed',
-            fault: err instanceof Error ? err.name : 'unknown',
-          },
-          'linq multi-family: secret santa read failed',
-        );
-        return { kind: 'failed' as const };
-      })
+    ? readSecretSantaTurn(database, santaContext, wired.santaTurn ?? secretSantaTurnModel()).catch(
+        (err: unknown) => {
+          console.error(
+            {
+              outcome: 'secret_santa_read_failed',
+              fault: err instanceof Error ? err.name : 'unknown',
+            },
+            'linq multi-family: secret santa read failed',
+          );
+          return { kind: 'failed' as const };
+        },
+      )
     : null;
   const reading: SharedGroupReading = reader
     ? await reader.read({

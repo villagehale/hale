@@ -79,8 +79,8 @@ async function household(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const childNames = children
-    .filter((row) => row.familyId === familyId && row.name)
-    .map((row) => row.name);
+    .filter((row) => row.familyId === familyId)
+    .flatMap((row) => (row.name ? [row.name] : []));
   return { parents, childNames, parentCount: parentIds.length };
 }
 

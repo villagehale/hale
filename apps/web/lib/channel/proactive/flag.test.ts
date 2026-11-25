@@ -1,9 +1,10 @@
-import { setFlagEvaluatorForTests } from '@hale/flags';
+import { POSTHOG_FLAGS_ENABLED_ENV, setFlagEvaluatorForTests } from '@hale/flags';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PROACTIVE_ROUTING,
   familyDecisionCapEnabled,
   proactiveCadence,
+  proactiveNoRepeatEnabled,
   proactiveReviewGuardsEnabled,
   proactiveSendsPaused,
   requestedCadence,
@@ -13,6 +14,27 @@ import {
 afterEach(() => {
   vi.unstubAllEnvs();
   setFlagEvaluatorForTests(null);
+});
+
+describe('proactive no-repeat flag', () => {
+  it('is on only for exact true', () => {
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', undefined);
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true\n');
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    expect(proactiveNoRepeatEnabled()).toBe(true);
+  });
+
+  it('stays on the env when PostHog would say otherwise', () => {
+    vi.stubEnv(POSTHOG_FLAGS_ENABLED_ENV, 'true');
+    setFlagEvaluatorForTests(() => true);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', undefined);
+    expect(proactiveNoRepeatEnabled()).toBe(false);
+    vi.stubEnv('PROACTIVE_NO_REPEAT_ENABLED', 'true');
+    setFlagEvaluatorForTests(() => false);
+    expect(proactiveNoRepeatEnabled()).toBe(true);
+  });
 });
 
 describe('proactive cadence flag', () => {

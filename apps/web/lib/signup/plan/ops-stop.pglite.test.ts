@@ -171,6 +171,7 @@ beforeEach(async () => {
   await db.database.delete(schema.authorizedSignupOffers);
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
   vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, '');
+  vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });
 afterEach(() => {

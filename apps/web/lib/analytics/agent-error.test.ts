@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetPosthogClientsForTests } from './posthog-node';
+import { resetCanaryFamilyCacheForTests, setCanaryFamilyLookupForTests } from './canary-tag';
+import { flushPosthog, resetPosthogClientsForTests } from './posthog-node';
 import { decodeBatch, ours } from './posthog-wire.testkit';
 import {
   type AgentError,
@@ -204,9 +205,15 @@ describe('reporting never makes a failure worse', () => {
     vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
     resetPosthogClientsForTests();
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // captureAgentError does not await the exception report. Flush it on this
+    // test's own fetch stub before the next test installs a new one.
+    await flushPosthog();
+    resetPosthogClientsForTests();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    resetCanaryFamilyCacheForTests();
   });
 
   it('swallows a provider outage and says so, rather than throwing into a catch block', async () => {
@@ -233,6 +240,54 @@ describe('reporting never makes a failure worse', () => {
       captureAgentError({ lane: 'coach', reason: 'model_unreachable', familyId: FAMILY }),
     ).resolves.toBe('not_configured');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not look up the canary when neither capture will send', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', '');
+    vi.stubEnv('POSTHOG_ERROR_TRACKING_ENABLED', '');
+    const lookup = vi.fn(async () => true);
+    setCanaryFamilyLookupForTests(lookup);
+
+    await expect(
+      captureAgentError({ lane: 'coach', reason: 'model_unreachable', familyId: FAMILY }),
+    ).resolves.toBe('not_configured');
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('looks up the canary when only exception tracking will send', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', '');
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', 'phc_project');
+    vi.stubEnv('POSTHOG_ERROR_TRACKING_ENABLED', 'true');
+    vi.stubEnv('POSTHOG_HOST', 'https://ph.example.com');
+    resetPosthogClientsForTests();
+    const lookup = vi.fn(async () => true);
+    setCanaryFamilyLookupForTests(lookup);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+
+    await expect(
+      captureAgentError({ lane: 'coach', reason: 'model_unreachable', familyId: FAMILY }),
+    ).resolves.toBe('not_configured');
+    expect(lookup).toHaveBeenCalledWith(FAMILY);
+  });
+
+  it('looks up the canary when a product capture will send', async () => {
+    const lookup = vi.fn(async () => true);
+    setCanaryFamilyLookupForTests(lookup);
+    const fetchMock = vi.fn(
+      async (_url: string, _init: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await captureAgentError({ lane: 'coach', reason: 'model_unreachable', familyId: FAMILY });
+
+    expect(lookup).toHaveBeenCalledWith(FAMILY);
+    const { events } = decodeBatch(fetchMock.mock.calls[0]?.[1]);
+    expect(events[0]?.properties.canary).toBe(true);
   });
 
   it('sends the poisoned-fixture-proof payload on the wire, not just in the builder', async () => {

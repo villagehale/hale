@@ -38,11 +38,55 @@ import { PROACTIVE_WRITER_FIXTURES } from './proactive-writer-fixtures.mjs';
 
 const AGENT_SRC = join(REPO_ROOT, 'packages', 'agent', 'src', 'index.ts');
 const SKILL_PATH = join(REPO_ROOT, 'packages', 'agent', 'skills', 'proactive-writer.md');
+const ADDENDUM_PATH = join(
+  REPO_ROOT,
+  'packages',
+  'agent',
+  'skills',
+  'proactive-writer-no-repeat.md',
+);
 const TOOLS_SRC = join(REPO_ROOT, 'apps', 'web', 'lib', 'channel', 'proactive', 'tools.ts');
 
 const JUDGE_SYSTEM = judgePrompt('proactive-writer');
+const REPEAT_JUDGE_SYSTEM = judgePrompt('proactive-repeat');
 
-function grade(fixture, written, verdict) {
+function repeats(fixture) {
+  return Array.isArray(fixture.recentTexts) && fixture.recentTexts.length > 0;
+}
+
+async function writerPrompt(fixture, agent, tools) {
+  const skill = await agent.loadSkill(SKILL_PATH);
+  const guard = repeats(fixture);
+  let system = skill.instructions;
+  if (guard) {
+    const addendum = await agent.loadSkill(ADDENDUM_PATH);
+    system = `${skill.instructions}\n\n${addendum.instructions}`;
+  }
+  return {
+    lane: agent.pickLane(skill.meta.task),
+    system,
+    userMessage: tools.writerContext(
+      fixture.items,
+      fixture.cadenceNote,
+      null,
+      guard ? fixture.recentTexts : [],
+    ),
+    toolSchema: guard ? tools.WRITER_TOOL_SCHEMA_OR_NOTHING : tools.WRITER_TOOL_SCHEMA,
+    guard,
+  };
+}
+
+function grade(fixture, written, verdict, repeatVerdict) {
+  if (repeats(fixture)) {
+    if (!('message' in written)) return [];
+    if (!repeatVerdict || repeatVerdict.score < JUDGE_MIN) {
+      const detail = repeatVerdict
+        ? `${repeatVerdict.score} (${repeatVerdict.reason})`
+        : 'no verdict';
+      return [`repeats a recent text: ${detail}`];
+    }
+    return [];
+  }
   if ('skipped' in written) return [`writer skipped: ${written.skipped}`];
   const failures = [];
   const body = written.message.toLowerCase();
@@ -68,32 +112,76 @@ function judgeCeiling(model) {
 export async function uncachedWriterCalls(judgeOutputChars) {
   const agent = await tsImport(AGENT_SRC, import.meta.url);
   const tools = await tsImport(TOOLS_SRC, import.meta.url);
-  const skill = await agent.loadSkill(SKILL_PATH);
-  const lane = agent.pickLane(skill.meta.task);
   const judgeModel = await readJudgeModel();
   const measured = [];
   const calls = [];
   const shortIds = [];
+  let lane = null;
   for (const fixture of PROACTIVE_WRITER_FIXTURES) {
-    const userMessage = tools.writerContext(fixture.items, fixture.cadenceNote);
+    const prompt = await writerPrompt(fixture, agent, tools);
+    lane = prompt.lane;
+    const userMessage = prompt.userMessage;
     const key = laneToolCacheKey({
       agent,
       lane,
       tag: evalRunTag(`proactive-writer:${fixture.id}`),
-      system: skill.instructions,
+      system: prompt.system,
       userMessage,
       toolName: tools.WRITER_TOOL,
-      toolSchema: tools.WRITER_TOOL_SCHEMA,
+      toolSchema: prompt.toolSchema,
       maxTokens: tools.WRITER_MAX_TOKENS,
     });
     const cached = await cacheGet(key);
     let message = null;
     if (cached) {
       measured.push(JSON.stringify(cached.value).length);
-      const written = tools.readWriterText(cached.value, fixture.items);
+      const written = tools.readWriterText(cached.value, fixture.items, prompt.guard);
       if ('message' in written) message = written.message;
     } else {
       shortIds.push(fixture.id);
+    }
+    if (repeats(fixture)) {
+      if (cached && message === null) continue;
+      if (!cached) {
+        calls.push({
+          model: lane.model,
+          promptCache: false,
+          prefixId: 'proactive-writer',
+          prefix: `${prompt.system}\n${JSON.stringify(prompt.toolSchema)}`,
+          user: userMessage,
+          thinkingTokens: 0,
+          group: 'proactive-writer',
+          maxTokens: tools.WRITER_MAX_TOKENS,
+          fixtureId: fixture.id,
+        });
+      }
+      if (message !== null || !cached) {
+        const judgeUser = JSON.stringify({
+          recentTexts: fixture.recentTexts,
+          items: fixture.items,
+          text: message ?? 'A short text about the items.',
+        });
+        const judgeKey = cacheKey(
+          `proactive-writer-repeat:judge:${fixture.id}`,
+          `${judgeModel}\n${REPEAT_JUDGE_SYSTEM}\n${judgeUser}`,
+        );
+        const judged = await cacheGet(judgeKey);
+        if (!(judged && isVerdict(judged.parsed))) {
+          calls.push({
+            model: judgeModel,
+            promptCache: true,
+            prefixId: 'proactive-writer-repeat-judge',
+            prefix: `${REPEAT_JUDGE_SYSTEM}\n${JSON.stringify(JUDGE_SCHEMA)}`,
+            user: judgeUser,
+            outputChars: judgeOutputChars,
+            thinkingTokens: 0,
+            group: 'proactive-writer',
+            maxTokens: judgeCeiling(judgeModel),
+            fixtureId: fixture.id,
+          });
+        }
+      }
+      continue;
     }
     if (cached && message === null) continue;
     const text = message ?? 'A short text about the items.';
@@ -118,7 +206,7 @@ export async function uncachedWriterCalls(judgeOutputChars) {
         model: lane.model,
         promptCache: false,
         prefixId: 'proactive-writer',
-        prefix: `${skill.instructions}\n${JSON.stringify(tools.WRITER_TOOL_SCHEMA)}`,
+        prefix: `${prompt.system}\n${JSON.stringify(prompt.toolSchema)}`,
         user: userMessage,
         thinkingTokens: 0,
         group: 'proactive-writer',
@@ -187,6 +275,14 @@ async function main() {
     getClient,
     cost,
   );
+  const repeatJudge = makeJudge(
+    judgeModel,
+    REPEAT_JUDGE_SYSTEM,
+    'proactive-writer-repeat',
+    cachedOnly,
+    getClient,
+    cost,
+  );
 
   console.info(
     `proactive-writer | ${cachedOnly ? 'cached-only' : 'live'} | model=${lane.model} judge=${judgeModel} | fixtures=${PROACTIVE_WRITER_FIXTURES.length}`,
@@ -194,15 +290,18 @@ async function main() {
   const misses = [];
   let failed = 0;
   for (const fixture of PROACTIVE_WRITER_FIXTURES) {
+    const prompt = await writerPrompt(fixture, agent, tools);
     const call = await cachedLaneToolCall({
       agent,
-      lane,
+      lane: prompt.lane,
       tag: evalRunTag(`proactive-writer:${fixture.id}`),
-      system: skill.instructions,
-      userMessage: tools.writerContext(fixture.items, fixture.cadenceNote),
+      system: prompt.system,
+      userMessage: prompt.userMessage,
       toolName: tools.WRITER_TOOL,
-      toolDescription: 'The one text Hale sends.',
-      toolSchema: tools.WRITER_TOOL_SCHEMA,
+      toolDescription: prompt.guard
+        ? 'The one text Hale sends, or null when it would repeat a recent text.'
+        : 'The one text Hale sends.',
+      toolSchema: prompt.toolSchema,
       maxTokens: tools.WRITER_MAX_TOKENS,
       cachedOnly,
       getClient,
@@ -212,15 +311,23 @@ async function main() {
       misses.push(`${fixture.id}  ${call.key}`);
       continue;
     }
-    const written = tools.readWriterText(call.value, fixture.items);
+    const written = tools.readWriterText(call.value, fixture.items, prompt.guard);
     const verdict =
-      'message' in written
+      !repeats(fixture) && 'message' in written
         ? await judge(fixture.id, {
-            context: JSON.parse(tools.writerContext(fixture.items, fixture.cadenceNote)),
+            context: JSON.parse(prompt.userMessage),
             text: written.message,
           })
         : null;
-    const failures = grade(fixture, written, verdict);
+    const repeatVerdict =
+      repeats(fixture) && 'message' in written
+        ? await repeatJudge(fixture.id, {
+            recentTexts: fixture.recentTexts,
+            items: fixture.items,
+            text: written.message,
+          })
+        : null;
+    const failures = grade(fixture, written, verdict, repeatVerdict);
     if (failures.length > 0) failed += 1;
     console.info(`${failures.length === 0 ? 'PASS' : 'FAIL'}  ${fixture.id}`);
     if ('message' in written) console.info(`        > ${written.message}`);

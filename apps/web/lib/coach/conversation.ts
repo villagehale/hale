@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { withoutConnectTokens } from '~/lib/channel/connect/connect-link';
 import { withoutLiveViewLinks } from '~/lib/signup/browser-use/live-view';
 import { applyAttachmentMarkers } from './attachment-blocks.js';
 import { isConversationVisibleToParent } from './note-key.js';
@@ -328,7 +329,7 @@ export async function appendMessage(
   const values = {
     conversationId,
     role,
-    content: withoutLiveViewLinks(content),
+    content: withoutConnectTokens(withoutLiveViewLinks(content)),
     childId: scope.childId,
     topic: scope.topic,
     ...(scope.source ? { source: scope.source } : {}),

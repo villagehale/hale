@@ -18,11 +18,19 @@ import {
   loadPendingOffer,
   loadSignupIdentity,
 } from '../store';
+import { releaseSignupHelpAttempt, signupHelpSlotReleaseEnabled } from '../signup-help-season';
+import { hasUnstatedPrice } from '../terms/cart';
+import { registrationPreflightEnabled } from '../terms/flag';
+import { loadSignupTerms } from '../terms/store';
+import type { SignupTermsApproved } from '../terms/types';
 import type { SignupSession } from '../types';
 import { registrationUrlAllowed } from '../url';
 
 /** A parent ranks a few sessions, not a catalogue. */
 export const MAX_PLAN_CHOICES = 5;
+
+/** The terms row could not take this approval: the move to `planned` is undone with it. */
+class TermsNotBound extends Error {}
 
 export type ApprovePlanRefusal =
   | 'no_offer'
@@ -66,6 +74,8 @@ export async function approveSignupPlan(
     now: Date;
     /** Program is already open: a yes now is a register-now, not a day-before. */
     alreadyOpen?: boolean;
+    /** VIL-715 · what this yes bound, written in the same transaction as the move. */
+    terms?: { approved: SignupTermsApproved };
   },
 ): Promise<{ ok: true } | { ok: false; reason: ApprovePlanRefusal }> {
   // The named ask, not the newest: a family can hold several, and a yes may name an older one.
@@ -84,9 +94,17 @@ export async function approveSignupPlan(
   ) {
     return { ok: false, reason: 'choices' };
   }
+  // A class bound as free has a $0 maximum, and so does a pick with no stated price, which
+  // holds at checkout. Nothing else may.
+  const boundSessions = input.terms?.approved.sessions;
+  const zeroAllowed =
+    input.maxPriceCents === 0 &&
+    boundSessions !== undefined &&
+    (hasUnstatedPrice(boundSessions) ||
+      boundSessions.every((session) => session.amount.kind === 'free'));
   if (
     !Number.isInteger(input.maxPriceCents) ||
-    input.maxPriceCents <= 0 ||
+    (input.maxPriceCents <= 0 && !zeroAllowed) ||
     input.maxPriceCents > LINK_SPEND_CEILING_CENTS
   ) {
     return { ok: false, reason: 'max_price' };
@@ -113,28 +131,62 @@ export async function approveSignupPlan(
     now: input.now,
   });
   if (!consent.ok) return { ok: false, reason: consent.reason };
-  const rows = await database
-    .update(schema.authorizedSignupOffers)
-    .set({
-      status: 'planned',
-      planChoiceIds: ids,
-      planMaxPriceCents: input.maxPriceCents,
-      planOpensAt: input.opensAt,
-      planWaiverAccepted: input.waiverAccepted,
-      planApprovedAt: input.now,
-      authorizingMessageId: input.messageId,
-      planAlreadyOpen: input.alreadyOpen === true,
-      updatedAt: input.now,
-    })
-    .where(
-      and(
-        eq(schema.authorizedSignupOffers.id, offer.id),
-        eq(schema.authorizedSignupOffers.familyId, input.familyId),
-        eq(schema.authorizedSignupOffers.status, 'pending'),
-      ),
-    )
-    .returning({ id: schema.authorizedSignupOffers.id });
-  if (rows.length === 0) return { ok: false, reason: 'not_stored' };
+  const moveToPlanned = (tx: Database) =>
+    tx
+      .update(schema.authorizedSignupOffers)
+      .set({
+        status: 'planned',
+        planChoiceIds: ids,
+        planMaxPriceCents: input.maxPriceCents,
+        planOpensAt: input.opensAt,
+        planWaiverAccepted: input.waiverAccepted,
+        planApprovedAt: input.now,
+        authorizingMessageId: input.messageId,
+        planAlreadyOpen: input.alreadyOpen === true,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(schema.authorizedSignupOffers.id, offer.id),
+          eq(schema.authorizedSignupOffers.familyId, input.familyId),
+          eq(schema.authorizedSignupOffers.status, 'pending'),
+        ),
+      )
+      .returning({ id: schema.authorizedSignupOffers.id });
+  const bound = input.terms;
+  const moved = bound
+    ? await database
+        .transaction(async (rawTx) => {
+          const tx = rawTx as unknown as Database;
+          const rows = await moveToPlanned(tx);
+          if (rows.length === 0) return rows;
+          const terms = schema.authorizedSignupTerms;
+          const written = await tx
+            .update(terms)
+            .set({
+              approved: bound.approved,
+              approvingMessageId: input.messageId,
+              approvedAt: input.now,
+            })
+            .where(
+              and(
+                eq(terms.offerId, offer.id),
+                eq(terms.familyId, input.familyId),
+                isNull(terms.approvedAt),
+                isNotNull(terms.askedMessageId),
+              ),
+            )
+            .returning({ id: terms.id });
+          // Rolls the move back: a plan may not exist without the approval it runs on.
+          if (written.length === 0) throw new TermsNotBound();
+          return rows;
+        })
+        .catch((err: unknown) => {
+          if (err instanceof TermsNotBound) return [];
+          throw err;
+        })
+    : await moveToPlanned(database);
+  if (moved.length === 0) return { ok: false, reason: 'not_stored' };
   await writePlanAudit(database, {
     familyId: input.familyId,
     actor: input.parentUserId,
@@ -146,6 +198,7 @@ export async function approveSignupPlan(
       opensAt: input.opensAt.toISOString(),
       waiverAccepted: input.waiverAccepted,
       host: new URL(allowed.href).hostname,
+      ...(bound ? { bound: true, hold: bound.approved.hold } : {}),
     },
   });
   return { ok: true };
@@ -544,7 +597,7 @@ export async function cancelSignupPlan(
     .update(offers)
     .set({ status: 'handed_back', planCancelRequestedAt: input.now, updatedAt: input.now })
     .where(and(ours, eq(offers.status, 'planned')))
-    .returning({ id: offers.id });
+    .returning({ id: offers.id, availability: offers.planAvailability });
   if (rows.length > 0) {
     await writePlanAudit(database, {
       familyId: input.familyId,
@@ -552,6 +605,8 @@ export async function cancelSignupPlan(
       offerId: input.offerId,
       after: { step: 'plan_cancelled' },
     });
+    // A parked plan's run reached the provider, so its sign-up stays spent.
+    if (rows[0]?.availability === null) await giveBackSeasonSlot(database, input);
     return 'cancelled';
   }
   const [running] = await database
@@ -572,6 +627,25 @@ export async function cancelSignupPlan(
     after: { step: 'plan_cancel_requested', phase },
   });
   return phase === 'paying' ? 'paying' : 'cancel_requested';
+}
+
+/** The season sign-up a yes took, back to the family: no run of this plan reached a provider. */
+async function giveBackSeasonSlot(
+  database: Database,
+  input: { offerId: string; familyId: string; now: Date },
+): Promise<void> {
+  if (!signupHelpSlotReleaseEnabled()) return;
+  const read = await loadSignupTerms(database, {
+    offerId: input.offerId,
+    familyId: input.familyId,
+  });
+  const seasonKey = read.status === 'read' ? read.row.approved?.seasonKey : null;
+  if (!seasonKey) return;
+  await releaseSignupHelpAttempt(database, {
+    familyId: input.familyId,
+    seasonKey,
+    now: input.now,
+  });
 }
 
 /** Plans by run phase: all an ops stop reports, so it cannot print a family, offer or host. */
@@ -712,6 +786,7 @@ export async function parkUnlessOpsStopped(
 export interface ConversablePlan extends AskOrder {
   offerId: string;
   childId: string;
+  activityKey: string;
   /** The parent Hale asked: only their words may set the plan or take it back. */
   parentUserId: string;
   status: 'pending' | 'planned' | 'running';
@@ -752,6 +827,10 @@ export async function loadConversablePlans(
               gt(offers.planOpensAt, input.now),
               eq(offers.planAlreadyOpen, true),
               sql`${offers.planAvailability} ->> 'kind' in ('options_mismatch', 'password_rejected')`,
+              // VIL-715: an ask with terms stays a plan past its open, never a one-shot.
+              registrationPreflightEnabled(input.familyId)
+                ? sql`${offers.status} = 'pending' and exists (select 1 from ${schema.authorizedSignupTerms} where ${schema.authorizedSignupTerms.offerId} = ${offers.id})`
+                : undefined,
             ),
           ),
           and(
@@ -784,6 +863,7 @@ export async function loadConversablePlans(
       {
         offerId: row.id,
         childId: row.childId,
+        activityKey: row.activityKey,
         parentUserId: row.parentUserId,
         lastAskedSeq: row.lastAskedSeq,
         createdAt: row.createdAt,
@@ -835,7 +915,7 @@ export async function loadPlanConsent(
 
 /** One immutable audit row (rule #6). Ids, codes, counts and a host; never a person. */
 export async function writePlanAudit(
-  database: Database,
+  database: Pick<Database, 'insert'>,
   input: { familyId: string; actor: string; offerId: string; after: Record<string, unknown> },
 ): Promise<void> {
   await database.insert(schema.auditLog).values({

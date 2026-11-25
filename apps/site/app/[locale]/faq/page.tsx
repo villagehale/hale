@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { RedesignFaq } from '~/components/redesign/faq';
 import { tx } from '~/components/redesign/tx';
-import { buildAlternates, ogLocale } from '~/i18n/metadata';
-import { localeHref } from '~/i18n/navigation';
+import { absolutePageUrl, buildAlternates, ogLocale } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { paidPlansCostAnswer } from '~/lib/billing/plain-price';
@@ -10,6 +9,7 @@ import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { FAQ, faqJsonLd } from '~/lib/faq/index';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { shareCardImage } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -22,6 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const t = getTranslator(locale, 'Faq');
   const title = t('metaTitle');
   const description = t('metaDescription');
+  const image = shareCardImage('faq');
   return {
     title,
     description,
@@ -30,11 +31,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: 'website',
       title,
       description,
-      url: localeHref(locale, '/faq'),
+      url: absolutePageUrl(locale, '/faq'),
       siteName: 'Hale',
       locale: ogLocale(locale),
+      images: [image],
     },
-    twitter: { card: 'summary_large_image', title, description },
+    twitter: { card: 'summary_large_image', title, description, images: [image] },
   };
 }
 

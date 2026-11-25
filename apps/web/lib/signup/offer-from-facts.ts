@@ -3,6 +3,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
+import { pageOps } from '~/lib/monitoring/failure-page';
 import { redactSignupAudit } from './audit';
 import {
   type SignupOfferFacts,
@@ -13,12 +14,16 @@ import { parentTimeZone, replySessions } from './plan/conversation';
 import { registrationPlanRunEnabled } from './plan/flag';
 import { planModeFor } from './plan/towns';
 import {
+  type PlanReplyTerms,
   type PlanReplyWriter,
   createPlanReplyWriter,
   planOpensAtLocal,
   planReplyBody,
 } from './plan/writer';
 import { type ReplacedSignupOffer, recordSignupOffer } from './store';
+import { childFor, prepareTermsAsk } from './terms/ask';
+import { registrationPreflightEnabled } from './terms/flag';
+import type { ProgramTermsDeps } from './terms/read-page';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -38,11 +43,13 @@ export type OfferSignupReason =
   | 'unwritten'
   | 'offer_exists'
   | 'activity_key'
-  | 'sessions';
+  | 'sessions'
+  /** VIL-715 · the page's age band rules this child out: nothing is asked or stored. */
+  | 'age_outside_band';
 
 export type OfferSignupResult =
   | { ok: true; offerId: string; text: string; replaced: ReplacedSignupOffer[] }
-  | { ok: false; reason: OfferSignupReason };
+  | { ok: false; reason: OfferSignupReason; ageBand?: string | null };
 
 export interface OfferSignupInput {
   familyId: string;
@@ -65,6 +72,8 @@ export interface OfferSignupDeps {
   planWriter?: PlanReplyWriter;
   /** Undefined uses `PLAN_AUTO_HOSTS`. */
   autoHosts?: readonly string[];
+  /** VIL-715 · the page read before the ask. Undefined uses the live fetcher and model. */
+  terms?: ProgramTermsDeps;
 }
 
 const KEY = /^[a-z0-9][a-z0-9._:-]{0,79}$/i;
@@ -99,6 +108,7 @@ export async function offerSignupFromFacts(
       id: schema.children.id,
       name: schema.children.name,
       dateOfBirth: schema.children.dateOfBirth,
+      dobPrecision: schema.children.dobPrecision,
     })
     .from(schema.children)
     .where(and(eq(schema.children.id, input.childId), eq(schema.children.familyId, input.familyId)))
@@ -110,6 +120,14 @@ export async function offerSignupFromFacts(
 
   const host = new URL(allowed.href).hostname;
   const mode = planModeFor(host, deps.autoHosts);
+  if (mode !== 'parent' && registrationPreflightEnabled(input.familyId)) {
+    return offerWithTerms(database, input, deps, {
+      mode,
+      host,
+      href: allowed.href,
+      child,
+    });
+  }
   const alreadyOpen =
     registrationPlanRunEnabled() &&
     mode !== 'parent' &&
@@ -165,10 +183,102 @@ export async function offerSignupFromFacts(
   return { ok: true, offerId: stored.id, text, replaced: stored.replaced };
 }
 
+/**
+ * VIL-715 · the ask with pre-flight on. Hale reads the program first and stops before asking
+ * when the child is outside its ages. Otherwise the ask is a plan, its text states the terms,
+ * and those terms are stored with the offer so the parent's yes can bind them.
+ */
+async function offerWithTerms(
+  database: Database,
+  input: OfferSignupInput,
+  deps: OfferSignupDeps,
+  known: {
+    mode: 'auto' | 'assisted';
+    host: string;
+    href: string;
+    child: { id: string; name: string | null; dateOfBirth: string; dobPrecision: string };
+  },
+): Promise<OfferSignupResult> {
+  const activityKey = activityKeyFor(known.href);
+  // The coach's figures can be the parent's own words. A terms ask states only the page's.
+  const pageOnly: OfferSignupInput = {
+    ...input,
+    facts: {
+      ...input.facts,
+      sessions: input.facts.sessions.map((session) => ({ ...session, priceCents: null })),
+      approvedPriceCents: null,
+    },
+  };
+  const ask = await prepareTermsAsk(
+    database,
+    {
+      familyId: input.familyId,
+      child: childFor(known.child),
+      parentZone: await parentTimeZone(database, input.parentUserId),
+      activityKey,
+      registrationUrl: known.href,
+      host: known.host,
+      sessions: pageOnly.facts.sessions,
+      statedOpensAt: input.planOpensAt ?? null,
+      now: input.now,
+    },
+    deps.terms,
+  );
+  if (ask.kind === 'outside_band') {
+    await writeAudit(database, input, null, { step: 'offer', reason: 'age_outside_band' });
+    return { ok: false, reason: 'age_outside_band', ageBand: ask.ageBand };
+  }
+  const text = await writePlanOffer(database, pageOnly, deps, {
+    mode: known.mode,
+    opensAt: ask.opensAt,
+    childName: input.facts.childFirstName ?? known.child.name,
+    registrationUrl: known.href,
+    terms: ask.writer,
+  });
+  if (!text) {
+    await writeAudit(database, input, null, { step: 'offer', reason: 'unwritten' });
+    // No offer exists yet, so the family is the row ops starts from.
+    await pageOps(database, {
+      site: 'registration_text_unwritten',
+      facts: { moment: 'offer' },
+      ref: input.familyId,
+    });
+    return { ok: false, reason: 'unwritten' };
+  }
+  const stored = await recordSignupOffer(database, {
+    familyId: input.familyId,
+    childId: input.childId,
+    parentUserId: input.parentUserId,
+    activityKey,
+    activityLabel: input.activityLabel ?? null,
+    registrationUrl: known.href,
+    sessions: [...pageOnly.facts.sessions],
+    approvedPriceCents: null,
+    planOpensAt: ask.opensAt,
+    planAlreadyOpen: ask.alreadyOpen,
+    supersede: input.supersede,
+    terms: { shown: ask.shown },
+    now: input.now,
+  });
+  if (!stored.ok) {
+    await writeAudit(database, input, null, { step: 'offer', reason: stored.reason });
+    return { ok: false, reason: stored.reason as OfferSignupReason };
+  }
+  await writeAudit(database, input, stored.id, {
+    step: 'offer',
+    source: input.facts.source,
+    host: known.host,
+    sessionCount: input.facts.sessions.length,
+    plan: true,
+    terms: ask.shown.read,
+  });
+  return { ok: true, offerId: stored.id, text, replaced: stored.replaced };
+}
+
 async function writeOffer(
   input: OfferSignupInput,
   deps: OfferSignupDeps,
-  known: { childName: string; registrationUrl: string },
+  known: { childName: string | null; registrationUrl: string },
 ): Promise<string | null> {
   const writer = deps.writer ?? defaultWriter();
   const facts: SignupOfferFacts = {
@@ -193,7 +303,13 @@ async function writePlanOffer(
   database: Database,
   input: OfferSignupInput,
   deps: OfferSignupDeps,
-  known: { mode: 'auto' | 'assisted'; opensAt: Date; childName: string; registrationUrl: string },
+  known: {
+    mode: 'auto' | 'assisted';
+    opensAt: Date;
+    childName: string | null;
+    registrationUrl: string;
+    terms?: PlanReplyTerms;
+  },
 ): Promise<string | null> {
   const writer = deps.planWriter ?? createPlanReplyWriter(() => resolveReplyClient(undefined));
   const text = await writer.write({
@@ -213,6 +329,7 @@ async function writePlanOffer(
         familyId: input.familyId,
         parentUserId: input.parentUserId,
       })),
+    ...(known.terms ? { terms: known.terms } : {}),
   });
   return text ? planReplyBody(text, known.registrationUrl) : null;
 }

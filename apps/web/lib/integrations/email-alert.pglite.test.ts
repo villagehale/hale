@@ -54,9 +54,11 @@ import {
   emailAlertDedupeKey,
   emailAlertOfferDraft,
 } from './email-alert';
+import type { AppointmentFacts, AppointmentRead } from './email-alert-appointment';
 import { EMAIL_ALERT_BODY_ENABLED_ENV } from './email-alert-body-flag';
 import type { EmailAlertNotice } from './email-alert-notice';
 import { EMAIL_ALERT_OFFER_TTL_MS } from './email-alert-offer';
+import { EMAIL_ALERT_ONCE_ENABLED_ENV } from './email-alert-once-flag';
 import { GOING_COUNT_ENABLED_ENV, recordGoingCountShare, sessionKey } from './going';
 import { type GoogleDisconnectPorts, disconnectGoogle } from './google-disconnect';
 import { CONNECTOR_SCOPES } from './google-oauth';
@@ -157,6 +159,8 @@ interface Harness {
   writer: ScriptedNoticeWriter;
   /** Every held message id the sweep asked Gmail for again. */
   rereads: string[];
+  /** What the appointment read was handed, in order. Empty when the flag is off. */
+  judgments: AppointmentFacts[];
 }
 
 function harness(
@@ -174,6 +178,9 @@ function harness(
     reread?: GmailAlertEnvelope | null | 'throws';
     /** The production chokepoint and zone reader over this database, in place of a verdict. */
     productionGate?: boolean;
+    /** The appointment read. Unset answers "not the same, no clash". */
+    judgment?: (facts: AppointmentFacts) => Promise<AppointmentRead> | AppointmentRead;
+    judgmentThrows?: boolean;
   } = {},
 ): Harness {
   const transport = new FakeTransport();
@@ -189,9 +196,16 @@ function harness(
     readAlertBodyCalls: 0,
     writer,
     rereads: [],
+    judgments: [],
     ports: {
       familyChildren: writer.familyChildren,
       writeNotice: writer.writeNotice,
+      judgeAppointment: async (facts) => {
+        h.judgments.push(facts);
+        if (over.judgmentThrows) throw new Error('appointment read down');
+        if (over.judgment !== undefined) return over.judgment(facts);
+        return { status: 'judged', judgment: { sameAs: null, clashes: [] } };
+      },
       parentLanguage: writer.parentLanguage,
       readAlertBody: async () => {
         h.readAlertBodyCalls += 1;
@@ -2201,6 +2215,690 @@ describe('a quiet-hours hold is a debt, not a drop', () => {
         ['email_alert_held', { reason: 'quiet_hours' }],
         ['email_alert_hold_closed', { outcome: 'gate_refused:not_enrolled' }],
       ]);
+    });
+  });
+});
+
+/**
+ * VIL-762 · the Nov 17 RAMI haircut went out twice (confirmation, then a reminder
+ * in another thread, same instant). The Nov 18 Cookie Cutters visit started 15
+ * minutes earlier and was not flagged. Names and streets here are the shape of
+ * those visits, not the family's.
+ */
+describe('one alert per real appointment (VIL-762)', () => {
+  const HAIRCUT = '2026-11-18T20:45:00.000Z';
+  const COOKIE = '2026-11-18T20:30:00.000Z';
+  const SWIM = '2026-11-19T15:00:00.000Z';
+  const TOLD_AT = new Date('2026-11-17T13:23:00.000Z');
+  const REMINDED_AT = new Date('2026-11-17T21:23:00.000Z');
+  const CLASH_AT = new Date('2026-11-18T15:23:00.000Z');
+  const FROM = 'RAMI Lounge <book@booksy.example>';
+
+  function confirm(): SentinelClassification {
+    return classified({
+      kind: 'booking_confirmation',
+      title: 'Kids haircut',
+      originalTime: null,
+      newTime: HAIRCUT,
+      location: "RAMI's Lounge",
+    });
+  }
+
+  function remind(): SentinelClassification {
+    return classified({
+      kind: 'reminder_only',
+      title: "Sam's kids haircut",
+      originalTime: HAIRCUT,
+      newTime: null,
+      location: "RAMI's Lounge",
+    });
+  }
+
+  function cookie(): SentinelClassification {
+    return classified({
+      kind: 'booking_confirmation',
+      title: 'KidsCut with Anyone',
+      originalTime: null,
+      newTime: COOKIE,
+      location: 'Cookie Cutters',
+    });
+  }
+
+  function swim(): SentinelClassification {
+    return classified({
+      kind: 'new_event',
+      title: 'Parent and tot swim',
+      originalTime: null,
+      newTime: SWIM,
+      location: 'the community pool',
+    });
+  }
+
+  async function toldOnce(): Promise<void> {
+    const h = harness({ classification: confirm() });
+    await expect(
+      alertPair(h, 'm-confirm', {
+        threadId: 'thread-confirm',
+        envelope: {
+          subject: 'Your appointment is confirmed',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: TOLD_AT.toISOString(),
+        },
+        now: TOLD_AT,
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(h.judgments).toEqual([]);
+    expect(h.transport.sent).toHaveLength(1);
+  }
+
+  it('flag off: the reminder in a second thread is sent again', async () => {
+    await toldOnce();
+    const second = harness({ classification: remind() });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+        now: REMINDED_AT,
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(second.judgments).toEqual([]);
+    expect(second.transport.sent).toHaveLength(1);
+  });
+
+  it('a trailing newline stays off and the reminder is sent again', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true\n');
+    await toldOnce();
+    const second = harness({ classification: remind() });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        now: REMINDED_AT,
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(second.judgments).toEqual([]);
+  });
+
+  it('flag on: the reminder is the same visit, so nothing else is sent', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    const second = harness({
+      classification: remind(),
+      judgment: (facts) => ({
+        status: 'judged',
+        judgment: { sameAs: facts.commitments[0]?.id ?? null, clashes: [] },
+      }),
+    });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        now: REMINDED_AT,
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'same_appointment', booking: null });
+    expect(second.transport.sent).toEqual([]);
+    expect(second.writer.seen).toEqual([]);
+    expect(second.judgments[0]?.email.when).toEqual({
+      date: 'Wednesday, November 18, 2026',
+      time: '3:45 PM',
+    });
+    expect(second.judgments[0]?.email.location).toBe("RAMI's Lounge");
+    expect(second.judgments[0]?.commitments.map((item) => item.when?.time)).toEqual(['3:45 PM']);
+    const audit = await auditRows();
+    expect(audit.filter((row) => row.actionTaken === 'email_alert_same_appointment')).toHaveLength(
+      1,
+    );
+    expect(audit.filter((row) => row.actionTaken === 'email_alert_sent')).toHaveLength(1);
+  });
+
+  it('flag on: Cookie Cutters overlaps the haircut, and the text names that clash', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    await db.database.insert(schema.familyEvents).values({
+      familyId: family.familyId,
+      title: 'Toddler storytime',
+      startsAt: new Date('2026-11-18T18:30:00.000Z'),
+      endsAt: new Date('2026-11-18T19:00:00.000Z'),
+      location: 'the library',
+      source: 'parent',
+    });
+    const second = harness({
+      classification: cookie(),
+      judgment: (facts) => {
+        const haircut = facts.commitments.find((item) => item.when?.time === '3:45 PM');
+        return {
+          status: 'judged',
+          judgment: { sameAs: null, clashes: haircut === undefined ? [] : [haircut.id] },
+        };
+      },
+    });
+    const result = await alertPair(second, 'm-cookie', {
+      threadId: 'thread-cookie',
+      now: CLASH_AT,
+      envelope: {
+        subject: 'You are booked',
+        from: 'Cookie Cutters <hello@cutters.example>',
+        snippet: 'Wednesday at 3:30',
+        receivedAt: CLASH_AT.toISOString(),
+      },
+    });
+    expect(result.alert).toBe('sent');
+    expect(second.judgments[0]?.commitments.map((item) => item.title).sort()).toEqual([
+      'Kids haircut',
+      'Toddler storytime',
+    ]);
+    expect(second.writer.seen[0]?.clashes?.map((item) => item.title)).toEqual(['Kids haircut']);
+    expect(second.transport.sent[0]?.body).toBe(
+      'Heads up about KidsCut with Anyone. It overlaps Kids haircut. Want me to add it?',
+    );
+  });
+
+  it('flag on: a Thursday swim is neither the haircut nor a clash', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    const second = harness({
+      classification: swim(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: null, clashes: [] } }),
+    });
+    await expect(
+      alertPair(second, 'm-swim', {
+        threadId: 'thread-swim',
+        now: CLASH_AT,
+        envelope: {
+          subject: 'Swim',
+          from: 'The pool <hello@pool.example>',
+          snippet: 'Thursday at 10',
+          receivedAt: CLASH_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(second.judgments[0]?.commitments).toHaveLength(1);
+    expect(second.writer.seen[0]?.clashes).toBeUndefined();
+    expect(second.transport.sent[0]?.body).toBe(
+      'Heads up about Parent and tot swim. Want me to add it?',
+    );
+  });
+
+  it('flag on: a judgment that names an unknown id sends nothing', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    const second = harness({
+      classification: remind(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: 'not-handed-over', clashes: [] } }),
+    });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        now: REMINDED_AT,
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'appointment_unjudged' });
+    expect(second.transport.sent).toEqual([]);
+  });
+
+  it('flag on: a judgment that throws sends nothing', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    const second = harness({ classification: remind(), judgmentThrows: true });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        now: REMINDED_AT,
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'appointment_unjudged' });
+    expect(second.transport.sent).toEqual([]);
+    expect(second.writer.seen).toEqual([]);
+  });
+
+  async function channelRow(): Promise<string> {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: family.familyId,
+        parentUserId: family.parentUserId,
+        channel: 'sms',
+        direction: 'out',
+        category: 'email_alert',
+        status: 'sent',
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!row) throw new Error('channel insert returned no row');
+    return row.id;
+  }
+
+  it('a cancelled booking’s withdrawn offer is not still a commitment', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    const told = await channelRow();
+    await db.database.insert(schema.activityBookings).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-called-off',
+      providerHost: 'booksy.example',
+      title: 'Called-off class',
+      firstSessionAt: new Date(HAIRCUT),
+      channelMessageId: told,
+      cancelledAt: TOLD_AT,
+    });
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-called-off',
+      kind: 'booking_confirmation',
+      title: 'Called-off class',
+      startsAt: new Date(HAIRCUT),
+      location: "RAMI's Lounge",
+      channelMessageId: told,
+      expiresAt: TOLD_AT,
+    });
+    const next = harness({
+      classification: cookie(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: null, clashes: [] } }),
+    });
+    await alertPair(next, 'm-cookie', {
+      threadId: 'thread-cookie',
+      now: CLASH_AT,
+      envelope: {
+        subject: 'You are booked',
+        from: 'Cookie Cutters <hello@cutters.example>',
+        snippet: 'Wednesday at 3:30',
+        receivedAt: CLASH_AT.toISOString(),
+      },
+    });
+    expect(next.judgments).toEqual([]);
+  });
+
+  it('a no to the calendar add still counts as the visit already told', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    const told = await channelRow();
+    const closed = await channelRow();
+    await db.database.insert(schema.emailAlertOffers).values({
+      familyId: family.familyId,
+      parentUserId: family.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-declined',
+      kind: 'new_event',
+      title: 'Kids haircut',
+      startsAt: new Date(HAIRCUT),
+      location: "RAMI's Lounge",
+      channelMessageId: told,
+      expiresAt: new Date('2026-11-18T20:45:00.000Z'),
+      resolvedAt: TOLD_AT,
+      resolution: 'declined',
+      resolvedChannelMessageId: closed,
+    });
+    const second = harness({
+      classification: remind(),
+      judgment: (facts) => ({
+        status: 'judged',
+        judgment: { sameAs: facts.commitments[0]?.id ?? null, clashes: [] },
+      }),
+    });
+    await expect(
+      alertPair(second, 'm-remind', {
+        threadId: 'thread-remind',
+        now: REMINDED_AT,
+        envelope: {
+          subject: 'Reminder',
+          from: FROM,
+          snippet: 'Wednesday at 3:45',
+          receivedAt: REMINDED_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'same_appointment' });
+    expect(second.judgments[0]?.commitments.map((item) => item.title)).toEqual(['Kids haircut']);
+  });
+
+  it('an unanswered invite is not a commitment, and an accepted one is', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId: family.familyId,
+        title: 'Unanswered invite',
+        startsAt: new Date(HAIRCUT),
+        source: 'parent',
+        calendarStanding: 'invited',
+      },
+      {
+        familyId: family.familyId,
+        title: 'Accepted class',
+        startsAt: new Date(HAIRCUT),
+        source: 'parent',
+        calendarStanding: 'accepted',
+      },
+    ]);
+    const next = harness({
+      classification: cookie(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: null, clashes: [] } }),
+    });
+    await alertPair(next, 'm-cookie', {
+      threadId: 'thread-cookie',
+      now: CLASH_AT,
+      envelope: {
+        subject: 'You are booked',
+        from: 'Cookie Cutters <hello@cutters.example>',
+        snippet: 'Wednesday at 3:30',
+        receivedAt: CLASH_AT.toISOString(),
+      },
+    });
+    expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual(['Accepted class']);
+  });
+
+  it('a cancellation is not judged against the slot it frees', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    await toldOnce();
+    const cancel = harness({
+      classification: classified({
+        kind: 'cancellation',
+        title: 'Kids haircut',
+        originalTime: HAIRCUT,
+        newTime: null,
+        location: "RAMI's Lounge",
+      }),
+    });
+    await expect(
+      alertPair(cancel, 'm-cancel', {
+        threadId: 'thread-cancel',
+        now: CLASH_AT,
+        envelope: {
+          subject: 'Cancelled',
+          from: FROM,
+          snippet: 'Wednesday at 3:45 is off',
+          receivedAt: CLASH_AT.toISOString(),
+        },
+      }),
+    ).resolves.toMatchObject({ alert: 'sent' });
+    expect(cancel.judgments).toEqual([]);
+  });
+
+  it('the other parent’s booking is not named in this parent’s alert', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    const other = await seedFamily(db.database, 'other');
+    const told = await channelRow();
+    await db.database.insert(schema.activityBookings).values({
+      familyId: family.familyId,
+      parentUserId: other.parentUserId,
+      integrationId: INTEGRATION,
+      messageId: 'm-other',
+      providerHost: 'booksy.example',
+      title: 'Other parent booking',
+      firstSessionAt: new Date(HAIRCUT),
+      channelMessageId: told,
+    });
+    const next = harness({
+      classification: cookie(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: null, clashes: [] } }),
+    });
+    await alertPair(next, 'm-cookie', {
+      threadId: 'thread-cookie',
+      now: CLASH_AT,
+      envelope: {
+        subject: 'You are booked',
+        from: 'Cookie Cutters <hello@cutters.example>',
+        snippet: 'Wednesday at 3:30',
+        receivedAt: CLASH_AT.toISOString(),
+      },
+    });
+    expect(next.judgments).toEqual([]);
+  });
+
+  it('a 13+ child’s calendar row is not handed to the clash', async () => {
+    vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+    const teenId = await seedChild(db.database, family.familyId, 'Theo', 160);
+    const samId = await seedChild(db.database, family.familyId, 'Sam', 48);
+    await db.database.insert(schema.familyEvents).values([
+      {
+        familyId: family.familyId,
+        childId: teenId,
+        title: 'Theo therapy',
+        startsAt: new Date(HAIRCUT),
+        location: 'the clinic',
+        source: 'parent',
+      },
+      {
+        familyId: family.familyId,
+        childId: samId,
+        title: 'Sam swim',
+        startsAt: new Date(SWIM),
+        location: 'the pool',
+        source: 'parent',
+      },
+    ]);
+    const next = harness({
+      children: [
+        { id: teenId, name: 'Theo', ageInMonths: 160 },
+        { id: samId, name: 'Sam', ageInMonths: 48 },
+      ],
+      classification: cookie(),
+      judgment: () => ({ status: 'judged', judgment: { sameAs: null, clashes: [] } }),
+    });
+    await alertPair(next, 'm-cookie', {
+      threadId: 'thread-cookie',
+      now: CLASH_AT,
+      envelope: {
+        subject: 'You are booked',
+        from: 'Cookie Cutters <hello@cutters.example>',
+        snippet: 'Wednesday at 3:30',
+        receivedAt: CLASH_AT.toISOString(),
+      },
+    });
+    expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual(['Sam swim']);
+    expect(JSON.stringify(next.judgments[0])).not.toContain('Theo');
+    expect(JSON.stringify(next.judgments[0])).not.toContain('clinic');
+  });
+
+  describe('what the clash may name', () => {
+    const COOKIE_ENVELOPE = {
+      subject: 'You are booked',
+      from: 'Cookie Cutters <hello@cutters.example>',
+      snippet: 'Wednesday at 3:30',
+      receivedAt: CLASH_AT.toISOString(),
+    };
+
+    function clashWith(title: string) {
+      return (facts: AppointmentFacts): AppointmentRead => {
+        const named = facts.commitments.find((item) => item.title === title);
+        return {
+          status: 'judged',
+          judgment: { sameAs: null, clashes: named === undefined ? [] : [named.id] },
+        };
+      };
+    }
+
+    async function booking(over: {
+      title: string;
+      parentUserId?: string;
+      eventId?: string;
+      location?: string;
+    }): Promise<void> {
+      await db.database.insert(schema.activityBookings).values({
+        familyId: family.familyId,
+        parentUserId: over.parentUserId ?? family.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: `m-${over.title}`,
+        providerHost: 'provider.example',
+        title: over.title,
+        firstSessionAt: new Date(HAIRCUT),
+        location: over.location ?? null,
+        channelMessageId: await channelRow(),
+        ...(over.eventId === undefined ? {} : { eventId: over.eventId }),
+      });
+    }
+
+    async function calendarRow(over: {
+      title: string;
+      childId?: string;
+      sensitive?: boolean;
+      location?: string;
+    }): Promise<string> {
+      const [row] = await db.database
+        .insert(schema.familyEvents)
+        .values({
+          familyId: family.familyId,
+          title: over.title,
+          startsAt: new Date(HAIRCUT),
+          location: over.location ?? null,
+          source: 'parent',
+          sensitive: over.sensitive ?? false,
+          ...(over.childId === undefined ? {} : { childId: over.childId }),
+        })
+        .returning({ id: schema.familyEvents.id });
+      if (!row) throw new Error('family event insert returned no row');
+      return row.id;
+    }
+
+    it('a health event’s title and place never reach the judgment or the text', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const shot = await calendarRow({
+        title: 'Allergy shot',
+        sensitive: true,
+        location: 'the allergy clinic',
+      });
+      await booking({
+        title: 'Allergist follow-up',
+        eventId: shot,
+        location: 'the allergy clinic',
+      });
+      await calendarRow({ title: 'Toddler storytime', location: 'the library' });
+      const next = harness({
+        classification: cookie(),
+        judgment: clashWith('Toddler storytime'),
+      });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual([
+        'Toddler storytime',
+      ]);
+      expect(next.judgments[0]?.commitments[0]?.location).toBe('the library');
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Allerg');
+      expect(told).not.toContain('allergy clinic');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Toddler storytime. Want me to add it?',
+      );
+    });
+
+    it('a teen’s booking is not named, and one with no known child fails closed', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const teenId = await seedChild(db.database, family.familyId, 'Theo', 160);
+      const samId = await seedChild(db.database, family.familyId, 'Sam', 48);
+      const theoRow = await calendarRow({ title: 'Theo practice', childId: teenId });
+      const samRow = await calendarRow({ title: 'Sam lesson', childId: samId });
+      await booking({ title: 'Theo tutoring', eventId: theoRow, location: 'the study hall' });
+      await booking({ title: 'Unattributed class', location: 'the rec centre' });
+      await booking({ title: 'Sam lesson receipt', eventId: samRow, location: 'the pool' });
+      const next = harness({
+        children: [
+          { id: teenId, name: 'Theo', ageInMonths: 160 },
+          { id: samId, name: 'Sam', ageInMonths: 48 },
+        ],
+        classification: cookie(),
+        judgment: clashWith('Sam lesson receipt'),
+      });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(
+        next.judgments[0]?.commitments.map((item) => `${item.title} / ${item.child}`).sort(),
+      ).toEqual(['Sam lesson / Sam', 'Sam lesson receipt / Sam']);
+      expect(JSON.stringify(next.judgments)).not.toContain('Theo');
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Theo tutoring');
+      expect(told).not.toContain('Theo practice');
+      expect(told).not.toContain('study hall');
+      expect(told).not.toContain('Unattributed');
+      expect(told).not.toContain('rec centre');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Sam lesson receipt. Want me to add it?',
+      );
+    });
+
+    it('with no child on record, a booking is not named', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      await booking({ title: 'Unattributed class' });
+      await calendarRow({ title: 'Toddler storytime' });
+      const next = harness({ children: [], classification: cookie() });
+      await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual([
+        'Toddler storytime',
+      ]);
+    });
+
+    it('the other parent’s booking and offer are not named, this parent’s booking is', async () => {
+      vi.stubEnv(EMAIL_ALERT_ONCE_ENABLED_ENV, 'true');
+      const other = await seedFamily(db.database, 'other');
+      await booking({ title: 'Own booking', location: 'the gym' });
+      await booking({
+        title: 'Other parent booking',
+        parentUserId: other.parentUserId,
+        location: 'the far rink',
+      });
+      await db.database.insert(schema.emailAlertOffers).values({
+        familyId: family.familyId,
+        parentUserId: other.parentUserId,
+        integrationId: INTEGRATION,
+        messageId: 'm-other-offer',
+        kind: 'new_event',
+        title: 'Other parent offer',
+        startsAt: new Date(HAIRCUT),
+        location: 'the far studio',
+        channelMessageId: await channelRow(),
+        expiresAt: new Date(HAIRCUT),
+      });
+      const next = harness({ classification: cookie(), judgment: clashWith('Own booking') });
+      const result = await alertPair(next, 'm-cookie', {
+        threadId: 'thread-cookie',
+        now: CLASH_AT,
+        envelope: COOKIE_ENVELOPE,
+      });
+      expect(result.alert).toBe('sent');
+      expect(next.judgments[0]?.commitments.map((item) => item.title)).toEqual(['Own booking']);
+      const told = JSON.stringify([next.judgments, next.writer.seen, next.transport.sent]);
+      expect(told).not.toContain('Other parent');
+      expect(told).not.toContain('far rink');
+      expect(told).not.toContain('far studio');
+      expect(next.transport.sent[0]?.body).toBe(
+        'Heads up about KidsCut with Anyone. It overlaps Own booking. Want me to add it?',
+      );
     });
   });
 });

@@ -4,6 +4,14 @@ import { loadCronSkill } from '~/lib/cron/skill';
 import { hasLinkShape, withoutLinks, noteLinkGate } from '~/lib/format/link-shape';
 import { forceToolJson } from '~/lib/pipeline/structured';
 import type { PlanCharged } from '~/lib/signup/browser-use/plan-engine';
+import { SITE_CHOICE_LABEL_MAX_CHARS } from '~/lib/signup/site-choices';
+import { moneyCentsWritten } from '~/lib/signup/terms/money';
+import {
+  MAX_PAGE_QUOTE_CHARS,
+  MAX_PREREQUISITE_QUOTE_CHARS,
+  untrustedPageWords,
+} from '~/lib/signup/terms/page-words';
+import type { CartDifference, SignupTermsHold, SignupTermsShown } from '~/lib/signup/terms/types';
 
 /**
  * VIL-558 · EVERY TEXT ABOUT A REGISTRATION PLAN.
@@ -44,6 +52,31 @@ export interface PlanRunFacts {
   charged: PlanCharged;
   liveBrowser: boolean;
   holdMinutes: number | null;
+  /** VIL-715 · what differed from the approval, on a `cart_mismatch`. Absent otherwise. */
+  cartDifferences?: CartDifference[];
+}
+
+/**
+ * VIL-715 · what Hale read on the program's page, for the text that asks and the texts after
+ * it. Absent on an ask without terms, so the writer's request stays what it was.
+ */
+export interface PlanReplyTerms {
+  free: boolean;
+  /** The prices this family may be charged. */
+  rates: SignupTermsShown['sessions'][number]['rates'];
+  residency: SignupTermsShown['residency'];
+  tax: SignupTermsShown['sessions'][number]['tax'];
+  refund: string | null;
+  ageFit: SignupTermsShown['age']['fit'];
+  ageBand: string | null;
+  prerequisite: SignupTermsShown['prerequisite'];
+  priorChargeUnknown: boolean;
+  /** What Hale could not confirm on the page, by name. */
+  unread: ('page' | 'refund' | 'age' | 'prerequisite' | 'price')[];
+  /** The approval's ack: Hale starts now and will text when it is done. */
+  runsNow?: boolean;
+  /** The approval's ack: Hale will stop at checkout for the parent to finish. */
+  hold?: SignupTermsHold | null;
 }
 
 export interface PlanReplyFacts {
@@ -62,6 +95,11 @@ export interface PlanReplyFacts {
   refusal: string | null;
   run: PlanRunFacts | null;
   language: string | null;
+  terms?: PlanReplyTerms;
+  /** VIL-715 · the labels of the site's options, for a question about them. A page wrote them. */
+  siteOptions?: readonly string[];
+  /** VIL-715 · this offer has a terms row, so a page wrote its session labels. */
+  labelsFromPage?: boolean;
 }
 
 export interface PlanReplyWriter {
@@ -69,6 +107,8 @@ export interface PlanReplyWriter {
 }
 
 export const SIGNUP_PLAN_REPLY_SKILL = 'signup-plan-reply';
+/** VIL-715 · the addendum for a text that states terms. Loaded only when they are present. */
+export const SIGNUP_PLAN_TERMS_SKILL = 'signup-plan-terms';
 export const SIGNUP_PLAN_REPLY_TOOL = 'signup_plan_reply';
 export const SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION =
   'Write the one text the parent sees about this registration plan.';
@@ -111,6 +151,7 @@ function knownCents(facts: PlanReplyFacts): Set<number> {
   add(facts.run?.cartTotalCents);
   add(facts.run?.amountChargedCents);
   if (typeof facts.run?.charged === 'object') add(facts.run.charged.cents);
+  for (const rate of facts.terms?.rates ?? []) add(rate.cents);
   return known;
 }
 
@@ -153,7 +194,11 @@ export function clocksIn(text: string): number[] {
 }
 
 function knownClocks(facts: PlanReplyFacts): Set<number> {
-  const blobs = [facts.opensAt.local, ...facts.sessions.map((session) => session.label)];
+  const blobs = [
+    facts.opensAt.local,
+    ...facts.sessions.map((session) => session.label),
+    ...(facts.terms?.refund ? [facts.terms.refund] : []),
+  ];
   const known = new Set<number>();
   for (const blob of blobs) {
     for (const value of clocksIn(blob)) known.add(value);
@@ -175,12 +220,23 @@ export function planReplyViolations(text: string, facts?: PlanReplyFacts): strin
   }
   if (facts) {
     const allowedMoney = knownCents(facts);
+    // A text that states terms reads its figures with the parser that knows every form a
+    // price takes. Without terms, the gate reads the text as it always has.
+    const written = facts.terms ? moneyCentsWritten(tidy) : moneyCentsIn(tidy);
     if (
       allowedMoney.size === 0
-        ? moneyCentsIn(tidy).length > 0
-        : moneyCentsIn(tidy).some((cents) => !allowedMoney.has(cents))
+        ? written.length > 0
+        : written.some((cents) => !allowedMoney.has(cents))
     ) {
       out.push('invented figure: a price or limit that is not in the facts');
+    }
+    if (
+      facts.terms &&
+      !facts.terms.free &&
+      facts.moment === 'offer' &&
+      facts.terms.rates.some((rate) => rate.cents > 0 && !written.includes(rate.cents))
+    ) {
+      out.push('missing price: every price in terms.rates has to be in the text');
     }
     const allowedClocks = knownClocks(facts);
     if (clocksIn(tidy).some((mins) => !allowedClocks.has(mins))) {
@@ -225,13 +281,65 @@ function linkFree(facts: PlanReplyFacts): PlanReplyFacts {
   };
 }
 
+/** What a page wrote, as the writer sees it: cleaned, and marked as never an instruction. */
+function markedTerms({
+  refund,
+  ageBand,
+  prerequisite: { quote, ...prerequisite },
+  ...terms
+}: PlanReplyTerms) {
+  return {
+    ...terms,
+    untrusted_refund_quote: untrustedPageWords(refund, MAX_PAGE_QUOTE_CHARS),
+    untrusted_age_band: untrustedPageWords(ageBand, MAX_PAGE_QUOTE_CHARS),
+    prerequisite: {
+      ...prerequisite,
+      untrusted_quote: untrustedPageWords(quote, MAX_PREREQUISITE_QUOTE_CHARS),
+    },
+  };
+}
+
+/** A session's label on these texts can be a site option's: a page wrote it. */
+function markedLabels<T extends Pick<PlanReplyFacts, 'sessions' | 'run'>>(facts: T) {
+  const label = (raw: string | null) => untrustedPageWords(raw, SITE_CHOICE_LABEL_MAX_CHARS);
+  let run = null;
+  if (facts.run !== null) {
+    const { sessionLabel, ...rest } = facts.run;
+    run = { ...rest, untrusted_session_label: label(sessionLabel) };
+  }
+  return {
+    ...facts,
+    sessions: facts.sessions.map(({ label: raw, ...session }) => ({
+      ...session,
+      untrusted_label: label(raw),
+    })),
+    run,
+  };
+}
+
+function markedSiteOptions(labels: readonly string[]): string[] {
+  return labels.flatMap((label) => untrustedPageWords(label, SITE_CHOICE_LABEL_MAX_CHARS) ?? []);
+}
+
 /** The user turn: the facts, and why the last draft could not leave. */
 export function planReplyUserMessage(facts: PlanReplyFacts, violation: string | null): string {
-  const clean = linkFree(facts);
+  const { terms, siteOptions, labelsFromPage: _labelsFromPage, ...rest } = linkFree(facts);
+  const clean = {
+    ...(planReplyUsesTermsSkill(facts) ? markedLabels(rest) : rest),
+    ...(terms ? { terms: markedTerms(terms) } : {}),
+    ...(siteOptions ? { untrusted_site_options: markedSiteOptions(siteOptions) } : {}),
+  };
   return JSON.stringify({
     facts: QUEUE_MOMENTS.has(clean.moment) ? { ...clean, alsoQueueing: true } : clean,
     violation,
   });
+}
+
+/** Terms, page options or page-written labels bring the addendum that says how to treat them. */
+export function planReplyUsesTermsSkill(facts: PlanReplyFacts): boolean {
+  return (
+    facts.terms !== undefined || facts.siteOptions !== undefined || facts.labelsFromPage === true
+  );
 }
 
 /** Wall time in the parent's zone, for the writer to restate. */
@@ -276,8 +384,12 @@ export function createPlanReplyWriter(
       }
       if (!resolved) return unwritten('client_unavailable');
       let skill: Awaited<ReturnType<typeof loadCronSkill>>;
+      let system: string;
       try {
         skill = await loadCronSkill(SIGNUP_PLAN_REPLY_SKILL);
+        system = planReplyUsesTermsSkill(facts)
+          ? `${skill.instructions}\n\n${(await loadCronSkill(SIGNUP_PLAN_TERMS_SKILL)).instructions}`
+          : skill.instructions;
       } catch (err) {
         return unwritten('skill_unavailable', className(err));
       }
@@ -287,7 +399,7 @@ export function createPlanReplyWriter(
           const { value } = await forceToolJson({
             client: resolved,
             lane: pickLane(skill.meta.task),
-            system: skill.instructions,
+            system,
             userMessage: planReplyUserMessage(facts, note),
             toolName: SIGNUP_PLAN_REPLY_TOOL,
             toolDescription: SIGNUP_PLAN_REPLY_TOOL_DESCRIPTION,

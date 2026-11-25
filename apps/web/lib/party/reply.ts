@@ -333,7 +333,9 @@ export async function loadChildIdByFirstName(
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
   const wanted = firstName.trim().toLowerCase();
-  return rows.find((child) => child.name.trim().toLowerCase() === wanted)?.id ?? null;
+  return (
+    rows.find((child) => (child.name ?? '').trim().toLowerCase() === wanted)?.id ?? null
+  );
 }
 
 export function defaultPartyReplyDeps(): PartyReplyDeps {

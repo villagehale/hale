@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import type {
   GoogleCalendarPlacement,
   GoogleCalendarPlacementRequest,
@@ -30,6 +31,7 @@ import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { composeEventCancel } from '~/lib/loop/ics-invite';
 import { inviteWhenLabel } from '~/lib/loop/templates/calendar-invite/sms';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import {
   type CalendarWriteEvent,
@@ -103,6 +105,12 @@ export interface CalendarWriteNoticePorts {
     optOut: OptOutForm,
     dedupeKey: string,
   ): Promise<NoticeSendOutcome>;
+  /**
+   * VIL-719 · tells #ops when the notice (the tell-after for a calendar change the parent
+   * said yes to) could not be written. Required (rule #11); read only while
+   * ASK_POLICY_TIERS_ENABLED is on for the family.
+   */
+  pager: OpsPager;
 }
 
 /** `zone_unreadable`: no zone on record for this parent, or one Intl cannot read. */
@@ -146,7 +154,19 @@ export async function noticeAfterSync(
       language: loaded.language,
     });
     if (!input) return 'no_link';
-    const text = await ports.compose(input);
+    let text: string | null;
+    try {
+      text = await ports.compose(input);
+    } catch (err) {
+      // VIL-719 · a skill that will not load or a client that cannot be built left the notice
+      // unwritten. With the ask policy on it pages like any other unwritten notice.
+      if (!askPolicyTiersEnabled(request.familyId)) throw err;
+      console.error(
+        { familyId: request.familyId, err: err instanceof Error ? err.name : 'unknown' },
+        'calendar write notice: the writer could not run, nothing sent',
+      );
+      text = null;
+    }
     if (!text) return 'unwritten';
     return await ports.send(
       request.familyId,
@@ -174,11 +194,22 @@ export function withCalendarWriteNotice(
   ports: CalendarWriteNoticePorts,
 ): GoogleCalendarPlacement {
   return {
+    writeTarget: (request) => inner.writeTarget(request),
     async sync(request) {
       const report = await inner.sync(request);
       const result = await noticeAfterSync(request, report, ports);
+      // VIL-719 · the write happened and its notice could not be written: nothing was sent,
+      // and ops hears of it while the ask policy is on for this family.
+      const page =
+        result === 'unwritten' && askPolicyTiersEnabled(request.familyId)
+          ? await ports.pager.page({
+              site: 'calendar_write_notice_unwritten',
+              facts: { op: request.op },
+              ref: request.familyEventId,
+            })
+          : null;
       console.info(
-        { familyId: request.familyId, op: request.op, result },
+        { familyId: request.familyId, op: request.op, result, ...(page ? { page } : {}) },
         'calendar write notice: done',
       );
       return report;
@@ -219,6 +250,7 @@ export function productionCalendarWriteNoticePorts(
 ): CalendarWriteNoticePorts {
   return {
     enabled: () => calendarWriteNoticeEnabled(),
+    pager: failurePageOpsPager(() => database),
     gate: (familyId, parentUserId, now) =>
       assertProactiveSendAllowed(
         { familyId, parentUserId, kind: 'calendar_alert', now },

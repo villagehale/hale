@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { type AskTier, askTierFor } from '@hale/tools-contracts';
 import type {
   ActionType,
   ClassifierSuggestion,
@@ -13,6 +14,7 @@ import { db } from '../db.js';
 import { logger } from '../logger.js';
 import {
   AUTONOMY_STREAK_REQUIRED,
+  askPolicyTiersEnabled,
   autonomyDeniedForKind,
   streakSatisfiesAutonomy,
 } from '../orchestrator/autonomy-gate.js';
@@ -155,8 +157,12 @@ interface RecordExecutionInput {
   actionId: string;
   result: Record<string, unknown>;
   ok: boolean;
-  /** Who decided this ran, and the reviewer's reason. Audited, never persisted on the action. */
-  decision: { source: 'autonomous' | 'human'; reason: string };
+  /**
+   * Who decided this ran, and the reviewer's reason. Audited, never persisted on the action.
+   * `askTier` (VIL-719) is the ask policy's tier for this action, present only while
+   * ASK_POLICY_TIERS_ENABLED is on for the family.
+   */
+  decision: { source: 'autonomous' | 'human'; reason: string; askTier?: AskTier };
 }
 
 interface RecordDropInput {
@@ -528,7 +534,9 @@ export type ActionGateReason =
   | 'autonomy_denied_kind'
   | 'autonomy_notice_pending'
   /** VIL-357 · the approval landed outside the family's action window. */
-  | 'outside_time_window';
+  | 'outside_time_window'
+  /** VIL-719 · the ask policy puts the kind in ask first: it runs only on a recorded yes. */
+  | 'ask_first';
 
 interface RecordActionGateInput {
   familyId: string;
@@ -823,7 +831,10 @@ export async function loadChildNames(
     .select({ name: schema.children.name })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  return rows.map((r) => r.name);
+  return rows.flatMap((row) => {
+    const name = row.name?.trim() ?? '';
+    return name.length > 0 ? [name] : [];
+  });
 }
 
 /**
@@ -841,7 +852,7 @@ export interface FamilyContext {
   /** The family's known children, for child attribution. Empty when the family
    * has no children rows. The orchestrator validates the classifier's
    * concerns_child_id against these ids before persisting events.child_id. */
-  children: Array<{ id: string; name: string; ageInMonths: number }>;
+  children: Array<{ id: string; name: string | null; ageInMonths: number }>;
   contextSlice: {
     childrenAgesMonths: number[];
     province: string;
@@ -849,7 +860,7 @@ export interface FamilyContext {
     /** Carried into the classifier so it can attribute a signal to a child by
      * name or age/stage cue. Omitted (undefined) when the family has no children
      * so the serialized slice for single-child/childless families is unchanged. */
-    children?: Array<{ id: string; name: string; ageInMonths: number }>;
+    children?: Array<{ id: string; name: string | null; ageInMonths: number }>;
   };
 }
 
@@ -1354,7 +1365,12 @@ export type AutonomyGrant =
   /** The approver's grant for the kind is already live. */
   | { outcome: 'already_on' }
   /** The approver is not a parent of this family. */
-  | { outcome: 'not_a_parent' };
+  | { outcome: 'not_a_parent' }
+  /**
+   * VIL-719 · the ask policy puts the kind in ask first (ASK_POLICY_TIERS_ENABLED on): it
+   * runs only on a recorded yes, so no streak earns a grant for it.
+   */
+  | { outcome: 'ask_first' };
 
 /**
  * What became of an approval-record attempt. `claimed: false` carries the event's
@@ -1461,6 +1477,11 @@ async function grantAutonomyOnStreak(
     (parent) => parent.parentUserId === input.approvedBy,
   );
   if (!approver) return { outcome: 'not_a_parent' };
+  // VIL-719 · an ask-first kind is never granted, so no turn-on text can tell a parent
+  // that Hale will do it on its own. After not_a_parent so that outcome keeps its meaning.
+  if (askPolicyTiersEnabled(input.familyId) && askTierFor(kind) === 'ask_first') {
+    return { outcome: 'ask_first' };
+  }
   if (!approver.streakReached) return { outcome: 'not_reached' };
   if (approver.optedIn) return { outcome: 'already_on' };
 

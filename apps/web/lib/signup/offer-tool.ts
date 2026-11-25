@@ -23,6 +23,10 @@ import {
   type SupersedeAsk,
   createSignupSupersedeReader,
 } from './supersede-reader';
+import { registrationPreflightEnabled } from './terms/flag';
+import { MAX_PAGE_QUOTE_CHARS, untrustedPageWords } from './terms/page-words';
+import type { ProgramTermsDeps } from './terms/read-page';
+import { offersWithTerms } from './terms/store';
 import type { SignupSession } from './types';
 import { registrationUrlAllowed } from './url';
 
@@ -68,6 +72,8 @@ export interface SignupOfferToolPorts {
   parentWords: string;
   /** The door could not read this turn's text as a stop or not (`ChannelTurn.optOutUnread`). */
   optOutUnread: boolean;
+  /** VIL-715 · where this turn is. With pre-flight on, a group turn records no ask. */
+  audience: 'group' | 'direct';
   /** Pages a search or extract put in front of the parent this turn. */
   linksThisTurn: () => readonly { title: string; url: string }[];
   writer?: SignupOfferWriter;
@@ -75,6 +81,8 @@ export interface SignupOfferToolPorts {
   planWriter?: PlanReplyWriter;
   /** Reads whether this ask replaces an earlier one. Undefined uses the reply model. */
   supersedeReader?: SignupSupersedeReader;
+  /** VIL-715 · the page read before the ask. Undefined uses the live fetcher and model. */
+  termsDeps?: ProgramTermsDeps;
   /**
    * Handed every offer this turn recorded. The router stamps it as asked once the reply that
    * carries its text went out, so an offer whose text never reached the parent never takes
@@ -152,11 +160,16 @@ async function ownPendingAsks(
       ),
     )
     .orderBy(desc(offers.createdAt));
+  const onTerms = await offersWithTerms(database, {
+    familyId: input.familyId,
+    offerIds: rows.map((row) => row.id),
+  });
   return rows.map((row) => ({
     offerId: row.id,
     activity: row.activityLabel,
     host: row.providerHost,
     sessionLabels: row.sessions.map((session) => session.label),
+    ...(onTerms.has(row.id) ? { labelsFromPage: true } : {}),
   }));
 }
 
@@ -187,6 +200,10 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
     handler: async (input, ctx) => {
       if (ctx.familyId !== ports.familyId) {
         throw new Error("That family is not this turn's family.");
+      }
+      // Registration terms are the asker's to hear, and everyone in a group reads every line.
+      if (ports.audience === 'group' && registrationPreflightEnabled(ports.familyId)) {
+        return { recorded: false as const, reason: 'terms_in_private' };
       }
       if (ports.optOutUnread || (await isParentHeld(ports.database, ports.parentUserId))) {
         console.warn(
@@ -222,7 +239,9 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         .select({ id: schema.children.id, name: schema.children.name })
         .from(schema.children)
         .where(eq(schema.children.familyId, ports.familyId));
-      const matches = children.filter((child) => foldWords(child.name) === wanted);
+      const matches = children.filter(
+        (child) => child.name !== null && foldWords(child.name) === wanted,
+      );
       if (matches.length !== 1 || !matches[0]) {
         return { recorded: false as const, reason: 'child_missing' };
       }
@@ -282,10 +301,27 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
             language: null,
           },
         },
-        { writer: ports.writer, planWriter: ports.planWriter },
+        { writer: ports.writer, planWriter: ports.planWriter, terms: ports.termsDeps },
       );
-      if (!result.ok) return { recorded: false as const, reason: result.reason };
+      if (!result.ok) {
+        return {
+          recorded: false as const,
+          reason: result.reason,
+          ...(result.reason === 'age_outside_band'
+            ? {
+                untrusted_age_band: untrustedPageWords(
+                  result.ageBand ?? null,
+                  MAX_PAGE_QUOTE_CHARS,
+                ),
+              }
+            : {}),
+        };
+      }
       ports.onRecorded({ offerId: result.offerId, text: result.text });
+      // A page wrote the session labels on an ask with terms: the coach gets no words of them.
+      const fromPage = new Set(
+        earlier.filter((prior) => prior.labelsFromPage).map((prior) => prior.offerId),
+      );
       return {
         recorded: true as const,
         offerId: result.offerId,
@@ -293,7 +329,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         replaced: result.replaced.map((prior) => ({
           activity: prior.activityLabel,
           host: prior.providerHost,
-          sessions: prior.sessionLabels,
+          ...(fromPage.has(prior.offerId) ? {} : { sessions: prior.sessionLabels }),
         })),
         // Only when one was: an empty list beside `replaced` gives the coach nothing to say.
         ...(keptOpen.length > 0
@@ -301,7 +337,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
               keptOpen: keptOpen.map((prior) => ({
                 activity: prior.activity,
                 host: prior.host,
-                sessions: prior.sessionLabels,
+                ...(fromPage.has(prior.offerId) ? {} : { sessions: prior.sessionLabels }),
               })),
             }
           : {}),

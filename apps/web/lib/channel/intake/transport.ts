@@ -119,6 +119,9 @@ export type LocationRequestResult =
   | { status: 'refused'; code: string };
 
 export interface ChannelTransport {
+  /** This transport posts into one chat and ignores `to`. A send to anyone but the person
+   * in that chat has to take the phone door instead. */
+  readonly boundToChat?: true;
   /** `transport` in the result names which pipe actually carried the send, when
    * an implementation has more than one. Absent means the implementation has only
    * one pipe (the plain SMS transport, every Fake). The caller's ledger row
@@ -134,6 +137,16 @@ export interface ChannelTransport {
    * Absent on SMS. A refusal is named; callers must not pretend the card left.
    */
   requestLocation?(input: { chatId: string }): Promise<LocationRequestResult>;
+  /**
+   * VIL-715 · one private image into this number's existing 1:1, after the text it follows.
+   * The bytes never get a public URL (see `OutboundMessage.mediaUrls`). A transport without
+   * it cannot carry one, and the caller names that absence (rule #11).
+   */
+  sendImage?(input: { to: string; png: Uint8Array; filename: string }): Promise<{
+    providerMessageId: string;
+    transport?: 'imessage';
+    chatId?: string | null;
+  }>;
 }
 
 /**

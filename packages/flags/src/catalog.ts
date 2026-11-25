@@ -92,6 +92,7 @@ export const FLAGS = [
   exact('browser-use-signup', 'BROWSER_USE_SIGNUP_ENABLED'),
   exact('browser-use-watch', 'BROWSER_USE_WATCH_ENABLED'),
   exact('calendar-alert', 'CALENDAR_ALERT_ENABLED'),
+  exact('caregiver-reminder-model-copy', 'CAREGIVER_REMINDER_MODEL_COPY_ENABLED'),
   exact('check-in-anchor', 'CHECK_IN_ANCHOR_ENABLED'),
   exact('claim-read-own-mirrors', 'CLAIM_READ_OWN_MIRRORS_ENABLED'),
   exact('claim-refusal-store', 'CLAIM_REFUSAL_STORE_ENABLED'),
@@ -117,6 +118,11 @@ export const FLAGS = [
   }),
   exact('email-alert', 'EMAIL_ALERT_ENABLED'),
   exact('email-alert-body', 'EMAIL_ALERT_BODY_ENABLED'),
+  // VIL-762. One alert per real appointment, and a clash with a known commitment
+  // is named in that alert. The model decides both. Exact `true`. Env-only: the
+  // read has to stay exact `true` with no family on the call, and a PostHog
+  // answer must not turn it on from `true\n` or from unset.
+  exact('email-alert-once', 'EMAIL_ALERT_ONCE_ENABLED', { envOnly: true }),
   exact('f14', 'F14_ENABLED', {
     allowlistEnv: 'F14_FAMILY_ALLOWLIST',
     allowlistMode: 'arm',
@@ -153,6 +159,7 @@ export const FLAGS = [
   exact('intake-stated-place', 'INTAKE_STATED_PLACE_ENABLED'),
   exact('intake-photo-read', 'INTAKE_PHOTO_READ_ENABLED'),
   exact('interest-passport', 'INTEREST_PASSPORT_ENABLED'),
+  exact('join-door-model-copy', 'JOIN_DOOR_MODEL_COPY_ENABLED'),
   exact('loop-send', 'LOOP_SEND_ENABLED'),
   exact('memory-digest-apply', 'MEMORY_DIGEST_APPLY', {
     allowlistEnv: 'MEMORY_DIGEST_FAMILY_ALLOWLIST',
@@ -171,6 +178,12 @@ export const FLAGS = [
   exact('registration-assisted-run', 'REGISTRATION_ASSISTED_RUN_ENABLED'),
   exact('registration-ladder', 'REGISTRATION_LADDER_ENABLED'),
   exact('registration-plan-run', 'REGISTRATION_PLAN_RUN_ENABLED'),
+  // VIL-715. Pre-flight and approval binding on top of the plan lane. Exact `true`.
+  exact('registration-preflight', 'REGISTRATION_PREFLIGHT_ENABLED', {
+    envOnly: true,
+    allowlistEnv: 'REGISTRATION_PREFLIGHT_FAMILIES',
+    allowlistMode: 'narrow',
+  }),
   exact('plan-ops-stop', 'PLAN_OPS_STOP_ENABLED', { envOnly: true }),
   exact('same-activity-meet', 'SAME_ACTIVITY_MEET_ENABLED'),
   exact('signup-sandbox-runtime', 'SIGNUP_SANDBOX_RUNTIME_ENABLED'),
@@ -196,8 +209,24 @@ export const FLAGS = [
   // captcha, and the run resumes when the parent is done. Exact `true`. Env-only: a PostHog
   // sync must never light it.
   exact('takeover-link', 'TAKEOVER_LINK_ENABLED', { envOnly: true }),
+  // VIL-728. After a run of Hale group messages with no verified person speaking, Hale
+  // answers no unverified sender in that chat until a verified person speaks. Exact `true`.
+  // Env-only: the guard runs per chat before any family is known, so a family-scoped
+  // PostHog answer must not turn it on or off.
+  exact('group-loop-guard', 'GROUP_LOOP_GUARD_ENABLED', { envOnly: true }),
+  // VIL-719. The three-tier ask policy: an ask-first kind runs only on the parent's
+  // recorded yes, a just-do kind sends no on-its-own text, and a tell-after text the
+  // model cannot write pages #ops. Exact `true`. Env-only (VIL-755): a PostHog sync must
+  // never light a policy that changes who gets texted.
+  exact('ask-policy-tiers', 'ASK_POLICY_TIERS_ENABLED', { envOnly: true }),
   // VIL-740. A send key names the family, so one family's text cannot use up another's.
   exact('family-scoped-send-keys', 'FAMILY_SCOPED_SEND_KEYS_ENABLED', { envOnly: true }),
+  // VIL-759. A co-parent or caregiver invite goes to that person's number, not the turn's chat.
+  exact('third-party-invite-route', 'THIRD_PARTY_INVITE_ROUTE_ENABLED', { envOnly: true }),
+  // VIL-749 / VIL-753. One send path: a stable family-scoped Linq key, and a row
+  // that says sent only after Linq accepts. Env-only: a failure has no family for
+  // PostHog, and a synced 100% flag would light this with no env value.
+  exact('parent-send-receipt', 'PARENT_SEND_RECEIPT_ENABLED', { envOnly: true }),
   // VIL-742. The RSVP page names no reply keyword. Exact `true`.
   exact('rsvp-guest-plain-stop', 'RSVP_GUEST_PLAIN_STOP_ENABLED'),
   // VIL-744. The group lines, the coach's answer to doubt and two app pages name no reply
@@ -212,6 +241,14 @@ export const FLAGS = [
   exact('group-reminder-unsent-page', 'GROUP_REMINDER_UNSENT_PAGE_ENABLED'),
   exact('untrusted-field-marking', 'UNTRUSTED_FIELD_MARKING_ENABLED'),
   exact('friend-voice-model-fields', 'FRIEND_VOICE_MODEL_FIELDS_ENABLED'),
+  // VIL-721. Onboarding in the thread: the kids' activities asked after their ages,
+  // and ONE Google link that connects Gmail and Calendar together. Exact `true`.
+  // Env-only: read with no family id, so a PostHog 100% rollout would light it (VIL-755).
+  exact('thread-onboarding-v2', 'THREAD_ONBOARDING_V2_ENABLED', { envOnly: true }),
+  // VIL-758. A texted /connect link signs nobody in by itself: it takes a code texted to
+  // the number held for the parent it names. Exact `true`. Env-only: read before any family
+  // is known, so a PostHog 100% rollout must never be able to light it.
+  exact('connect-link-code', 'CONNECT_LINK_CODE_ENABLED', { envOnly: true }),
   exact('friend-voice-leftover-marks', 'FRIEND_VOICE_LEFTOVER_MARKS_ENABLED', {
     upcoming: true,
   }),
@@ -261,6 +298,9 @@ export const FLAGS = [
   }),
   trimmed('own-city-registration', 'OWN_CITY_REGISTRATION_ENABLED'),
   trimmed('school-break', 'SCHOOL_BREAK_ENABLED'),
+  // VIL-763. Intake stores a child name only when the parent gave one. Exact `true`
+  // only; anything else keeps the previous stand-in write.
+  exact('stated-child-name', 'STATED_CHILD_NAME_ENABLED', { envOnly: true }),
   exact('linq-group-coparent', 'LINQ_GROUP_COPARENT', {
     parser: 'trimmed-not-off',
     default: true,
@@ -283,6 +323,9 @@ export const FLAGS = [
     offVariant: 'off',
   },
   exact('proactive-family-decision-cap', 'PROACTIVE_FAMILY_DECISION_CAP_ENABLED'),
+  // VIL-763. When a proactive text would mean the same thing as one Hale already
+  // sent this parent, the writer sends nothing. Exact `true` only.
+  exact('proactive-no-repeat', 'PROACTIVE_NO_REPEAT_ENABLED', { envOnly: true }),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),
@@ -330,6 +373,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'REGISTRATION_FREE_CHECKOUT_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`, and only for the family ids in REGISTRATION_FREE_CHECKOUT_FAMILIES (an empty list is off); presses complete only on a $0 order bound as free; nothing in PostHog may turn this on',
   },
   {
     env: 'LINQ_APP_CLIP_PAY_ENABLED',
@@ -384,6 +433,12 @@ export const PAYMENT_ENV_ONLY = [
     posthogKey: null,
     type: 'boolean' as const,
     note: 'env-only; exact `true`; the plan follows what Stripe says is still paid: every entitlement event re-reads Stripe, and a full refund of the current period cancels that one subscription; only takes effect with STRIPE_BILLING_REVOKE_ENABLED also exactly `true`; nothing in PostHog may turn this on',
+  },
+  {
+    env: 'STRIPE_CLEAR_DELETED_SUBSCRIPTION_ENABLED',
+    posthogKey: null,
+    type: 'boolean' as const,
+    note: 'env-only; exact `true`; customer.subscription.deleted that sets the plan to free clears families.stripe_subscription_id when it is that subscription; a different stored id is left as it is; nothing in PostHog may turn this on',
   },
   {
     env: 'BILLING_THREAD_NOTICES_ENABLED',

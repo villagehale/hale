@@ -187,6 +187,7 @@ const INDIRECT_WRITE_SITES: Record<string, readonly string[]> = {
     'action.gated.lane_off',
     'action.gated.autonomy_denied_kind',
     'action.gated.autonomy_notice_pending',
+    'action.gated.ask_first',
     'event.stage.classified',
     'event.stage.drafted',
     'event.stage.reviewed',

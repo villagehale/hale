@@ -28,7 +28,9 @@ interface PageProps {
  */
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const { t, to } = await searchParams;
-  const provider = asTextConnectProvider(to);
+  // VIL-721: the one link unfurls as both; dark, `google` is no target and falls back.
+  const target = asTextLinkTarget(to);
+  const provider = target === 'google' ? target : asTextConnectProvider(to);
   const card =
     !authConfigured() || !t
       ? { tabTitle: LINK_INCOMPLETE_TAB, description: MISSING_DESCRIPTION }

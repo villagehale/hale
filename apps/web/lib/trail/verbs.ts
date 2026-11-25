@@ -174,6 +174,18 @@ export const AUDIT_VERBS = [
   // An activity from the first find put on the family calendar as a reminder
   // (one-off or weekly). It is not a registration.
   'onboarding_schedule_added',
+  // VIL-721. What the kids already do, told in the onboarding thread and kept as
+  // family memory. `after` is counts only: no activity, no name.
+  'onboarding_activities_kept',
+  // VIL-721. The kids' names and ages as the model read them, kept with their provenance.
+  // `after` is counts only: no name, no age.
+  'onboarding_kids_kept',
+  // VIL-721. A text about connecting Google did not reach this parent. `after` is the
+  // surface and refused/unconfirmed only: no words, no link.
+  'google_connect_text_unsent',
+  // VIL-721. The onboarding model read this text as a disconnect or a new-link ask, so it
+  // left the walk for the handler that acts on it. `after` is the read only: no words.
+  'onboarding_walk_handed_off',
   'sms_intake_provisioned',
   'sms_intake_contact_card',
   'linq_contact_card_shared',
@@ -204,6 +216,8 @@ export const AUDIT_VERBS = [
   'linq_group_sends_held',
   'linq_group_stop',
   'linq_group_coach_held',
+  // VIL-728. The loop guard took a group chat quiet. Internal: hidden from History.
+  'linq_group_loop_guard_quiet',
   'linq_group_plan_started',
   'linq_group_plan_rsvp_recorded',
   'linq_group_plan_rsvp_edited',
@@ -286,6 +300,9 @@ export const AUDIT_VERBS = [
   'channel_sent',
   // VIL-683 · the send seam refused a garbled text, so nothing went out.
   'channel_text_garbled',
+  // VIL-749 / VIL-753. The shared receipt stopped a parent text: Linq refused it,
+  // or a one-shot sender will not try an unconfirmed send again.
+  'parent_send_unsent',
   // The delivery-truth sweep asserting a terminal state no receipt ever confirmed.
   'delivery_status_forced',
   // The claim sweep naming an executor send claim nothing ever confirmed.
@@ -321,6 +338,8 @@ export const AUDIT_VERBS = [
   'school_break_retired',
   'followup_daycare_asked',
   'email_alert_sent',
+  // VIL-762 · a second email about an appointment already told. Nothing sent.
+  'email_alert_same_appointment',
   // VIL-569 · a quiet-hours hold Hale still owes, and its end (sent, declined or stale).
   'email_alert_held',
   'email_alert_hold_closed',
@@ -347,6 +366,8 @@ export const AUDIT_VERBS = [
   'team_schedule_driver_unsent',
   // VIL-734 · that text ended on one adult's own stop, consent, missing number or leaving.
   'team_schedule_driver_unreachable',
+  // VIL-719 · a change from an email that did not run under a grant; it left the yes list.
+  'team_schedule_change_not_run',
   // VIL-226 · kid relevance (integrations/kid-relevance/).
   'kid_relevance_untracked',
   'kid_relevance_event_dropped',
@@ -406,6 +427,7 @@ export const AUDIT_VERBS = [
   'co_parent_invite_started',
   'co_parent_identity_noted',
   'co_parent_access_granted',
+  'third_party_invite_send_failed',
   'co_parent_invite_accepted',
   'co_parent_invite_expired',
   'co_parent_invite_expired_answered',
@@ -462,6 +484,8 @@ export const AUDIT_VERBS = [
   'action.gated.autonomy_denied_kind',
   // Held because the turn-on text has not been delivered yet.
   'action.gated.autonomy_notice_pending',
+  // VIL-719. The ask policy puts this kind in ask first: it runs only on the parent's yes.
+  'action.gated.ask_first',
   'autonomy_armed_notice_sent',
   'autonomy_acted_notice_sent',
   'autonomy_notice_covered',
@@ -506,6 +530,7 @@ export const AUDIT_VERBS = [
   // ── connectors, settings, billing ───────────────────────────────────────
   'connector_link_minted',
   'connector_link_signed_in',
+  'connector_link_code_sent',
   'integration_connected',
   'integration_revoked',
   'integration_ended_for_erasure',
@@ -852,6 +877,22 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'you put an activity from the find on your calendar as a reminder',
     family: 'done',
   },
+  onboarding_activities_kept: {
+    sentence: 'you told Hale what the kids already do, and it kept that',
+    family: 'done',
+  },
+  onboarding_kids_kept: {
+    sentence: "you told Hale your kids' names and ages, and it kept that",
+    family: 'done',
+  },
+  google_connect_text_unsent: {
+    sentence: 'Hale could not text you about connecting Google',
+    family: 'problem',
+  },
+  onboarding_walk_handed_off: {
+    sentence: 'you asked Hale about your Google connection during setup',
+    family: 'note',
+  },
   sms_intake_provisioned: { sentence: 'your family was set up from your texts', family: 'done' },
   sms_intake_contact_card: { sentence: 'Hale texted you its contact card', family: 'note' },
   linq_contact_card_shared: {
@@ -949,6 +990,9 @@ const VERBS: Record<AuditVerb, Verb> = {
     sentence: 'Hale kept an answer out of your family group until everyone there may hear it',
     family: 'awaiting',
   },
+  // VIL-728 · internal-only: no parent-facing copy. Hidden from the trail via
+  // INTERNAL_TRAIL_VERBS; the neutral token below is never rendered.
+  linq_group_loop_guard_quiet: { sentence: 'recorded an update', family: 'neutral' },
   linq_group_plan_started: {
     sentence: 'Hale started counting who is coming to a plan in your family group',
     family: 'done',
@@ -1210,6 +1254,10 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   channel_sent: { sentence: 'Hale sent you a message', family: 'done' },
+  parent_send_unsent: {
+    sentence: 'Hale could not send a text',
+    family: 'problem',
+  },
   channel_text_garbled: {
     sentence: 'Hale held back a message that came out garbled',
     family: 'problem',
@@ -1306,6 +1354,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   email_alert_sent: {
     sentence: 'Hale texted you about something in your email',
     family: 'done',
+  },
+  email_alert_same_appointment: {
+    sentence: 'Hale kept a second email about an appointment it had already texted you about',
+    family: 'note',
   },
   email_alert_held: {
     sentence: 'Hale held an email alert for quiet hours',
@@ -1408,6 +1460,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   // in their own copy.
   team_schedule_driver_unreachable: {
     sentence: 'Hale did not text you about a schedule change',
+    family: 'note',
+  },
+  // VIL-719. About one parent's email: their audience, off History and the family export
+  // (rights/export.ts), in their own copy. `after` is the action id and the kind of change.
+  team_schedule_change_not_run: {
+    sentence: 'Hale did not make a schedule change from an email',
     family: 'note',
   },
   // VIL-226. Each row carries a verdict, a source and counts; never a title. The parent
@@ -1586,7 +1644,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'note',
   },
   caregiver_invite_superseded_by_join: {
-    // Says only what the parent's own NUMBER_IN_USE refusal already says to them —
+    // Says only what the parent's own number-in-use refusal already says to them —
     // never which household the number joined, which may not be theirs (rule #1).
     sentence: 'a caregiver invite closed because that number is already set up with Hale',
     family: 'note',
@@ -1650,6 +1708,12 @@ const VERBS: Record<AuditVerb, Verb> = {
   co_parent_access_granted: {
     sentence: 'you confirmed your co-parent may see everything you see',
     family: 'done',
+  },
+  // Hidden from the trail via INTERNAL_TRAIL_VERBS and kept out of the family-wide export:
+  // one adult's own invite. #ops is paged; the parent has not been told in words.
+  third_party_invite_send_failed: {
+    sentence: 'a text to the person you invited may not have gone through',
+    family: 'note',
   },
   co_parent_invite_accepted: {
     sentence: 'your co-parent accepted and joined your family',
@@ -1812,6 +1876,8 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   'action.gated.lane_off': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_denied_kind': { sentence: 'brought a draft to you', family: 'awaiting' },
+  // VIL-719. Same reused sentence: an ask-first action is a draft brought to the parent.
+  'action.gated.ask_first': { sentence: 'brought a draft to you', family: 'awaiting' },
   'action.gated.autonomy_notice_pending': {
     sentence: 'held until Hale had told you it would handle this on its own',
     family: 'awaiting',
@@ -1924,6 +1990,10 @@ const VERBS: Record<AuditVerb, Verb> = {
   connector_link_signed_in: {
     sentence: 'you signed in with a link texted to your phone',
     family: 'done',
+  },
+  connector_link_code_sent: {
+    sentence: 'Hale texted a sign-in code to your phone for a link you were sent',
+    family: 'note',
   },
   // Custody, in the sentence a parent reads on their own trail. "Never hands them to
   // another service" is exactly true and no more: the token goes to the provider that
@@ -2502,6 +2572,8 @@ export const INTERNAL_TRAIL_VERBS = [
   'integration_google_revoke_cancelled',
   'linq_group_background_set',
   'linq_group_background_parent_set',
+  // VIL-728. Loop-guard bookkeeping for ops: counts only, no words and no handle.
+  'linq_group_loop_guard_quiet',
   // VIL-303. A no Hale said to one parent, and its correction to that same parent.
   'capability_denial_recorded',
   'capability_denial_corrected',
@@ -2522,12 +2594,18 @@ export const INTERNAL_TRAIL_VERBS = [
   'proactive_nudge_unwritten',
   // VIL-734. One driver's own stop, consent, missing number or leaving the household.
   'team_schedule_driver_unreachable',
+  // VIL-719. A change from one parent's email that Hale did not make.
+  'team_schedule_change_not_run',
   // VIL-735. About one adult's payment: the other parent never sees it.
   'billing_notice_sent',
   'billing_notice_send_failed',
   'billing_notice_dropped',
   // VIL-736. Billing bookkeeping for ops; a person resolves it in Stripe.
   'billing_plan_unsettled',
+  // VIL-759. One adult's invite that Linq did not accept.
+  'third_party_invite_send_failed',
+  // VIL-758. That a sign-in code went to one adult's number.
+  'connector_link_code_sent',
 ] as const satisfies readonly AuditVerb[];
 
 export function isInternalTrailVerb(actionTaken: string): boolean {

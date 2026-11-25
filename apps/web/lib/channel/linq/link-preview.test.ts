@@ -111,6 +111,50 @@ describe('sendLinkOnce', () => {
     warn.mockRestore();
   });
 
+  it('sends nothing when the send is no longer allowed, including after a refused preview', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const fetchMock = linqFetch(400);
+    let checks = 0;
+
+    const outcome = await sendLinkOnce({
+      ...base(transport, fake),
+      channel: 'imessage',
+      chatId: 'chat-1',
+      fetch: fetchMock,
+      maySend: async () => {
+        checks += 1;
+        return checks === 1;
+      },
+    });
+
+    expect(outcome).toEqual({ status: 'not_sent', why: 'refused', code: 'gated' });
+    expect(checks).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(transport.sent).toEqual([]);
+    expect(ledger(fake).rows).toEqual([]);
+  });
+
+  it('does not try the preview when the first check refuses', async () => {
+    vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
+    const fake = makeFakeDb();
+    const transport = new FakeTransport();
+    const fetchMock = linqFetch(201);
+
+    const outcome = await sendLinkOnce({
+      ...base(transport, fake),
+      channel: 'imessage',
+      chatId: 'chat-1',
+      fetch: fetchMock,
+      maySend: async () => false,
+    });
+
+    expect(outcome).toEqual({ status: 'not_sent', why: 'refused', code: 'gated' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(transport.sent).toEqual([]);
+  });
+
   it('sends the link as its own text off iMessage', async () => {
     const fake = makeFakeDb();
     const transport = new FakeTransport();

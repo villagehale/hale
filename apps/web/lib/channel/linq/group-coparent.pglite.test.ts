@@ -249,7 +249,7 @@ async function familyCount(): Promise<number> {
 
 async function childNames(): Promise<string[]> {
   const rows = await db.database.select({ name: schema.children.name }).from(schema.children);
-  return rows.map((row) => row.name);
+  return rows.flatMap((row) => (row.name ? [row.name] : []));
 }
 
 describe('group co-parent seating', () => {

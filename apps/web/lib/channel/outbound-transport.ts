@@ -117,7 +117,7 @@ export function refusalIsRateLimit(err: unknown): boolean {
 }
 
 export const linqRefusedForCertain = linq.linqRefusedForCertain;
-export const linqStatusRefusedForCertain = linq.linqStatusRefusedForCertain;
+export const linqSendMayHaveLanded = linq.linqSendMayHaveLanded;
 
 const URL_IN_TEXT = /https?:\/\/\S+/gi;
 
@@ -644,6 +644,7 @@ export function createChatReplyTransport(
     return linq.createLinqTextTransport(deps);
   }
   return {
+    boundToChat: true,
     async send(input) {
       if (input.mediaUrls) throw new LinqSendError('media_unsupported', 400, true);
       if (!deps.chatId) throw new LinqSendError('missing_chat_id', 400, true);

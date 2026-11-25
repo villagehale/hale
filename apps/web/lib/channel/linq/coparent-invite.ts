@@ -1,11 +1,13 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray } from 'drizzle-orm';
-import { CO_PARENT_REDIRECT } from '~/lib/channel/caregiver/copy';
+import { settleFailedInviteSend } from '~/lib/channel/caregiver/invite-send';
 import {
   familyHasCoParent,
+  inviteSendKey,
   loadPendingAssent,
   recordCoParentAssent,
   startCoParentInvite,
+  thirdPartyInviteRouteEnabled,
 } from '~/lib/channel/caregiver/invites';
 import type { ConsentAskWriter } from '~/lib/channel/consent-ask';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
@@ -14,6 +16,7 @@ import {
   coParentReferrerUnnamed,
   coParentRefusal,
 } from '~/lib/channel/coparent/copy';
+import { type DoorLineHold, composeDoorLine, lineHeld } from '~/lib/channel/door-line';
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { INTAKE_COPARENT_ASK_TEMPLATE_KEY } from '~/lib/channel/intake/copy';
 import { latestCoparentGroupMode } from '~/lib/channel/intake/session';
@@ -23,6 +26,7 @@ import { familySpeechLanguage } from '~/lib/channel/linq/family-outbound';
 import { resolveMessagingDoor } from '~/lib/channel/messaging-door';
 import { normalizePhoneE164 } from '~/lib/channels/phone';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
+import type { OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { linqGroupOnboardingV2Enabled } from './config';
 import { openChosenHouseholdGroup } from './open-chosen-group';
 /**
@@ -78,7 +82,11 @@ function inviteeLabel(name: string | null, language: ReplyLanguage | null): stri
 
 export interface CoParentNumberDeps {
   /** The SMS door. Unused when this turn arrived on iMessage. */
-  sendSms(input: { to: string; body: string }): Promise<{ providerMessageId: string }>;
+  sendSms(input: {
+    to: string;
+    body: string;
+    sendKey?: string;
+  }): Promise<{ providerMessageId: string }>;
   /** Writes the invite. Absence is named and nobody is texted. */
   ask?: ConsentAskWriter;
 }
@@ -101,9 +109,15 @@ export type CoParentNumberOutcome =
       status: 'refused' | 'unreached';
       reply: string | null;
       templateKey: typeof COPARENT_NUMBER_HELD_TEMPLATE_KEY;
+      /** Null when the line went out, or why it did not (rule #11). */
+      lineHeld: DoorLineHold | null;
     }
   /** The invite text could not be written. Nobody was texted. */
-  | { status: 'ask_unwritten'; reply: null };
+  | { status: 'ask_unwritten'; reply: null }
+  /** Linq did not accept the invite. #ops was paged and the parent was not told. */
+  | { status: 'invite_unsent'; reply: null; opsPage: OpsPagerOutcome }
+  /** Another turn already took this invite. Nothing was sent here. */
+  | { status: 'assent_already_claimed'; reply: null };
 
 /**
  * iMessage, flag on, and the stored choice is a new group. A confirmed phone
@@ -192,32 +206,41 @@ export async function deliverCoParentNumberInvite(
   const pending = await loadPendingAssent(database, input.parentUserId, input.now);
   if (pending?.role === 'co_parent') return { status: 'not_pending' };
 
-  const held = (reply: string): CoParentNumberOutcome => ({
+  const held = (reply: string | null, hold: DoorLineHold | null): CoParentNumberOutcome => ({
     status: 'refused',
     reply,
     templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+    lineHeld: hold,
   });
 
   const parentPhone = await resolveSendablePhone(database, input.parentUserId);
+  const redirect = async () =>
+    composeDoorLine({
+      purpose: 'caregiver_co_parent_redirect',
+      language,
+    });
   if (!parentPhone) {
+    const line = await redirect();
     return {
       status: 'unreached',
-      reply: CO_PARENT_REDIRECT,
+      reply: line.sent ? line.body : null,
       templateKey: COPARENT_NUMBER_HELD_TEMPLATE_KEY,
+      lineHeld: lineHeld(line),
     };
   }
 
   // Same gate as the YES that texts a stranger (D21). The ask can be on the
   // thread while the flag is dark; the SMS send is what the flag holds.
   if (!f14EnabledFor(input.familyId)) {
-    return held(CO_PARENT_REDIRECT);
+    const line = await redirect();
+    return held(line.sent ? line.body : null, lineHeld(line));
   }
 
   const name = await parentName(database, input.parentUserId);
   const unnamed = await coParentReferrerUnnamed(language);
   if (!name) {
     if (!unnamed) return { status: 'ask_unwritten', reply: null };
-    return held(unnamed);
+    return held(unnamed, null);
   }
   const inviteText = await writeConsentAsk(input.ask, {
     kind: 'coparent_invite',
@@ -245,7 +268,43 @@ export async function deliverCoParentNumberInvite(
   if (started.status === 'refused') {
     const line = await coParentRefusal(started.reason, language);
     if (!line) return { status: 'ask_unwritten', reply: null };
-    return held(line);
+    return held(line, null);
+  }
+
+  if (thirdPartyInviteRouteEnabled()) {
+    const claimed = await recordCoParentAssent(database, {
+      invite: started.invite,
+      inviterName: name,
+      language,
+      verbatimReply: input.body,
+      channelMessageId: input.inboundChannelMessageId,
+      now: input.now,
+      ask: input.ask,
+      prepared: inviteText,
+    });
+    if (claimed.status !== 'ready') return { status: 'assent_already_claimed', reply: null };
+    let providerMessageId: string;
+    try {
+      ({ providerMessageId } = await input.sendSms({
+        to: parsed.phoneE164,
+        body: inviteText,
+        sendKey: inviteSendKey(started.invite),
+      }));
+    } catch (err) {
+      const opsPage = await settleFailedInviteSend(database, started.invite, err, input.now);
+      return { status: 'invite_unsent', reply: null, opsPage };
+    }
+    await ledgerSmsInvite(database, {
+      familyId: input.familyId,
+      parentUserId: input.parentUserId,
+      now: input.now,
+      providerMessageId,
+    });
+    return {
+      status: 'sent',
+      reply: await coParentInviteSentAck(label, language),
+      templateKey: COPARENT_NUMBER_ACK_TEMPLATE_KEY,
+    };
   }
 
   const sms = await input.sendSms({

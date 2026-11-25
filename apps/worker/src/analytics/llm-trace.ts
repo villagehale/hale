@@ -4,11 +4,13 @@ import {
   type LlmTraceContext,
   anthropicCreditAlertEnabled,
   buildGenerationProperties,
+  canaryCaptureExtras,
   hashLlmFamilyId,
   llmContentCaptureEnabled,
 } from '@hale/agent';
 import type { PostHog } from 'posthog-node';
 import { observeAnthropicCall } from './anthropic-credit.js';
+import { familyIsCanary } from './canary-family.js';
 import { projectClient } from './posthog.js';
 
 /**
@@ -40,10 +42,16 @@ export function withLlmContext<T>(ctx: LlmTraceContext, fn: () => T): T {
   return storage.run({ ...storage.getStore(), ...ctx }, fn);
 }
 
-/** Hashed family id for distinct_id, or empty when the salt is unset. */
-export function llmFamilyContext(familyId: string): Pick<LlmTraceContext, 'distinctId'> {
+/**
+ * Hashed family id for distinct_id, or empty when the salt is unset. The raw
+ * family id stays on the context so the capture can tag the probe household.
+ * It is not a PostHog property.
+ */
+export function llmFamilyContext(
+  familyId: string,
+): Pick<LlmTraceContext, 'distinctId' | 'familyId'> {
   const distinctId = hashLlmFamilyId(familyId, process.env.POSTHOG_ID_SALT);
-  return distinctId ? { distinctId } : {};
+  return { ...(distinctId ? { distinctId } : {}), familyId };
 }
 
 export { buildGenerationProperties };
@@ -74,21 +82,38 @@ function report(
   error?: unknown,
   request?: { model?: string; system?: unknown; messages?: unknown } | null,
 ): void {
+  void stampAndSend(client, ctx, model, started, result, error, request);
+}
+
+async function stampAndSend(
+  client: PostHog,
+  ctx: LlmTraceContext,
+  model: string,
+  started: number,
+  result: { usage?: unknown; stop_reason?: string | null; content?: unknown } | null,
+  error?: unknown,
+  request?: { model?: string; system?: unknown; messages?: unknown } | null,
+): Promise<void> {
   try {
+    const isCanary =
+      ctx.canary === true || (ctx.familyId ? await familyIsCanary(ctx.familyId) : false);
+    const distinctId = ctx.distinctId ?? 'system';
+    const extras = canaryCaptureExtras(isCanary, distinctId);
+    const properties = buildGenerationProperties({
+      ctx: { ...ctx, canary: isCanary },
+      model,
+      latencyMs: Date.now() - started,
+      usage: (result?.usage as never) ?? null,
+      stopReason: result?.stop_reason ?? null,
+      error,
+      contentEnabled: llmContentCaptureEnabled() && !ctx.omitContent,
+      request: request ?? null,
+      response: result,
+    });
     client.capture({
-      distinctId: ctx.distinctId ?? 'system',
+      distinctId,
       event: '$ai_generation',
-      properties: buildGenerationProperties({
-        ctx,
-        model,
-        latencyMs: Date.now() - started,
-        usage: (result?.usage as never) ?? null,
-        stopReason: result?.stop_reason ?? null,
-        error,
-        contentEnabled: llmContentCaptureEnabled() && !ctx.omitContent,
-        request: request ?? null,
-        response: result,
-      }),
+      properties: extras.set ? { ...properties, $set: extras.set } : properties,
     });
     void client.flush().catch(() => {});
   } catch {

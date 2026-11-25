@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type Anthropic from '@anthropic-ai/sdk';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   loadCronSkill,
   loadOnboardingFriendShortSkill,
@@ -33,6 +33,11 @@ import { FRIEND_VOICE_MODEL_FIELDS_ENABLED_ENV } from './friend-voice-model-fiel
 
 const EASTERN = 'America/Toronto';
 
+// Dark is the default. A process that exports the flag must not flip these cases.
+beforeEach(() => {
+  vi.stubEnv('FRIEND_VOICE_MODEL_FIELDS_ENABLED', undefined);
+});
+
 function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>): FriendVoiceInput {
   return {
     language: 'en',
@@ -51,6 +56,11 @@ function blank(over: Partial<FriendVoiceInput> & Pick<FriendVoiceInput, 'step'>)
     ...over,
   };
 }
+
+// Dark is pinned, not assumed: the flags-on CI job turns every default-off flag on.
+beforeEach(() => {
+  vi.stubEnv('THREAD_ONBOARDING_V2_ENABLED', 'false');
+});
 
 describe('friend voice brief', () => {
   it('hands the household group as its own fact, and leaves the key out when it is not in play (VIL-566)', () => {

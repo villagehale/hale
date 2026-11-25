@@ -1,4 +1,5 @@
 import { type Database, schema } from '@hale/db';
+import { askPolicyTiersEnabled } from '@hale/worker/autonomy-gate';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { answeredOnTheSameChannel, handleEveningCheckInReply } from '~/lib/channel/checkin/reply';
 import type { EveningRequestReader } from '~/lib/channel/checkin/request';
@@ -14,12 +15,22 @@ import {
   type DisconnectReader,
   createDisconnectReader,
 } from '~/lib/channel/connect/disconnect-read';
-import { defaultFreshLinkPorts, textFreshConnectorLink } from '~/lib/channel/connect/fresh-link';
-import { offerConnectorLink, offerConnectorLinks } from '~/lib/channel/connect/offer';
+import {
+  defaultFreshLinkPorts,
+  textFreshConnectorLink,
+  writeGoogleLinkOrPage,
+} from '~/lib/channel/connect/fresh-link';
+import {
+  offerConnectorLink,
+  offerConnectorLinks,
+  offerGoogleBundleLink,
+} from '~/lib/channel/connect/offer';
 import { revokeConnectorByText } from '~/lib/channel/connect/revoke';
-import { asTextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { asGoogleBundleLink, asTextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { writeConsentAsk } from '~/lib/channel/consent-ask';
 import { f14EnabledFor } from '~/lib/channel/f14';
+import { threadOnboardingV2Enabled } from '~/lib/channel/intake/thread-onboarding-v2';
+import { walkDisconnectProviders, walkHandOffOf } from '~/lib/channel/intake/walk-hand-off';
 import {
   type FounderReplyDeps,
   handleFounderWelcomeReply,
@@ -67,6 +78,7 @@ import {
   defaultGoogleDisconnectPorts,
 } from '~/lib/integrations/google-disconnect';
 import type { OfferReceiptWriter } from '~/lib/integrations/offer-receipt';
+import { type OpsPager, failurePageOpsPager } from '~/lib/monitoring/failure-page';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { ownCityRegistrationContext } from '~/lib/registration/city/context';
 import {
@@ -297,11 +309,12 @@ async function latestConnectOfferTarget(
       )
       .orderBy(desc(schema.messages.createdAt))
       .limit(6);
-    for (const row of rows) {
-      if (row.role !== 'assistant') continue;
-      return connectOfferTarget(row.content);
-    }
-    return null;
+    const said = rows.filter((row) => row.role === 'assistant');
+    const newest = said[0] ? connectOfferTarget(said[0].content) : null;
+    if (newest || !threadOnboardingV2Enabled()) return newest;
+    // VIL-721. Lit, the walk keeps talking after the one link, so a later reply does not
+    // hide it. Only the one link: an older per-provider offer stays hidden as it is dark.
+    return said.some((row) => connectOfferTarget(row.content) === 'google') ? 'google' : null;
   } catch (err) {
     console.error(
       { err: err instanceof Error ? err.name : 'unknown' },
@@ -337,16 +350,22 @@ export function connectorLinkHandler(
 ): DeterministicHandler {
   return {
     name: 'connector_link',
-    async detects(_database, ctx) {
+    async detects(database, ctx) {
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk) return walk === 'fresh_link';
       return matchConnectorRequest(ctx.body) !== null || matchFreshConnectorFollowUp(ctx.body);
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const named = matchConnectorRequest(ctx.body);
-      const fresh = named
-        ? null
-        : matchFreshConnectorFollowUp(ctx.body)
-          ? await latestConnectOfferTarget(database, ctx.conversationId)
-          : null;
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk && walk !== 'fresh_link') return { claimed: false };
+      const named = walk ? null : matchConnectorRequest(ctx.body);
+      const fresh = walk
+        ? ('google' as const)
+        : named
+          ? null
+          : matchFreshConnectorFollowUp(ctx.body)
+            ? await latestConnectOfferTarget(database, ctx.conversationId)
+            : null;
       if (!named && !fresh) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -361,7 +380,14 @@ export function connectorLinkHandler(
       const language = await familySpeechLanguage(database, ctx.familyId);
       const target = named ?? fresh;
       if (!target) return { claimed: false };
-      const provider = target === 'both' ? 'both' : asTextConnectProvider(target);
+      // VIL-721. A fresh-link ask after the one link gets the one link, while it is lit.
+      // Dark, `google` names nothing this deployment mints, and the coach takes the turn.
+      const provider =
+        target === 'both'
+          ? 'both'
+          : target === 'google'
+            ? asGoogleBundleLink(target)
+            : asTextConnectProvider(target);
       if (!provider) {
         log.error(
           { familyId: ctx.familyId, provider: target, outcome: 'connector_not_offered' },
@@ -427,20 +453,18 @@ export function connectorLinkHandler(
         }
       }
 
-      const outcome = await offerConnectorLink(database, {
-        familyId: ctx.familyId,
-        parentUserId: ctx.parentUserId,
-        provider,
-        now: ctx.now,
-      });
+      const owner = { familyId: ctx.familyId, parentUserId: ctx.parentUserId, now: ctx.now };
+      const outcome =
+        provider === 'google'
+          ? await offerGoogleBundleLink(database, owner)
+          : await offerConnectorLink(database, { ...owner, provider });
       switch (outcome.status) {
         case 'minted': {
           // #868: the model writes the text around the one link.
-          const reply = await writeConnectorLink(saidLine, {
-            language,
-            provider,
-            url: outcome.url,
-          });
+          const reply =
+            provider === 'google'
+              ? await writeGoogleLinkOrPage(database, saidLine, { language, url: outcome.url })
+              : await writeConnectorLink(saidLine, { language, provider, url: outcome.url });
           if (!reply) {
             log.error(
               { familyId: ctx.familyId, provider: target, outcome: 'links_unwritten' },
@@ -503,11 +527,16 @@ export function connectorDisconnectHandler(
 ): DeterministicHandler {
   return {
     name: 'connector_disconnect',
-    async detects(_database, ctx) {
+    async detects(database, ctx) {
+      const walk = await walkHandOffOf(database, ctx);
+      if (walk) return walk !== 'fresh_link';
       return matchConnectorDisconnectRequest(ctx.body) !== null;
     },
     async handle(database: Database, ctx: HandlerContext): Promise<HandlerVerdict> {
-      const provider = matchConnectorDisconnectRequest(ctx.body);
+      const walk = await walkHandOffOf(database, ctx);
+      const matched = walk ? null : matchConnectorDisconnectRequest(ctx.body);
+      const providers = walk ? walkDisconnectProviders(walk) : matched ? [matched] : [];
+      const provider = providers[0];
       if (!provider) return { claimed: false };
       if (
         await declinePrivilegedGroupSeat(database, {
@@ -531,11 +560,19 @@ export function connectorDisconnectHandler(
       }
       if (reading !== 'disconnect') return { claimed: false };
 
-      const outcome = await revokeConnectorByText(
+      let outcome = await revokeConnectorByText(
         database,
         { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider },
         google,
       );
+      for (const next of providers.slice(1)) {
+        if (outcome.status !== 'not_connected') break;
+        outcome = await revokeConnectorByText(
+          database,
+          { familyId: ctx.familyId, parentUserId: ctx.parentUserId, provider: next },
+          google,
+        );
+      }
       if (outcome.status === 'revoke_failed') {
         // Ids and the named outcome only, never the body and never a token (rule #1).
         log.error(
@@ -797,6 +834,12 @@ export function healthReplyHandler(deps: HealthReplyDeps): DeterministicHandler 
  */
 export function emailAlertAddHandler(deps: {
   writeReceipt: OfferReceiptWriter;
+  /**
+   * VIL-719 · tells #ops when the receipt for an event the parent's yes placed (its
+   * tell-after) could not be written. Defaults to the production pager on the turn's own
+   * database; read only while ASK_POLICY_TIERS_ENABLED is on for the family.
+   */
+  pager?: OpsPager;
 }): DeterministicHandler {
   return {
     name: 'email_alert_add',
@@ -821,8 +864,18 @@ export function emailAlertAddHandler(deps: {
       const resolution = outcome.status;
       const reply = await deps.writeReceipt.write(outcome.facts);
       if (reply === null) {
+        // VIL-719 · the event is on the calendar and its receipt could not be written:
+        // nothing is sent, the offer stays open for the redrive, and ops hears of it.
+        const page =
+          resolution === 'added' && askPolicyTiersEnabled(ctx.familyId)
+            ? await (deps.pager ?? failurePageOpsPager(() => database)).page({
+                site: 'offer_receipt_unwritten',
+                facts: {},
+                ref: outcome.offerId,
+              })
+            : null;
         console.info(
-          { status: 'receipt_unsent', outcome: resolution },
+          { status: 'receipt_unsent', outcome: resolution, ...(page ? { page } : {}) },
           'email alert offer: the receipt was not sent',
         );
       }
@@ -1069,6 +1122,7 @@ export function coParentNumberHandler(deps: CoParentNumberDeps): DeterministicHa
         outcome: outcome.status,
         reply: outcome.reply,
         ...('templateKey' in outcome ? { templateKey: outcome.templateKey } : {}),
+        ...('lineHeld' in outcome && outcome.lineHeld ? { lineHeld: outcome.lineHeld } : {}),
       };
     },
   };

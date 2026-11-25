@@ -167,8 +167,10 @@ async function haleKidsOf(
   const haleKids = new Map<string, string[]>();
   for (const row of rows) {
     const names = haleKids.get(row.familyId);
-    if (names) names.push(row.name);
-    else haleKids.set(row.familyId, [row.name]);
+    const name = row.name?.trim() ?? '';
+    if (name.length === 0) continue;
+    if (names) names.push(name);
+    else haleKids.set(row.familyId, [name]);
   }
   return haleKids;
 }

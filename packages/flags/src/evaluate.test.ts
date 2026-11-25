@@ -305,9 +305,9 @@ describe('sync local evaluation', () => {
 describe('an env-only flag, read before any family is known', () => {
   it('is on for the exact value when PostHog answers no for a missing family', () => {
     setFlagEvaluatorForTests(() => false);
-    expect(isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true' })).toBe(
-      true,
-    );
+    expect(
+      isEnabled('ingest-body-max', undefined, { ...ON, INGEST_BODY_MAX_ENABLED: 'true' }),
+    ).toBe(true);
     // Positive control: a flag PostHog decides takes that same answer over its env value.
     expect(isEnabled('f14', undefined, { ...ON, F14_ENABLED: 'true' })).toBe(false);
   });
@@ -320,6 +320,45 @@ describe('an env-only flag, read before any family is known', () => {
     ).toBe(false);
     // Positive control: a flag PostHog decides is on from that same answer.
     expect(isEnabled('f14', undefined, ON)).toBe(true);
+  });
+
+  it('never lights the in-thread onboarding from a PostHog 100% rollout', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('thread-onboarding-v2', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, {
+        ...ON,
+        THREAD_ONBOARDING_V2_ENABLED: 'true\n',
+      }),
+    ).toBe(false);
+    expect(
+      isEnabled('thread-onboarding-v2', undefined, { ...ON, THREAD_ONBOARDING_V2_ENABLED: 'true' }),
+    ).toBe(true);
+  });
+
+  it('VIL-719: PostHog at 100% can never light the ask policy, and a sync never creates it', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('ask-policy-tiers', 'family-1', ON)).toBe(false);
+    expect(
+      isEnabled('ask-policy-tiers', 'family-1', { ...ON, ASK_POLICY_TIERS_ENABLED: 'true\n' }),
+    ).toBe(false);
+    expect(
+      isEnabled('ask-policy-tiers', 'family-1', { ...ON, ASK_POLICY_TIERS_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['ask-policy-tiers'].envOnly).toBe(true);
+  });
+
+  it('VIL-728: PostHog cannot light or darken the group loop guard', () => {
+    setFlagEvaluatorForTests(() => true);
+    expect(isEnabled('group-loop-guard', undefined, ON)).toBe(false);
+    expect(
+      isEnabled('group-loop-guard', undefined, { ...ON, GROUP_LOOP_GUARD_ENABLED: 'true\n' }),
+    ).toBe(false);
+    setFlagEvaluatorForTests(() => false);
+    expect(
+      isEnabled('group-loop-guard', undefined, { ...ON, GROUP_LOOP_GUARD_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['group-loop-guard'].envOnly).toBe(true);
   });
 });
 
@@ -337,6 +376,21 @@ describe('catalog', () => {
       expect(envs.has(row.env)).toBe(false);
       expect(row.posthogKey).toBeNull();
     }
+  });
+
+  it('PostHog can never light the registration pre-flight or free checkout', async () => {
+    setFlagEvaluatorForTests(() => true);
+    const family = 'family-fixture';
+    expect(isEnabled('registration-preflight', family, ON)).toBe(false);
+    expect(
+      isEnabled('registration-preflight', family, {
+        ...ON,
+        REGISTRATION_PREFLIGHT_ENABLED: 'true',
+      }),
+    ).toBe(true);
+    expect(FLAG_BY_KEY['registration-preflight'].parser).toBe('exact-true');
+    expect(FLAGS.some((flag) => flag.env === 'REGISTRATION_FREE_CHECKOUT_ENABLED')).toBe(false);
+    expect(PAYMENT_ENV_ONLY.map((row) => row.env)).toContain('REGISTRATION_FREE_CHECKOUT_ENABLED');
   });
 
   it('pins every parser against its documented on-value', () => {

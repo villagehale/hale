@@ -1,5 +1,6 @@
 import type { PostHog } from 'posthog-node';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetCanaryFamilyCacheForTests, setCanaryFamilyLookupForTests } from './canary-family.js';
 import { captureSafeException } from './exceptions.js';
 import {
   buildGenerationProperties,
@@ -33,6 +34,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   resetPosthogClientForTests();
+  resetCanaryFamilyCacheForTests();
   observeAnthropicCall.mockClear();
 });
 
@@ -138,9 +140,29 @@ describe('worker PostHog: privacy mode with a key', () => {
     expect(props.hale_cache_hit_rate).toBe(0.8);
   });
 
-  it('does not hash a family id without a salt', () => {
+  it('stamps canary from the probe family and not from the prompt', async () => {
+    vi.stubEnv('POSTHOG_ID_SALT', 's');
+    setCanaryFamilyLookupForTests((id) => id === 'probe-family');
+    const capture = vi.fn();
+    const ph = { capture, flush: vi.fn(async () => {}) } as unknown as PostHog;
+    const traced = traceAnthropic(fakeAnthropic(), {}, ph);
+    await withLlmContext({ ...llmFamilyContext('probe-family'), stage: 'coach' }, () =>
+      traced.messages.create({
+        model: 'claude-x',
+        messages: [{ role: 'user', content: 'CANARY' }],
+      } as never),
+    );
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    const sent = capture.mock.calls[0]?.[0] as { properties: Record<string, unknown> };
+    expect(sent.properties.canary).toBe(true);
+    expect(sent.properties.$set).toEqual({ canary: true });
+    expect(JSON.stringify(sent)).not.toContain('probe-family');
+    expect(JSON.stringify(sent)).not.toContain('CANARY');
+  });
+
+  it('does not hash a family id without a salt, and keeps the id for the probe check', () => {
     vi.stubEnv('POSTHOG_ID_SALT', '');
-    expect(llmFamilyContext('raw-family')).toEqual({});
+    expect(llmFamilyContext('raw-family')).toEqual({ familyId: 'raw-family' });
   });
 
   it('records usage on a successful call for the prepaid-credit ledger', async () => {

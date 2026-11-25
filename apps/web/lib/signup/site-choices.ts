@@ -1,12 +1,14 @@
 import { z } from 'zod';
 
+export const SITE_CHOICE_LABEL_MAX_CHARS = 200;
+
 /**
  * One real option the Browser Use agent copied off the provider page.
  * Hale never invents these; the parent picks.
  */
 export const siteChoiceSchema = z.object({
   id: z.string().trim().min(1).max(80),
-  label: z.string().trim().min(1).max(200),
+  label: z.string().trim().min(1).max(SITE_CHOICE_LABEL_MAX_CHARS),
   starts_at: z.string().trim().min(1).max(80).nullable(),
   price_cents: z.number().int().nonnegative().nullable(),
   waitlist: z.boolean(),

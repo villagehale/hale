@@ -108,7 +108,7 @@ describe('extractStateClaims — the false positives that would break production
   it.each([
     ["You're back - I'll text you when something needs doing.", 'START_ACK'],
     [
-      "You're in - I'll text you the week's schedule and pickup reminders, and nothing else.",
+      "You're in - I'll text you the evening before and about an hour before anything you help with, and nothing else.",
       'caregiver accepted',
     ],
     ["I've already texted them - I'll let you know as soon as they answer.", 'caregiver pending'],

@@ -1,10 +1,10 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq } from 'drizzle-orm';
 import { mintChannelSigninTokens } from '~/lib/auth/channel-signin';
-import type { TextConnectProvider } from '~/lib/channel/connect/text-connect';
+import { connectLinkPrefix } from '~/lib/channel/connect/connect-link';
+import type { GoogleBundleLink, TextConnectProvider } from '~/lib/channel/connect/text-connect';
 import { isParentRole } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
-import { appBaseUrl } from '~/lib/cron/email-compliance';
 
 /**
  * The connector handoff's mint: a verified parent's plain "connect my calendar"
@@ -31,8 +31,8 @@ export type ConnectorOfferOutcome =
 /** Where the link lands: the redeem page, which signs the parent in and forwards them
  * straight into this provider's Google consent — no Settings, no Connect button to
  * find. Always the app host (appBaseUrl), never the marketing site: this is an app door. */
-function connectUrl(token: string, provider: TextConnectProvider): string {
-  return `${appBaseUrl()}/connect?t=${token}&to=${provider}`;
+function connectUrl(token: string, provider: TextConnectProvider | GoogleBundleLink): string {
+  return `${connectLinkPrefix()}t=${token}&to=${provider}`;
 }
 
 /** At least one provider, as a tuple, so the URLs come back one-per-provider in the
@@ -85,6 +85,37 @@ export async function offerConnectorLinks<const P extends ProviderList>(
     invalidatePrior?: boolean;
   },
 ): Promise<ConnectorLinksOutcome<P>> {
+  const outcome = await mintLinks(database, input, input.providers);
+  // One URL per provider, in the order asked — established by mintLinks, which
+  // `map` cannot carry back into the tuple type.
+  return outcome.status === 'minted'
+    ? { status: 'minted', urls: outcome.urls as { [K in keyof P]: string } }
+    : outcome;
+}
+
+/**
+ * VIL-721. ONE link for Gmail and the calendar together: one token, one audit row
+ * naming the bundle, and `to=google`, which the redeem page sends into one Google
+ * consent asking for both read scopes (api/integrations/google/connect). Same gates
+ * and the same named declines as the per-provider door.
+ */
+export async function offerGoogleBundleLink(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date; invalidatePrior?: boolean },
+): Promise<ConnectorOfferOutcome> {
+  const outcome = await mintLinks(database, input, ['google']);
+  if (outcome.status !== 'minted') return outcome;
+  const url = outcome.urls[0];
+  return url ? { status: 'minted', url } : { status: 'mint_failed' };
+}
+
+async function mintLinks(
+  database: Database,
+  input: { familyId: string; parentUserId: string; now: Date; invalidatePrior?: boolean },
+  targets: readonly (TextConnectProvider | GoogleBundleLink)[],
+): Promise<
+  { status: 'minted'; urls: string[] } | { status: 'not_enrolled' } | { status: 'mint_failed' }
+> {
   // The two gates the claim flow keeps, re-proven here rather than inherited: an
   // ACTIVE verified non-revoked channel, and a parent seat in the family the job
   // names. A caregiver or a STOPped number gets no session link, ever.
@@ -113,11 +144,11 @@ export async function offerConnectorLinks<const P extends ProviderList>(
       const tx = rawTx as unknown as Database;
       const minted = await mintChannelSigninTokens(tx, {
         userId: input.parentUserId,
-        count: input.providers.length,
+        count: targets.length,
         now: input.now,
         invalidatePrior: input.invalidatePrior,
       });
-      const paired = input.providers.map((provider, index) => {
+      const paired = targets.map((provider, index) => {
         const token = minted[index];
         if (!token) throw new Error('offerConnectorLinks: fewer tokens minted than providers');
         return { provider, token };
@@ -139,9 +170,7 @@ export async function offerConnectorLinks<const P extends ProviderList>(
       return paired.map(({ provider, token }) => connectUrl(token.token, provider));
     });
 
-    // One URL per provider, in the order asked — established by the map above, which
-    // `map` cannot carry back into the tuple type.
-    return { status: 'minted', urls: links as { [K in keyof P]: string } };
+    return { status: 'minted', urls: links };
   } catch {
     // Named rather than thrown (rule #11): a thrown handler would defer the whole turn
     // into hours of queue backoff for a link the parent asked for NOW, and the honest

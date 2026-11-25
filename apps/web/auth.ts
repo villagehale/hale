@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from '~/auth.config';
 import { presentChannelSigninToken } from '~/lib/auth/channel-signin';
 import { authorizeClaimByPhone } from '~/lib/auth/claim-phone-authorize';
+import { connectLinkCodeEnabled, verifyConnectLinkCode } from '~/lib/auth/connect-link-code';
 import { authRateLimited } from '~/lib/auth/rate-limit';
 import { db } from '~/lib/db';
 
@@ -41,7 +42,10 @@ const channelLink = Credentials({
   // already has, so redeeming a link can never fork a second account off the
   // same family.
   id: 'channel-link',
-  credentials: { token: { label: 'Token', type: 'text' } },
+  credentials: {
+    token: { label: 'Token', type: 'text' },
+    code: { label: 'Code', type: 'text' },
+  },
   // The chokepoint for EVERY channel-link sign-in — the /connect redeem action AND
   // a direct POST to /api/auth/callback/channel-link — so the per-IP rate limit
   // lives here to throttle token guessing on both paths. Null on ANY failure
@@ -57,6 +61,14 @@ const channelLink = Credentials({
     }
     if (await authRateLimited()) {
       return null;
+    }
+    if (connectLinkCodeEnabled()) {
+      const code = typeof raw?.code === 'string' ? raw.code : '';
+      const proof = await verifyConnectLinkCode(db(), { token, code });
+      if (!proof.ok) {
+        console.info({ reason: proof.reason }, 'channel-link: code refused');
+        return null;
+      }
     }
     const result = await presentChannelSigninToken(token, db());
     if (!result.ok) {

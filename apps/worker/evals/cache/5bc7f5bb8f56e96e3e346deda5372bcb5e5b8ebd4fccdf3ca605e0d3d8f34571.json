@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Thanks for saying yes, so glad you're in! I'll text you the evening before and about an hour ahead of anything you're helping with, with the time and place. That's all you'll hear from me."
+  },
+  "latencyMs": 1989,
+  "usage": {
+    "input_tokens": 1231,
+    "output_tokens": 67,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

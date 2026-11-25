@@ -166,7 +166,7 @@ const MAX_FAMILIES_PER_RUN = 200;
 
 export interface IntroSweepChild {
   id: string;
-  name: string;
+  name: string | null;
   gender: string;
   dateOfBirth: string;
 }

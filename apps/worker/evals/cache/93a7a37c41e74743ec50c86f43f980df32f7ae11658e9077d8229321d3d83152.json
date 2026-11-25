@@ -1,0 +1,12 @@
+{
+  "value": {
+    "text": "Voici le lien à transmettre à ton co-parent : [[link]]\nQuiconque l'ouvre rejoint ta famille, alors envoie-le seulement à cette personne. Il reste valable 7 jours."
+  },
+  "latencyMs": 1847,
+  "usage": {
+    "input_tokens": 1237,
+    "output_tokens": 81,
+    "cache_read_input_tokens": 1505,
+    "cache_creation_input_tokens": 0
+  }
+}

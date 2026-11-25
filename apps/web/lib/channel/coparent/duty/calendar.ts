@@ -88,8 +88,8 @@ export async function projectDutyOnFamilyEvent(
     .from(schema.children)
     .where(eq(schema.children.familyId, input.familyId));
   const childNames = children
-    .filter((row) => row.familyId === input.familyId && row.name)
-    .map((row) => row.name);
+    .filter((row) => row.familyId === input.familyId)
+    .flatMap((row) => (row.name ? [row.name] : []));
 
   const rows = await database
     .select({

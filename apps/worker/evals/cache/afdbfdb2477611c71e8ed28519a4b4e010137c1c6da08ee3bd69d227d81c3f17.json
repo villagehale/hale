@@ -1,0 +1,8 @@
+{
+  "value": {
+    "reason": "New swim visit for Sam; no matching commitment on that day or time",
+    "same_as": "",
+    "clashes_with": []
+  },
+  "stopReason": "tool_use"
+}

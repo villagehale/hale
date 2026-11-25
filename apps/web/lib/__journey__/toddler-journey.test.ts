@@ -37,6 +37,7 @@ import { roleAllows } from '~/lib/channel/role-scope';
 import type { ApprovalSpine, PendingAction } from '~/lib/channel/router/approval';
 import { approvalHandler } from '~/lib/channel/router/handlers';
 import { smsSegments } from '~/lib/channel/sms-segments';
+import { type SpokenLineRequest, setSharedSpokenLineWriter } from '~/lib/channel/spoken-line';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { draftInlineAction } from '~/lib/coach/inline-action';
@@ -57,6 +58,7 @@ import {
 import { runRegistrationSequenceCron } from '~/lib/registration/sequence/run';
 import { buildShortlist } from '~/lib/registration/sequence/shortlist';
 import { askWriter } from '~/lib/testing/consent-double';
+import { scriptedSpokenLineWriter } from '~/lib/testing/spoken-line.fixture';
 import { recordActivityOffers } from '~/lib/village/live';
 import { fakeWeather } from '~/lib/weather/open-meteo';
 
@@ -331,7 +333,12 @@ interface Journey {
    * than thrown so it lands on the keystone assertion, with the executor's own
    * message, instead of taking every other stage down with it. */
   executed: { ok: boolean; error: string | null };
-  caregiver: { accepted: string; scoped: string; reply: string };
+  caregiver: {
+    accepted: string;
+    scoped: string;
+    reply: string;
+    scopedRequest: SpokenLineRequest | null;
+  };
 }
 
 let journey: Journey;
@@ -858,12 +865,23 @@ async function runToddlerJourney(): Promise<Journey> {
   const battlePlan = await runRegistrationSequenceCron(fake.db, sequenceDeps, BATTLE_PLAN_AT);
 
   // ── STAGE 8 · a grandparent joins, scoped ─────────────────────────────────
+  // VIL-706: the caregiver door's lines are model-written only with their flag lit, and
+  // the writer's requests are kept so the privacy assertion can read what it was told.
+  vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
+  const doorRequests: SpokenLineRequest[] = [];
+  setSharedSpokenLineWriter({
+    async write(request) {
+      doorRequests.push(request);
+      return scriptedSpokenLineWriter.write(request);
+    },
+  });
   await text('add Grandma 647-555-0199 as grandparent');
   await text('yes');
   const granText = (body: string) =>
     handleInboundSms(fake.db, transport.inbound(GRANDPARENT_PHONE, body), intakeDeps);
   const accepted = await granText('yes');
   const scoped = await granText('is Mia feeling better after her shots?');
+  setSharedSpokenLineWriter(scriptedSpokenLineWriter);
 
   // ── coda · the parent withdraws ───────────────────────────────────────────
   // The CASL ledger is append-only, so a withdrawal is a NEW granted=false row rather
@@ -908,6 +926,7 @@ async function runToddlerJourney(): Promise<Journey> {
       accepted: accepted.status,
       scoped: scoped.status,
       reply: transport.bodies().at(-1) as string,
+      scopedRequest: doorRequests.find((r) => r.purpose === 'caregiver_scoped_reply') ?? null,
     },
   };
 }
@@ -1299,9 +1318,15 @@ describe('8 · a grandparent on this family never receives health or teen conten
     expect(journey.caregiver.accepted).toBe('caregiver_accepted');
     expect(journey.caregiver.scoped).toBe('caregiver_scoped_reply');
     expect(journey.caregiver.reply).toContain('I only share the schedule here');
-    // Not a word of what was asked about, and no model was consulted to decide that.
+    // Not a word of what was asked about. The line is model-written (VIL-706), and the
+    // model is never told the question: its facts are the parent's name, nothing else.
     expect(journey.caregiver.reply).not.toContain('Mia');
     expect(journey.caregiver.reply).not.toContain('shots');
+    expect(journey.caregiver.scopedRequest).toMatchObject({
+      purpose: 'caregiver_scoped_reply',
+      addendum: 'door-line',
+    });
+    expect(JSON.stringify(journey.caregiver.scopedRequest)).not.toMatch(/Mia|shots/);
   });
 
   it('denies the health and teen content classes to the role, at the table', () => {

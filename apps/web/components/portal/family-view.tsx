@@ -22,7 +22,9 @@ export function PortalFamily({
   teenGrants: TeenAccessGrantSummary[];
 }) {
   const hasTeen = basics.children.some((child) => deriveStage(child.dateOfBirth) === 'teenager');
-  const childNames = Object.fromEntries(basics.children.map((child) => [child.id, child.name]));
+  const childNames = Object.fromEntries(
+    basics.children.flatMap((child) => (child.name ? [[child.id, child.name] as const] : [])),
+  );
   const you = members.primary?.name?.trim() || members.primary?.email || null;
 
   return (

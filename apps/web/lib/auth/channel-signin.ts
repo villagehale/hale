@@ -275,7 +275,17 @@ export async function channelSigninTokenBelongsToUser(
  */
 export async function consumeChannelSigninTokenById(
   database: Database,
-  input: { tokenId: string; userId: string; now?: Date },
+  input: {
+    tokenId: string;
+    userId: string;
+    now?: Date;
+    /**
+     * A consent that started on a live link may return after the link's 15 minutes (the
+     * signed state has its own 10). The burn is then still the one thing that makes that
+     * state single-use, so it holds for an expired row too.
+     */
+    ignoreExpiry?: boolean;
+  },
 ): Promise<{ ok: true } | { ok: false; reason: 'not_usable' | 'spent' }> {
   const now = input.now ?? new Date();
   const identity = await channelSigninIdentity(database, input.userId);
@@ -291,7 +301,7 @@ export async function consumeChannelSigninTokenById(
           eq(schema.channelSigninTokens.id, input.tokenId),
           eq(schema.channelSigninTokens.userId, input.userId),
           isNull(schema.channelSigninTokens.consumedAt),
-          gt(schema.channelSigninTokens.expiresAt, now),
+          input.ignoreExpiry ? undefined : gt(schema.channelSigninTokens.expiresAt, now),
         ),
       )
       .returning({ id: schema.channelSigninTokens.id });

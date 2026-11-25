@@ -139,6 +139,7 @@ describe('authorized signup runner', () => {
 
   beforeEach(() => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
     vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', '');
     vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_BASE_URL', '');
   });

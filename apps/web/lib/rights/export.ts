@@ -59,10 +59,16 @@ const NOT_IN_FAMILY_EXPORT = [
   // VIL-734. That one driver stopped Hale, left no number, left the household, or has a text
   // still unread.
   'team_schedule_driver_unreachable',
+  // VIL-719. That an email in one parent's inbox carried a change Hale did not make.
+  'team_schedule_change_not_run',
   // VIL-735. A text about one adult's payment. Their own copy carries the notice itself.
   'billing_notice_sent',
   'billing_notice_send_failed',
   'billing_notice_dropped',
+  // VIL-759. One adult's invite that Linq did not accept.
+  'third_party_invite_send_failed',
+  // VIL-758. That a sign-in code went to one adult's number.
+  'connector_link_code_sent',
 ] as const satisfies readonly AuditVerb[];
 
 /** Of those, the rows the adult they are about gets in their own copy (right of access). */
@@ -74,6 +80,9 @@ const OWN_ROWS_IN_EXPORT = [
   'ack_eta_deadline',
   'ack_eta_late_note_sent',
   'team_schedule_driver_unreachable',
+  'team_schedule_change_not_run',
+  'third_party_invite_send_failed',
+  'connector_link_code_sent',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 
 export interface FamilyExportDocument {
@@ -201,6 +210,19 @@ export interface FamilyExportDocument {
     providerHost: string;
     fieldsAllowed: string[];
     messageId: string;
+    createdAt: string;
+  }[];
+  /**
+   * VIL-715 — what each registration ask showed the parent and what their yes bound:
+   * program facts, ids and cents only. Never a child's name, birth date or age. A teen's row
+   * and another parent's row keep only that the ask existed (`withheld`).
+   */
+  signupTerms: {
+    offerId: string;
+    withheld: 'teen' | 'another_adult' | null;
+    shown: unknown;
+    approved: unknown;
+    approvedAt: string | null;
     createdAt: string;
   }[];
   /**
@@ -352,6 +374,33 @@ export interface AssembleFamilyExportDeps {
    * stays single-sourced (and swappable in tests). */
   loadTrail?: (database: Database, familyId: string) => Promise<TrailView[]>;
   now?: Date;
+}
+
+/**
+ * Preview shares the Prod database and does not migrate, so an export there can run before
+ * this table exists. Only that one error reads as no rows; any other failure still throws.
+ */
+async function readSignupTermsRows(database: Database, familyId: string) {
+  const terms = schema.authorizedSignupTerms;
+  try {
+    return await database
+      .select({
+        offerId: terms.offerId,
+        childId: terms.childId,
+        parentUserId: terms.parentUserId,
+        shown: terms.shown,
+        approved: terms.approved,
+        approvedAt: terms.approvedAt,
+        createdAt: terms.createdAt,
+      })
+      .from(terms)
+      .where(eq(terms.familyId, familyId))
+      .orderBy(terms.createdAt);
+  } catch (err) {
+    const fields = err as { code?: string; cause?: { code?: string } } | null;
+    if (fields?.code === '42P01' || fields?.cause?.code === '42P01') return [];
+    throw err;
+  }
 }
 
 export async function assembleFamilyExport(
@@ -781,6 +830,25 @@ export async function assembleFamilyExport(
   );
   const household = await loadHouseholdExport(database, familyId, deps.actorUserId, gate);
   const requesterOnly = await loadRequesterOnlyExport(database, familyId, deps.actorUserId, gate);
+  const termsRows = await readSignupTermsRows(database, familyId);
+  const signupTerms = termsRows.map((row) => {
+    const withheld = gate.isPrivate([row.childId], [])
+      ? ('teen' as const)
+      : row.parentUserId !== deps.actorUserId
+        ? ('another_adult' as const)
+        : null;
+    const createdAt = row.createdAt.toISOString();
+    return withheld
+      ? { offerId: row.offerId, withheld, shown: null, approved: null, approvedAt: null, createdAt }
+      : {
+          offerId: row.offerId,
+          withheld,
+          shown: row.shown,
+          approved: row.approved,
+          approvedAt: row.approvedAt?.toISOString() ?? null,
+          createdAt,
+        };
+  });
 
   await database.insert(schema.auditLog).values({
     familyId,
@@ -808,6 +876,7 @@ export async function assembleFamilyExport(
     watchedSpots,
     activityBookings,
     authorizedSignups,
+    signupTerms,
     signupFieldConsents,
     sameActivityOptIns,
     goingCountOptIns,

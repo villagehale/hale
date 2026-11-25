@@ -1,7 +1,12 @@
 'use client';
 
 import { useActionState } from 'react';
-import { FallbackCard, LandingCard, StatusCard } from '~/components/hale/connect/connect-cards';
+import {
+  ConnectCodeCard,
+  FallbackCard,
+  LandingCard,
+  StatusCard,
+} from '~/components/hale/connect/connect-cards';
 import {
   type ChannelLinkRedeemState,
   redeemChannelLinkAction,
@@ -25,10 +30,17 @@ export function ChannelLinkRedeem({
   smsHref: string | null;
 }) {
   const provider = asTextConnectProvider(to);
+  // VIL-721. `to` was narrowed on the server, so `google` here means the one-link flow
+  // is on: the landing names both Gmail and the calendar.
+  const landing = to === 'google' ? to : provider;
   const action = redeemChannelLinkAction.bind(null, token, to);
   const [state, formAction, pending] = useActionState<ChannelLinkRedeemState, FormData>(action, {
     status: 'idle',
   });
+
+  if (state.status === 'code') {
+    return <ConnectCodeCard message={state.message} formAction={formAction} pending={pending} />;
+  }
 
   if (state.status === 'error') {
     const copy = redeemErrorStatus(state.message, provider);
@@ -42,9 +54,9 @@ export function ChannelLinkRedeem({
     );
   }
 
-  if (!provider) {
+  if (!landing) {
     return <FallbackCard formAction={formAction} pending={pending} />;
   }
 
-  return <LandingCard copy={landingCopy(provider)} formAction={formAction} pending={pending} />;
+  return <LandingCard copy={landingCopy(landing)} formAction={formAction} pending={pending} />;
 }
