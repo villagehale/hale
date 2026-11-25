@@ -34,7 +34,7 @@ const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], str
 const TEXT_CARD: Record<Locale, { name: string; price: string; meta: string }> = {
   en: { name: 'Text', price: '$0/mo', meta: 'No card needed at all' },
   fr: { name: 'Texto', price: '0 $/mois', meta: 'Aucune carte, vraiment.' },
-  zh: { name: '短信', price: '每月 $0', meta: '完全不需要银行卡。' },
+  zh: { name: 'iMessage', price: '每月 $0', meta: '完全不需要银行卡。' },
 };
 
 const locales = ['en', 'fr', 'zh'] as const;

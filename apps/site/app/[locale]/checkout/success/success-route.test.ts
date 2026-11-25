@@ -230,7 +230,7 @@ describe('with the flag off', () => {
   it.each([
     ['en', 'You&#x27;re in.', 'Text Hale to start.'],
     ['fr', 'C’est fait.', 'Texte Hale pour commencer.'],
-    ['zh', '已经完成。', '给 Hale 发条短信就能开始。'],
+    ['zh', '已经完成。', '给 Hale 发条 iMessage 就能开始。'],
   ] as const)(
     '%s keeps today’s page, without the removed sentence',
     async (locale, heading, lede) => {
