@@ -788,8 +788,8 @@
 .promo-sec.promo-notes .promo-card {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 18px 32px 32px;
+  gap: 12px;
+  padding: 8px 24px 16px;
   border-radius: 4px;
   color: #1c1c1e;
   background-color: #fff8dc;
@@ -806,7 +806,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
+  min-height: 22px;
   font-family: var(--font-ui);
   font-size: 20px;
   font-weight: 500;
@@ -825,7 +825,7 @@
 .promo-sec.promo-notes .promo-kicker {
   display: block;
   width: fit-content;
-  margin: 0 0 6px;
+  margin: 0 0 2px;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -841,8 +841,8 @@
 }
 .promo-sec.promo-notes .promo-sheet {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(180px, 0.72fr);
-  column-gap: 28px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
   align-items: start;
 }
 .promo-sec.promo-notes .promo-main {
@@ -853,16 +853,16 @@
   display: grid;
   justify-items: end;
   align-items: start;
-  padding-top: 8px;
+  padding-top: 4px;
 }
 .promo-sec.promo-notes .promo-notes-aside::before {
   content: "";
   position: absolute;
   z-index: 2;
   top: 0;
-  right: 36px;
-  width: 112px;
-  height: 32px;
+  right: 18px;
+  width: 56px;
+  height: 16px;
   background: rgb(255 224 102 / 0.85);
   transform: rotate(-8deg);
   pointer-events: none;
@@ -870,14 +870,14 @@
 .promo-sec.promo-notes .promo-notes-mark {
   position: relative;
   z-index: 1;
-  width: min(100%, 240px);
+  width: 120px;
   height: auto;
   border-radius: 30%;
   transform: rotate(-2.5deg);
   box-shadow: 0 18px 36px rgb(28 28 30 / 0.16);
 }
 .promo-sec.promo-notes .promo-sale {
-  margin-top: 4px;
+  margin-top: 0;
   font-family: "Hale Notes Display", "Segoe Script", cursive;
   font-weight: 400;
   font-size: clamp(56px, 6.2vw, 92px);
@@ -902,7 +902,31 @@
   background-position: 0 78%;
 }
 .promo-sec.promo-notes .promo-offer {
-  margin-top: 8px;
+  margin-top: 2px;
+}
+.promo-sec.promo-notes .promo-price-note {
+  margin-top: 4px;
+}
+.promo-sec.promo-notes .promo-lede {
+  margin-top: 10px;
+}
+.promo-sec.promo-notes .promo-chips {
+  margin-top: 10px;
+  gap: 8px;
+}
+.promo-sec.promo-notes .promo-ctas {
+  margin-top: 12px;
+  gap: 8px 16px;
+}
+.promo-sec.promo-notes .promo-fine {
+  margin-top: 6px;
+}
+.promo-sec.promo-notes .promo-points {
+  gap: 10px;
+}
+.promo-sec.promo-notes .promo-points li {
+  gap: 10px;
+  padding: 12px 14px;
 }
 .promo-sec.promo-notes .promo-price {
   align-items: flex-end;
@@ -954,7 +978,11 @@
   color: #4a4338;
   text-decoration-color: #ff6b4a;
 }
+.promo-sec.promo-notes .promo-offer .promo-price {
+  margin-top: 2px;
+}
 .promo-sec.promo-notes .promo-offer-plus {
+  margin-top: 4px;
   color: #1c1c1e;
   font-size: 20px;
 }
@@ -983,6 +1011,7 @@
   line-height: 1.45;
 }
 .promo-sec.promo-notes .promo-chips li {
+  padding: 4px 12px;
   background: rgb(255 224 102 / 0.55);
   border: 0;
   color: #1c1c1e;
@@ -1051,7 +1080,7 @@
 @media (max-width: 860px) {
   .promo-sec.promo-notes .promo-sheet {
     grid-template-columns: 1fr;
-    row-gap: 4px;
+    row-gap: 2px;
   }
   .promo-sec.promo-notes .promo-notes-aside {
     order: -1;
@@ -1067,8 +1096,11 @@
     content: none;
   }
   .promo-sec.promo-notes .promo-card {
-    padding: 14px 16px 22px;
-    gap: 16px;
+    padding: 6px 12px 12px;
+    gap: 8px;
+  }
+  .promo-sec.promo-notes .promo-points li {
+    padding: 10px 12px;
   }
   .promo-sec.promo-notes .promo-notes-bar {
     font-size: 17px;
