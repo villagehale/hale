@@ -273,7 +273,7 @@ function Thread({ card }: { card: PaintedShareCard }) {
               lineHeight: 1.15,
             }}
           >
-            <BubbleCopy text={outgoing?.text ?? ''} color="#ffffff" />
+            <BubbleCopy text={outgoing?.texts[0] ?? ''} color="#ffffff" />
             <img src={RAISE_HANDS} alt="" width={20} height={20} />
           </div>
         </div>
