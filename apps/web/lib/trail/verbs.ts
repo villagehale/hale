@@ -781,7 +781,7 @@ const VERBS: Record<AuditVerb, Verb> = {
     family: 'problem',
   },
   family_plan_comped: {
-    sentence: 'your family got the Family plan, free for life',
+    sentence: 'your family joined Max',
     family: 'done',
   },
   billing_refund_ready: {
