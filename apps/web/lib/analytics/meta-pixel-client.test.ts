@@ -33,18 +33,21 @@ afterEach(() => {
 });
 
 describe('installMetaPixel', () => {
-  it('inits one id and tracks PageView once', () => {
+  it('turns off automatic events, inits one id and tracks PageView once', () => {
     installMetaPixel(OLD_ID);
     expect(queue()).toEqual([
+      ['set', 'autoConfig', false, OLD_ID],
       ['init', OLD_ID],
       ['track', 'PageView'],
     ]);
   });
 
-  it('inits each id, then tracks PageView once', () => {
+  it('turns off automatic events for each id before its init, then tracks PageView once', () => {
     installMetaPixel(`${OLD_ID}, ${NEW_ID}`);
-    expect(queue().filter(([method]) => method === 'init')).toEqual([
+    expect(queue().filter(([method]) => method !== 'track')).toEqual([
+      ['set', 'autoConfig', false, OLD_ID],
       ['init', OLD_ID],
+      ['set', 'autoConfig', false, NEW_ID],
       ['init', NEW_ID],
     ]);
     expect(

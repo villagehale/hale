@@ -16,6 +16,7 @@ interface PixelWindow extends Window {
   fbq?: Fbq;
   _fbq?: Fbq;
   __haleMetaPixel?: boolean;
+  __haleMetaPixelRevoked?: boolean;
 }
 
 /**
@@ -68,12 +69,30 @@ export function installMetaPixel(pixelId: string | readonly string[]): void {
   fbq.disablePushState = true;
   w.fbq = fbq;
   w._fbq = fbq;
-  for (const id of ids) fbq('init', id);
+  for (const id of ids) {
+    // Automatic events (button clicks, page metadata) would carry whatever page the
+    // parent is on; only the PageView below is sent.
+    fbq('set', 'autoConfig', false, id);
+    fbq('init', id);
+  }
   fbq('track', 'PageView');
   const script = document.createElement('script');
   script.async = true;
   script.src = PIXEL_SRC;
   document.head.appendChild(script);
+}
+
+/**
+ * fbevents.js stays loaded for the rest of a single-page session. Leaving an allowed path
+ * revokes the pixel, which pauses every send, and coming back grants it again. Nothing
+ * happens before the pixel is installed, or when the state does not change.
+ */
+export function setMetaPixelAllowed(allowed: boolean): void {
+  const w = pixelWindow();
+  if (!w?.fbq || !w.__haleMetaPixel) return;
+  if (allowed === !w.__haleMetaPixelRevoked) return;
+  w.__haleMetaPixelRevoked = !allowed;
+  w.fbq('consent', allowed ? 'grant' : 'revoke');
 }
 
 export function metaClickCookieClears(hostname: string, name: string): string[] {

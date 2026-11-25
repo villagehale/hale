@@ -62,13 +62,24 @@ async function mountAt(url: string): Promise<{ queue: unknown[][]; scripts: stri
   };
 }
 
+/** A client-side navigation: the URL and usePathname change, and the same tree re-renders. */
+async function navigateTo(url: string): Promise<void> {
+  const parsed = new URL(url, 'https://app.example.test');
+  (window as PixelWindow).happyDOM?.setURL(parsed.href);
+  pathBox.value = parsed.pathname;
+  const { MetaPixel } = await import('./meta-pixel');
+  act(() => root?.render(createElement(MetaPixel, { pixelId: `${OLD_ID},${NEW_ID}` })));
+}
+
 describe('MetaPixel on the /join page', () => {
   it.each(['/join', '/join?utm_source=meta&fbclid=abc', '/join?checkout=cancelled'])(
     'inits both ids, tracks one PageView and loads fbevents.js on %s',
     async (url) => {
       const { queue, scripts } = await mountAt(url);
       expect(queue).toEqual([
+        ['set', 'autoConfig', false, OLD_ID],
         ['init', OLD_ID],
+        ['set', 'autoConfig', false, NEW_ID],
         ['init', NEW_ID],
         ['track', 'PageView'],
       ]);
@@ -81,6 +92,20 @@ describe('MetaPixel on the /join page', () => {
   it('turns off the pixel’s own history-change PageViews before fbevents.js loads', async () => {
     await mountAt('/join');
     expect((window as PixelWindow).fbq?.disablePushState).toBe(true);
+  });
+
+  // fbevents.js stays loaded for the rest of a single-page session, so leaving /join
+  // by a client-side visit must stop it sending from pages it may not see.
+  it('a client-side visit from /join to another app page revokes the pixel; coming back grants it', async () => {
+    await mountAt('/join');
+    await navigateTo('/settings');
+    const afterLeaving = [...((window as PixelWindow).fbq?.queue ?? [])];
+    await navigateTo('/join');
+    const queue = (window as PixelWindow).fbq?.queue ?? [];
+
+    expect(afterLeaving.at(-1)).toEqual(['consent', 'revoke']);
+    expect(queue.at(-1)).toEqual(['consent', 'grant']);
+    expect(queue.filter(([method]) => method === 'track')).toEqual([['track', 'PageView']]);
   });
 });
 
