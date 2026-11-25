@@ -811,7 +811,7 @@
   font-size: 20px;
   font-weight: 500;
   line-height: 1;
-  color: #b8860b;
+  color: #8a6508;
   pointer-events: none;
   user-select: none;
 }
@@ -829,7 +829,7 @@
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #b8860b;
+  color: #8a6508;
   font-family: var(--font-ui);
   font-size: 15px;
   font-weight: 600;
@@ -904,6 +904,19 @@
 .promo-sec.promo-notes .promo-offer {
   margin-top: 8px;
 }
+.promo-sec.promo-notes .promo-price {
+  align-items: flex-end;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.promo-sec.promo-notes .promo-price-side {
+  align-self: flex-end;
+  height: auto;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-left: 20px;
+  padding: 0 0 0.1em;
+}
 .promo-sec.promo-notes .promo-offer-tier {
   background: #ffe066;
   color: #1c1c1e;
@@ -917,16 +930,24 @@
   color: #1c1c1e;
 }
 .promo-sec.promo-notes .promo-price-sym {
+  align-self: flex-end;
+  margin-top: 0;
+  margin-bottom: 0.28em;
+  line-height: 1;
   font-size: clamp(28px, 3vw, 40px);
 }
 .promo-sec.promo-notes .promo-price-num {
+  line-height: 0.86;
+  padding-right: 0.08em;
   font-size: clamp(84px, 8.5vw, 112px);
   background-image: linear-gradient(#ffe066, #ffe066);
   background-repeat: no-repeat;
+  background-origin: content-box;
   background-size: 100% 0.34em;
   background-position: 0 84%;
 }
 .promo-sec.promo-notes .promo-price-per {
+  line-height: 1;
   font-size: clamp(26px, 2.6vw, 36px);
 }
 .promo-sec.promo-notes .promo-price-regular {
@@ -983,7 +1004,7 @@
   text-decoration-color: rgb(28 28 30 / 0.35);
 }
 .promo-sec.promo-notes .promo-lockin:hover {
-  text-decoration-color: #b8860b;
+  text-decoration-color: #8a6508;
 }
 .promo-sec.promo-notes .promo-fine {
   color: #5c5346;
@@ -1014,7 +1035,7 @@
 }
 .promo-sec.promo-notes .promo-points a {
   color: #1c1c1e;
-  text-decoration-color: #b8860b;
+  text-decoration-color: #8a6508;
 }
 :root[data-theme="dark"] .promo-sec.promo-notes .promo-card,
 :root.dark .promo-sec.promo-notes .promo-card {
