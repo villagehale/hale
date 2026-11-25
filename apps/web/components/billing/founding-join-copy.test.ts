@@ -74,7 +74,7 @@ describe('/founding join copy', () => {
     const html = renderToStaticMarkup(createElement(FoundingJoinForm, LABELS));
     expect(html).not.toContain('will not text first');
     expect(html).toContain(
-      'Plus $59/yr or Max $99/yr, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime.</p>',
+      'Plus $59/yr or Max $99/yr, locked in. We’ll text you a code, then Stripe takes the payment. Full refund anytime.</p>',
     );
   });
 

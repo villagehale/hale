@@ -6,7 +6,7 @@ export function FreeJoinCard() {
     <section className={`${stage.card} ${stage.door}`} aria-label="Text">
       <div className={stage.act}>
         <p className={stage.eyebrow}>Text</p>
-        <h1 className={stage.h1}>$0/mo</h1>
+        <h1 className={stage.h1}>$0</h1>
         <p className={stage.lede}>No card needed.</p>
       </div>
     </section>

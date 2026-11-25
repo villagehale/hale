@@ -37,11 +37,12 @@ describe('FoundingJoinForm', () => {
 });
 
 describe('FreeJoinCard', () => {
-  it('names Text at $0/mo next to founding join, with no price-word', () => {
+  it('names Text at $0 next to founding join, with no price-word', () => {
     const html = renderToStaticMarkup(createElement(FreeJoinCard));
     const priceWord = 'fr' + 'ee';
     expect(html).toContain('Text');
-    expect(html).toContain('$0/mo');
+    expect(html).toContain('>$0</h1>');
+    expect(html).not.toContain('$0/mo');
     expect(html).toContain('No card needed.');
     expect(html).not.toMatch(new RegExp(`\\b${priceWord}\\b`, 'i'));
     expect(html).not.toMatch(/\$[1-9]/);
@@ -61,13 +62,14 @@ describe('/founding three-option pair', () => {
       ]),
     );
     expect(html).toContain('Text');
-    expect(html).toContain('$0/mo');
+    expect(html).toContain('>$0</h1>');
+    expect(html).not.toContain('$0/mo');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
     expect(html).toContain('Join Hale');
     expect(html).not.toMatch(/biggest/i);
     expect(html).not.toMatch(/founding famil/i);
-    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
+    expect(html).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('Continue ·');
   });
