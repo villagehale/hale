@@ -203,7 +203,6 @@ export function FoundingJoinForm({
       <section className={`${stage.card} ${stage.door}`}>
         <div className={stage.act}>
           <div className={styles.stack}>
-            <p className={styles.eyebrow}>Biggest sale of the year</p>
             <h1 className={stage.h1}>This number is already on a paid plan.</h1>
             {hasThread === null ? null : (
               <p className={stage.lede}>
@@ -244,7 +243,6 @@ export function FoundingJoinForm({
     <section className={`${stage.card} ${stage.door}`}>
       <div className={stage.act}>
         <div className={styles.stack}>
-          <p className={styles.eyebrow}>Biggest sale of the year</p>
           <h1 className={stage.h1}>{heading}</h1>
           <p className={stage.lede}>{lede}</p>
           {cancelled ? (

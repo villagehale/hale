@@ -237,7 +237,7 @@ describe('the positioning noun is gone from every bundle', () => {
    * "Family assistant" is the category the pre-F14 site sold. It is not what the
    * product says about itself: the live intake greeting and /for-centres both
    * describe the loop — it finds what is on, it watches the sign-up morning, it
-   * comes back and asks how it went — with no "assistant" in them. The site was
+   * comes back after — with no "assistant" in them. The site was
    * behind its own machine, not ahead of it.
    *
    * The ban is on the POSITIONING PHRASE. The anti-scam line now says Hale

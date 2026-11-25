@@ -48,16 +48,19 @@ describe('/founding offer surface', () => {
     vi.unstubAllEnvs();
   });
 
-  it('during the window shows Free, Plus annual, and Max annual, not monthly or list annual', async () => {
+  it('during the window shows Text, Plus annual, and Max annual, not paid monthly or list annual', async () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
     const html = await renderFounding();
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
+    expect(html).toContain('No card needed.');
     expect(html).toContain('Join Hale');
+    expect(html).not.toMatch(/biggest/i);
     expect(html).not.toMatch(/founding famil/i);
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('$19');
     expect(html).not.toContain('Continue ·');
@@ -76,10 +79,11 @@ describe('/founding offer surface', () => {
     vi.stubEnv('PROMO_PREVIEW_TOKEN', 'secret');
     vi.stubEnv('AUTH_SECRET', 'test-secret');
     const html = await renderFounding({ preview: 'secret' });
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(cookieJar.value).toBeTruthy();
   });
 

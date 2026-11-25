@@ -29,15 +29,16 @@ describe('Plan page offer surface', () => {
     basicsMock.mockResolvedValue({ planTier: 'free' });
   });
 
-  it('during the window shows Free, Plus annual, and Max annual, not monthly or list annual', async () => {
+  it('during the window shows Text, Plus annual, and Max annual, not paid monthly or list annual', async () => {
     vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
     const html = await renderPlan();
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
     expect(html).toContain('Plus');
     expect(html).toContain('Max');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(html).not.toContain('Continue ·');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('disabled');
@@ -48,10 +49,11 @@ describe('Plan page offer surface', () => {
     familyIdMock.mockResolvedValue('fam-preview');
     vi.stubEnv('PROMO_PREVIEW_FAMILY_IDS', 'fam-preview');
     const html = await renderPlan();
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(html).not.toContain('Continue ·');
   });
 

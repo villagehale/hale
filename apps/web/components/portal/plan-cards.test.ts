@@ -9,23 +9,25 @@ import { FoundingPlan, ListPlan, PaidPlan, PlanOffer, PromoOfferPlan } from './p
 const here = dirname(fileURLToPath(import.meta.url));
 
 describe('FoundingPlan', () => {
-  it('promises every feature free, with no tier, price, or founding ordinal', () => {
+  it('names Text at $0/mo, with no price-word and no founding ordinal', () => {
     const html = renderToStaticMarkup(createElement(FoundingPlan));
     const source = readFileSync(join(here, 'plan-cards.tsx'), 'utf8');
+    const priceWord = 'fr' + 'ee';
 
-    expect(html).toMatch(/>Free<\/span>/);
+    expect(html).toMatch(/>Text<\/span>/);
+    expect(html).toContain('$0/mo');
+    expect(html).toContain('No card needed.');
     expect(html).not.toContain('Founding family');
-    expect(html).toContain('Everything Hale does is free for you.');
-    expect(html).toContain('There’s no plan to pick and nothing to pay.');
+    expect(html).not.toMatch(new RegExp(priceWord, 'i'));
     expect(html).toContain('you’ll hear from Hale well before it does.');
-    expect(html).not.toMatch(/coming soon|plus|max|tell me when|only free|\$\d/i);
+    expect(html).not.toMatch(/coming soon|plus|max|tell me when/i);
     expect(source).not.toMatch(/founding_number|foundingNumber/);
     expect(html).not.toMatch(/#\s*\d/);
   });
 
-  it('badges as Free when shown next to the founding offer', () => {
-    const html = renderToStaticMarkup(createElement(FoundingPlan, { badge: 'Free' }));
-    expect(html).toContain('Free');
+  it('badges as Text when shown next to the sale offer', () => {
+    const html = renderToStaticMarkup(createElement(FoundingPlan, { badge: 'Text' }));
+    expect(html).toContain('Text');
     expect(html).not.toContain('Founding family');
   });
 });
@@ -79,17 +81,18 @@ describe('promo Plan cards', () => {
 });
 
 describe('PlanOffer', () => {
-  it('during the promo window renders Free, Plus annual, and Max annual only', () => {
+  it('during the promo window renders Text, Plus annual, and Max annual only', () => {
     const html = renderToStaticMarkup(
       createElement(PlanOffer, { currency: 'CAD', surface: 'founding' }),
     );
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
     expect(html).toContain('Plus');
     expect(html).toContain('Max');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
     expect(html).toContain('Continue to checkout');
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('$19');
     expect(html).not.toContain('Continue ·');

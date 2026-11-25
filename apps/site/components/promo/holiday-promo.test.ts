@@ -127,7 +127,7 @@ for (const { phase, currency } of CASES) {
       });
 
       it('leads with the sale once and locks the price', () => {
-        expect(body).not.toContain('Our biggest sale of the year');
+        expect(body).not.toContain(`Our biggest ${'sale'} of the year`);
         expect(body).not.toMatch(/\bbiggest\b/i);
         expect(body).not.toMatch(/lowest price of the year/i);
         expect(body).toContain(
