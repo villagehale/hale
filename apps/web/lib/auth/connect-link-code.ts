@@ -1,14 +1,16 @@
 import { type Database, schema } from '@hale/db';
 import { isEnabled } from '@hale/flags';
-import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { recallChannelSigninParent } from '~/lib/auth/channel-signin';
 import { readSendRefusal } from '~/lib/channel/outbound-transport';
-import { OTP_MAX_ATTEMPTS, isOtpExpired, verifyBoundOtpCode } from '~/lib/channels/otp';
+import { isOtpExpired, verifyBoundOtpCode } from '~/lib/channels/otp';
 import type { OtpSender } from '~/lib/channels/otp-sender';
 import {
+  codesForDoor,
   otpResendWaitMs,
   requestPhoneOtp,
   resolveSendablePhone,
+  spendCodeAttempt,
 } from '~/lib/channels/sms-consent-core';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString } from '~/lib/crypto/string-cipher';
@@ -127,7 +129,7 @@ export async function verifyConnectLinkCode(
       expiresAt: table.expiresAt,
     })
     .from(table)
-    .where(and(eq(table.userId, link.userId), isNull(table.consumedAt)))
+    .where(and(eq(table.userId, link.userId), isNull(table.consumedAt), codesForDoor('link')))
     .orderBy(desc(table.createdAt))
     .limit(1);
   if (!pending) return refuse('no_pending_code');
@@ -136,20 +138,7 @@ export async function verifyConnectLinkCode(
   }
   if (isOtpExpired(pending.expiresAt, now)) return refuse('expired');
 
-  // Spend the attempt before comparing, in one statement, so simultaneous guesses
-  // cannot all read the same count and exceed the cap.
-  const [attempt] = await database
-    .update(table)
-    .set({ attemptCount: sql`${table.attemptCount} + 1` })
-    .where(
-      and(
-        eq(table.id, pending.id),
-        isNull(table.consumedAt),
-        lt(table.attemptCount, OTP_MAX_ATTEMPTS),
-      ),
-    )
-    .returning({ id: table.id });
-  if (!attempt) return refuse('locked');
+  if ((await spendCodeAttempt(database, pending.id)) === null) return refuse('locked');
 
   if (!verifyBoundOtpCode(input.code, link.tokenId, pending.codeHash)) {
     return refuse('wrong_code');

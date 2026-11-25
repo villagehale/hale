@@ -247,6 +247,11 @@ export const FLAGS = [
   // the number held for the parent it names. Exact `true`. Env-only: read before any family
   // is known, so a PostHog 100% rollout must never be able to light it.
   exact('connect-link-code', 'CONNECT_LINK_CODE_ENABLED', { envOnly: true }),
+  // VIL-774. Every check of a texted code spends one of its three tries in one statement,
+  // so guesses sent at the same moment cannot share a try, and a check on one door never
+  // touches a code sent for a texted link (or the reverse). Exact `true`. Env-only: read
+  // before any family is known.
+  exact('signin-code-atomic-attempts', 'SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED', { envOnly: true }),
   // VIL-729. At most one Checkout Session a family can pay: a new checkout returns the open
   // one (same adult, same price) or expires it in Stripe first. Exact `true`. Env-only: it
   // guards a live payment path, so a PostHog rollout must never be able to change it.
