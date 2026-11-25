@@ -307,12 +307,12 @@ function pageHeadline(
   }
 }
 
-/** Three earlier Hale bubbles, then the saturday yes already on the card. */
+/** Class, time, and place, then Priya, then the yes already on the card. */
 function thread(locale: Locale): ShareThreadLine[] {
   return [
-    { from: 'hale', name: 'Hale', text: tx(locale, 'tot gym, sat 9:30am') },
+    { from: 'hale', name: 'Hale', text: tx(locale, 'toddler swim') },
+    { from: 'hale', name: 'Hale', text: tx(locale, 'saturday, 10am') },
     { from: 'hale', name: 'Hale', text: tx(locale, 'at the community centre') },
-    { from: 'hale', name: 'Hale', text: tx(locale, 'saturday morning, if you want it') },
     { from: 'priya', name: 'Priya', text: tx(locale, 'we should do something saturday') },
     { from: 'me', name: '', text: tx(locale, 'we’re in') },
   ];

@@ -157,25 +157,34 @@ describe('share card copy', () => {
   it('puts a class above the saturday yes, in each locale', () => {
     const en = paintShareCard('home', query({ locale: 'en' })).chat.lines.map((line) => line.text);
     expect(en).toEqual([
-      'tot gym, sat 9:30am',
+      'toddler swim',
+      'saturday, 10am',
       'at the community centre',
-      'saturday morning, if you want it',
       'we should do something saturday',
       'we’re in',
     ]);
-    for (const locale of ['fr', 'zh'] as const) {
-      const lines = paintShareCard('home', query({ locale })).chat.lines.map((line) => line.text);
-      expect(lines).toHaveLength(en.length);
-      expect(lines).not.toEqual(en);
-      expect(lines.join('\n')).not.toMatch(BANNED);
-    }
+    expect(
+      paintShareCard('home', query({ locale: 'fr' })).chat.lines.map((line) => line.text),
+    ).toEqual([
+      'natation pour les tout-petits',
+      'samedi à 10 h',
+      'au centre communautaire',
+      'on devrait faire quelque chose samedi',
+      'on est partants',
+    ]);
+    expect(
+      paintShareCard('home', query({ locale: 'zh' })).chat.lines.map((line) => line.text),
+    ).toEqual(['幼儿游泳', '周六上午 10 点', '在社区中心', '我们周六应该做点什么', '我们去']);
   });
 
   it('takes the home card’s second clause from the existing “we’re in” line', () => {
     for (const locale of LOCALES) {
       const full = tx(locale, 'We’re in, I can drive').toLocaleLowerCase();
       const marked = HOME_SLOGAN[locale].marked.match(/[“«「]([^”»」]+)[”»」]/)?.[1] ?? '';
-      const inner = marked.replace(/[.。]\s*$/, '').trim().toLocaleLowerCase();
+      const inner = marked
+        .replace(/[.。]\s*$/, '')
+        .trim()
+        .toLocaleLowerCase();
       expect(full.startsWith(inner)).toBe(true);
     }
   });
