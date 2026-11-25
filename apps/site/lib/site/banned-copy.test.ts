@@ -39,6 +39,9 @@ const phrases = [
 
 const priceWordPattern = new RegExp(`\\b${priceWord}\\b`, 'i');
 
+/** Sale-block only. The home heading still says this with "today", and that line stays. */
+const promoSpotPhrases = ['Gets the open spot', 'Prend la place libre', '拿到空出来的名额'];
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === '.next') continue;
@@ -53,7 +56,13 @@ function sourceFiles(): string[] {
   return walk(root).filter((path) => {
     const rel = relative(root, path);
     if (rel.startsWith(`lib${'/'}answers${'/'}`)) return false;
-    if (rel.startsWith('app/fonts/') && rel.endsWith('-OFL.txt')) return false;
+    // SIL OFL ships beside the self-hosted faces. The license text is not a price pitch.
+    if (
+      rel.endsWith('-OFL.txt') &&
+      (rel.startsWith('app/fonts/') || rel.startsWith('components/promo/fonts/'))
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -83,6 +92,23 @@ describe('banned 11-23 marketing lines', () => {
         )
       ) {
         hits.push(`${rel}: ${priceWord}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('keeps the open-spot chip out of the sale block', () => {
+    const promoFiles = files.filter((path) => {
+      const rel = relative(root, path);
+      return rel.startsWith('components/promo/') || rel === 'app/promo.css';
+    });
+    expect(promoFiles.length).toBeGreaterThan(0);
+    const hits: string[] = [];
+    for (const path of promoFiles) {
+      const rel = relative(root, path);
+      const text = readFileSync(path, 'utf8');
+      for (const phrase of promoSpotPhrases) {
+        if (text.toLowerCase().includes(phrase.toLowerCase())) hits.push(`${rel}: ${phrase}`);
       }
     }
     expect(hits).toEqual([]);
