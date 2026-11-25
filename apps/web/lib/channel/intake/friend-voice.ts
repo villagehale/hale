@@ -2628,6 +2628,21 @@ export async function speakFriend(
           retry: { draft, problem: retryProblem('join') },
         };
       }
+      // With the group flag on, code puts the number under the reply only for their
+      // existing group (machine.ts coparentTrailer). A reply that points below at
+      // anything else points at nothing.
+      const numberBelow =
+        input.coparentJoin != null &&
+        capture.coparentGroup === true &&
+        capture.coparentGroupMode === 'existing';
+      if (v2 && friendVoiceModelFieldsEnabled() && marks.joinPointer === 'below' && !numberBelow) {
+        noteRefusal({ reason: 'join_points_at_nothing', step: input.step, prompt }, 'unusable');
+        return {
+          fail: 'unusable',
+          capture,
+          retry: { draft, problem: retryProblem('join') },
+        };
+      }
       const joinWritten =
         input.coparentJoin != null &&
         (friendVoiceModelFieldsEnabled()
