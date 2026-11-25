@@ -625,6 +625,8 @@
 .rd .t-max .hs-checks li { color: rgb(247 244 236 / 0.84); }           /* 9.6:1 */
 .rd .t-max .hs-checks svg { color: #9fd0ea; }
 .rd .t-max .hs-btn-soon { background: rgb(255 255 255 / 0.10); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22); color: rgb(247 244 236 / 0.86); }  /* 7.7:1 */
+.rd .t-max .hs-btn-primary { background: #f3ce79; color: #17294a; }  /* same treatment as .promo-max-btn */
+.rd .t-max .hs-btn-primary:hover { background: #f7dc9c; }
 .rd .hs-foot-note { margin-top: var(--s5); }
 
 /* ── 6. FAQ ── */
