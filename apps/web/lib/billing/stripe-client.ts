@@ -39,11 +39,14 @@ export interface CheckoutSessionParams {
 }
 
 export interface StripeCheckoutClient {
-  createCheckoutSession(params: CheckoutSessionParams): Promise<{ url: string }>;
+  /** `id` is Stripe's session id, whenever Stripe's response carried one. */
+  createCheckoutSession(params: CheckoutSessionParams): Promise<{ url: string; id?: string }>;
   retrieveCheckoutSession?(
     sessionId: string,
     options?: { expand?: readonly string[] },
   ): Promise<unknown | null>;
+  /** Closes an open session so it can no longer be paid. Throws when Stripe refuses. */
+  expireCheckoutSession?(sessionId: string): Promise<void>;
 }
 
 const STRIPE_CHECKOUT_ENDPOINT = 'https://api.stripe.com/v1/checkout/sessions';
@@ -76,11 +79,20 @@ export function stripeCheckoutClientFromEnv(
       if (!res.ok) {
         throw new Error(`stripe checkout session create failed: ${res.status}`);
       }
-      const json = (await res.json()) as { url?: unknown };
+      const json = (await res.json()) as { url?: unknown; id?: unknown };
       if (typeof json.url !== 'string' || json.url.length === 0) {
         throw new Error('stripe checkout session response missing url');
       }
-      return { url: json.url };
+      return typeof json.id === 'string' ? { url: json.url, id: json.id } : { url: json.url };
+    },
+    async expireCheckoutSession(sessionId) {
+      const res = await fetchImpl(`${STRIPE_CHECKOUT_ENDPOINT}/${sessionId}/expire`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      if (!res.ok) {
+        throw new Error(`stripe checkout session expire failed: ${res.status}`);
+      }
     },
     async retrieveCheckoutSession(sessionId, options) {
       const expand = new URLSearchParams(

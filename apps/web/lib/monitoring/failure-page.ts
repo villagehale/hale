@@ -209,6 +209,9 @@ export const OPS_PAGE_VOCABULARY = {
   },
   /** A family already on a paid plan paid again. Nothing refunds it on its own. */
   checkout_duplicate_payment: { transition: ['same_plan', 'other_plan'] },
+  /** VIL-729 · Stripe would not expire a family's open checkout, so no second one was made.
+   * That first session can still be paid. */
+  checkout_session_unexpired: {},
   /** VIL-730 · a parent reminder whose send was refused on every try: nothing reached them. */
   reminder_unsent: { reason: ['claim_gate', 'send_refused', 'send_abandoned', 'not_confirmed'] },
   /** VIL-734 · a driver's schedule-change text that reached them on no try. */
@@ -403,6 +406,7 @@ type OpsPageFacts<S extends OpsPageSite> = {
  */
 const OPS_PAGE_PER_REF = [
   'checkout_duplicate_payment',
+  'checkout_session_unexpired',
   'registration_review_placed_order',
   'registration_review_unread',
   // VIL-715: one family's registration each, so a second family's in the same hour pages too.
