@@ -164,9 +164,67 @@
   text-decoration-color: #8a6508;
 }
 
-:global(.dark) .paper.paper {
+/* Dark mode. The paper stays cream like the site's Notes page, so the connect
+   and sign-in dark rules (navy door, cream ink) are put back to their light
+   values inside it. Selectors out-rank `:global(.dark) .card.door` and the
+   signin.module.css dark door at any load order. */
+:global(.dark) .paper.paper.paper {
+  --navy: #17294a;
+  --cream: #fdfcfa;
+  color-scheme: light;
+  color: #1c1c1e;
+  background-color: #fff8dc;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 34px, #e4d3a1 34px 36px);
   border-color: #cbbd8c;
   box-shadow: 0 28px 60px -24px rgb(0 0 0 / 0.72);
+}
+:global(.dark) .paper.paper.paper::before {
+  content: none;
+  display: none;
+}
+:global(.dark) .paper.paper .kicker {
+  color: #8a6508;
+}
+:global(.dark) .paper.paper .head {
+  color: #1c1c1e;
+}
+:global(.dark) .paper.paper .lede {
+  color: #2c2c2e;
+}
+:global(.dark) .paper.paper label {
+  color: #1c1c1e;
+}
+:global(.dark) .paper.paper input.field,
+:global(.dark) .paper.paper .boxes > span {
+  background: rgb(255 253 245 / 0.94);
+  border-color: #1c1c1e;
+  color: #1c1c1e;
+}
+:global(.dark) .paper.paper .boxes > span.slotOn {
+  background: rgb(255 224 102 / 0.55);
+}
+:global(.dark) .paper.paper input.field::placeholder {
+  color: #5c5346;
+}
+:global(.dark) .paper.paper .fine,
+:global(.dark) .paper.paper .fine span,
+:global(.dark) .paper.paper .fine button {
+  color: #5c5346;
+}
+:global(.dark) .paper.paper .fine button {
+  border-bottom-color: rgb(23 41 74 / 0.3);
+}
+:global(.dark) .paper.paper button.btn {
+  background: #1c1c1e;
+  color: #fffdf5;
+  box-shadow: none;
+}
+:global(.dark) .paper.paper button.btn:hover:not(:disabled) {
+  background: #ffe066;
+  color: #1c1c1e;
+}
+:global(.dark) .paper.paper a {
+  color: #1c1c1e;
 }
 
 @media (max-width: 860px) {
