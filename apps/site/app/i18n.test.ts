@@ -366,7 +366,7 @@ describe('VIL-325 designer-locked intake copy', () => {
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
     expect(html).toContain('Parent-built in Toronto');
-    expect(html).toContain('From &quot;we should&quot; to &quot;we&#x27;re in.&quot;');
+    expect(html).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');
     expect(html).not.toContain('It starts with one text');
   });
 });

@@ -4,7 +4,7 @@
  * different sentences. Pillar titles stay the 11-23 names.
  */
 
-export const H1 = 'From "we should" to "we\'re in."';
+export const H1 = 'From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d';
 
 export const PAGE_TITLE = `Hale: ${H1}`;
 

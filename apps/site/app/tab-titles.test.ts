@@ -28,7 +28,7 @@ vi.mock('next/headers', () => ({
  */
 
 const HOME_TITLES = {
-  en: 'Hale: From "we should" to "we\'re in."',
+  en: 'Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d',
   fr: 'Hale: De « on devrait » à « on y va ».',
   zh: 'Hale: 从“改天吧”到“就这么定了”。',
 } as const;
