@@ -90,12 +90,33 @@ export type ApplyStripeBillingResult =
     }
   | {
       status: 'unresolved';
-      reason: 'no_family' | 'dispute_needs_review' | PlanHoldReason;
+      reason:
+        | 'no_family'
+        | 'dispute_needs_review'
+        | 'partial_refund_unresolved'
+        | 'refund_failed'
+        | PlanHoldReason;
       opsAlert: OpsPageOutcome;
     }
   | PlanRetry;
 
-type UnresolvedRevokeReason = 'no_family' | 'subscription_unresolved' | 'dispute_needs_review';
+type UnresolvedRevokeReason =
+  | 'no_family'
+  | 'subscription_unresolved'
+  | 'dispute_needs_review'
+  | 'partial_refund_unresolved'
+  | 'refund_failed';
+
+/** What a charge event read through the pinned reader is about. */
+type LinkedChargeKind = 'refund' | 'partial_refund' | 'dispute' | 'refund_failed';
+
+/** The reason a charge event of each kind pages under when nothing ties it to a plan. */
+const UNTIED_REASON: Record<LinkedChargeKind, UnresolvedRevokeReason> = {
+  refund: 'subscription_unresolved',
+  partial_refund: 'partial_refund_unresolved',
+  dispute: 'dispute_needs_review',
+  refund_failed: 'refund_failed',
+};
 
 export interface ApplyStripeBillingDeps {
   now?: Date;
@@ -149,10 +170,16 @@ export async function applyStripeBillingEvent(
     return markRefundReady(event, eventId, priceDecision, database, priceTierMap, deps);
   }
   if (stripeBillingRevokeEnabled(env)) {
+    if (stripeRefundEndsSubscriptionEnabled(env) && stripeEventType(event) === 'refund.failed') {
+      return settleRefundFailed(event, eventId, database, deps);
+    }
     const revoke = chargeRevokeDecision(event);
     if (revoke.action !== 'ignore') {
       if (stripeRefundEndsSubscriptionEnabled(env) && isFullRefund(revoke)) {
         return settleRefund(event, eventId, database, priceTierMap, deps);
+      }
+      if (stripeRefundEndsSubscriptionEnabled(env) && revoke.kind === 'refund') {
+        return recordPartialRefund(event, eventId, database, deps);
       }
       if (stripeRefundEndsSubscriptionEnabled(env) && revoke.kind === 'dispute') {
         return settleDispute(event, eventId, database, deps);
@@ -332,7 +359,7 @@ function lifecycleSignal(
 async function readLinkedCharge(
   event: unknown,
   eventId: string,
-  refund: boolean,
+  kind: LinkedChargeKind,
   database: Database,
   deps: ApplyStripeBillingDeps,
 ): Promise<{ done: ApplyStripeBillingResult } | { charge: RefundedCharge; familyId: string }> {
@@ -354,14 +381,7 @@ async function readLinkedCharge(
   if (!chargeId) {
     return {
       done: knownFamily
-        ? await unresolvedRevoke(
-            eventId,
-            refund ? 'subscription_unresolved' : 'dispute_needs_review',
-            knownFamily,
-            database,
-            deps,
-            true,
-          )
+        ? await unresolvedRevoke(eventId, UNTIED_REASON[kind], knownFamily, database, deps, true)
         : await unresolvedRevoke(eventId, 'no_family', null, database, deps, true),
     };
   }
@@ -375,7 +395,7 @@ async function readLinkedCharge(
         eventId,
         familyId: knownFamily,
         eventCreated: eventCreatedSeconds(event),
-        refund,
+        refund: kind === 'refund',
         subscriptionId: null,
         periodEnd: null,
       },
@@ -414,7 +434,7 @@ async function settleRefund(
   priceTierMap: PriceTierMap,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
-  const read = await readLinkedCharge(event, eventId, true, database, deps);
+  const read = await readLinkedCharge(event, eventId, 'refund', database, deps);
   if ('done' in read) return read.done;
   const { charge, familyId } = read;
   if (!charge.subscriptionId || !charge.invoice) {
@@ -448,7 +468,7 @@ async function settleDispute(
   database: Database,
   deps: ApplyStripeBillingDeps,
 ): Promise<ApplyStripeBillingResult> {
-  const read = await readLinkedCharge(event, eventId, false, database, deps);
+  const read = await readLinkedCharge(event, eventId, 'dispute', database, deps);
   if ('done' in read) return read.done;
   const [family] = await database
     .select({ id: schema.families.id })
@@ -458,6 +478,65 @@ async function settleDispute(
   return family
     ? unresolvedRevoke(eventId, 'dispute_needs_review', family.id, database, deps, true)
     : unresolvedRevoke(eventId, 'no_family', null, database, deps, true);
+}
+
+/**
+ * Part of a payment back never ends the plan or the subscription. It is recorded against
+ * the subscription it paid, and a person is paged when Stripe does not say which one.
+ */
+async function recordPartialRefund(
+  event: unknown,
+  eventId: string,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, 'partial_refund', database, deps);
+  if ('done' in read) return read.done;
+  const { charge, familyId } = read;
+  if (!charge.subscriptionId || !charge.invoice) {
+    return unresolvedRevoke(eventId, 'partial_refund_unresolved', familyId, database, deps, true);
+  }
+  return database.transaction(async (tx): Promise<ApplyStripeBillingResult> => {
+    if (!(await claimEvent(tx, eventId))) return { status: 'duplicate' };
+    const [current] = await tx
+      .select({ planTier: schema.families.planTier })
+      .from(schema.families)
+      .where(eq(schema.families.id, familyId))
+      .limit(1);
+    if (!current) return { status: 'unknown_family' };
+    await tx.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'billing_refunded',
+      targetTable: 'families',
+      targetId: familyId,
+      after: {
+        planTier: current.planTier,
+        source: 'stripe',
+        stripeEventId: eventId,
+        stripeCustomerId: charge.customerId,
+        subscriptionId: charge.subscriptionId,
+        reason: 'partial_refund',
+        tierChanged: false,
+      },
+    });
+    return { status: 'kept', reason: 'partial_refund' };
+  });
+}
+
+/**
+ * Stripe can fail a refund after it succeeded, by which time the plan may have moved and
+ * the subscription been cancelled. A cancel cannot be undone, so a person is paged.
+ */
+async function settleRefundFailed(
+  event: unknown,
+  eventId: string,
+  database: Database,
+  deps: ApplyStripeBillingDeps,
+): Promise<ApplyStripeBillingResult> {
+  const read = await readLinkedCharge(event, eventId, 'refund_failed', database, deps);
+  if ('done' in read) return read.done;
+  return unresolvedRevoke(eventId, 'refund_failed', read.familyId, database, deps, true);
 }
 
 interface LinkedCharge {

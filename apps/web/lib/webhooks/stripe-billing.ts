@@ -557,8 +557,8 @@ export function chargeSubscriptionId(payload: unknown): string | null {
 }
 
 /**
- * What a charge or dispute payload itself proves. `chargeId` is present on
- * both shapes (the charge's id, or the dispute's `charge`). Subscription id
+ * What a charge, dispute or refund payload itself proves. `chargeId` is present on
+ * each shape (the charge's id, or the dispute's or refund's `charge`). Subscription id
  * and status are set only when Stripe expanded them — an invoice id string
  * does not identify a subscription.
  */
@@ -572,8 +572,9 @@ export function chargeLinkFromStripeEvent(payload: unknown): {
   const object = isRecord(payload.data) ? payload.data.object : undefined;
   if (!isRecord(object)) return { chargeId: null, subscriptionId: null, subscriptionStatus: null };
   const nested = nestedSubscription(object);
-  const chargeId =
-    type?.startsWith('charge.dispute.') === true ? readId(object.charge) : readString(object.id);
+  const namesCharge =
+    type?.startsWith('charge.dispute.') === true || type?.startsWith('refund.') === true;
+  const chargeId = namesCharge ? readId(object.charge) : readString(object.id);
   return {
     chargeId,
     subscriptionId: nested.id,

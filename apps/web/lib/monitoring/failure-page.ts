@@ -372,6 +372,10 @@ export const OPS_PAGE_VOCABULARY = {
   billing_refund_pending: {
     reason: ['insufficient_funds', 'requires_action', 'unknown'],
   },
+  /** A family due for erasure that Stripe may still bill. It is kept for the next sweep. */
+  erasure_billing_not_ended: {
+    reason: ['no_key', 'stripe_refused', 'stripe_unavailable', 'truncated'],
+  },
   retention_step_failed: {
     step: [
       'deletion_sweep',

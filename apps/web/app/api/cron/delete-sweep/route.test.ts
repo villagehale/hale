@@ -54,6 +54,7 @@ function summaryWithGoogleRow(): DeletionSweepSummary {
     pastGoogleWait: { unconfirmed: 0, endFailed: 0, page: 'nothing_to_page' },
     google: [{ integrationId: INTEGRATION_ID, provider: 'gcal', google: 'revoked' }],
     undecodableIntake: { sessions: 0, page: 'nothing_to_page' },
+    erasureBilling: { cancelled: 0, notEnded: 0 },
   };
 }
 
