@@ -331,6 +331,101 @@ describe('pricing checkout codes', () => {
     expect(PRICING_ATTEMPT_CAP).toBe(8);
   });
 
+  it('counts a second session on the same number toward the send cap and the attempt cap', async () => {
+    const phone = '+14165552009';
+    const first = await pay(phone);
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: first.id,
+      now: NOW,
+      sender: first.sender,
+    });
+    const other = await pay(phone);
+    await expect(
+      sendPricingCheckoutCode(db.database, {
+        sessionId: other.id,
+        now: later(1_000),
+        sender: other.sender,
+      }),
+    ).resolves.toMatchObject({ status: 'cooldown' });
+
+    let at = NOW;
+    for (let n = 1; n < PRICING_CODE_SEND_CAP; n += 1) {
+      at = new Date(at.getTime() + 61_000);
+      const sent = await sendPricingCheckoutCode(db.database, {
+        sessionId: first.id,
+        now: at,
+        sender: first.sender,
+        resend: true,
+      });
+      expect(sent.status).toBe('sent');
+    }
+    await expect(
+      sendPricingCheckoutCode(db.database, {
+        sessionId: other.id,
+        now: new Date(at.getTime() + 61_000),
+        sender: other.sender,
+      }),
+    ).resolves.toMatchObject({ status: 'send_limited' });
+    expect(other.sender.sent).toHaveLength(0);
+
+    const burnedPhone = '+14165552010';
+    const burned = await pay(burnedPhone);
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: burned.id,
+      now: NOW,
+      sender: burned.sender,
+    });
+    for (const code of ['000000', '000000', '000000']) {
+      await verifyPricingCheckoutCode(db.database, { sessionId: burned.id, code, now: NOW });
+    }
+    const secondAt = later(61_000);
+    const second = new FakeOtpSender();
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: burned.id,
+      now: secondAt,
+      sender: second,
+      resend: true,
+    });
+    for (const code of ['111111', '111111', '111111']) {
+      await verifyPricingCheckoutCode(db.database, { sessionId: burned.id, code, now: secondAt });
+    }
+    const thirdAt = later(122_000);
+    const third = new FakeOtpSender();
+    await sendPricingCheckoutCode(db.database, {
+      sessionId: burned.id,
+      now: thirdAt,
+      sender: third,
+      resend: true,
+    });
+    await verifyPricingCheckoutCode(db.database, {
+      sessionId: burned.id,
+      code: '222222',
+      now: thirdAt,
+    });
+    await verifyPricingCheckoutCode(db.database, {
+      sessionId: burned.id,
+      code: '222222',
+      now: thirdAt,
+    });
+
+    const fresh = await pay(burnedPhone);
+    const freshAt = later(183_000);
+    const sent = await sendPricingCheckoutCode(db.database, {
+      sessionId: fresh.id,
+      now: freshAt,
+      sender: fresh.sender,
+    });
+    expect(sent.status).toBe('sent');
+    await expect(
+      verifyPricingCheckoutCode(db.database, {
+        sessionId: fresh.id,
+        code: fresh.sender.sent[0]?.code ?? '',
+        now: freshAt,
+      }),
+    ).resolves.toMatchObject({ status: 'attempts_limited' });
+    expect((await payment(fresh.id))?.boundAt).toBeNull();
+  });
+
   it('binds the corrected number only after that number’s code verifies', async () => {
     const original = '+14165552004';
     const corrected = '+14165552005';
