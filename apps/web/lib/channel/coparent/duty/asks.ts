@@ -43,6 +43,7 @@ import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
+import { teenNameIn } from '~/lib/privacy/teen-name';
 import {
   type CadenceLine,
   type CadencePlan,
@@ -355,7 +356,6 @@ interface Household {
   /** The first names a group line may say: never a 13+ child's (rule #1). */
   childFirstNames: string[];
   teens: TeenRoster;
-  teenIds: Set<string>;
   timeZone: string;
   language: 'en' | 'fr';
   chatId: string | null;
@@ -427,7 +427,6 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
       .map((row) => spokenFirstName(row.name))
       .filter((name): name is string => name !== null),
     teens: roster,
-    teenIds: teens,
     timeZone,
     language: primary
       ? await readParentCopyLanguage(database, { familyId, parentUserId: primary })
@@ -648,7 +647,7 @@ async function buildOccasions(
   familyId: string,
   home: Pick<
     Household,
-    'childNames' | 'childFirstNames' | 'teens' | 'teenIds' | 'parentNames' | 'language' | 'chatId'
+    'childNames' | 'childFirstNames' | 'teens' | 'parentNames' | 'language' | 'chatId'
   >,
   now: Date,
 ): Promise<{
@@ -679,9 +678,11 @@ async function buildOccasions(
       kidRelated: schema.parentCalendarBlocks.kidRelated,
       familyId: schema.parentCalendarBlocks.familyId,
       standing: schema.parentCalendarBlocks.calendarStanding,
+      childName: schema.children.name,
       childId: schema.parentCalendarBlocks.childId,
     })
     .from(schema.parentCalendarBlocks)
+    .leftJoin(schema.children, eq(schema.children.id, schema.parentCalendarBlocks.childId))
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
   // VIL-651: an unanswered invite is not asked about, a row stored against a teen is left
   // out, and only the parent's own or organized event lends its title to the group.
@@ -690,7 +691,7 @@ async function buildOccasions(
       (row) =>
         row.familyId === familyId &&
         row.standing !== 'invited' &&
-        !(row.childId !== null && home.teenIds.has(row.childId)),
+        !(row.childName !== null && teenNameIn(row.childName, home.teens.teenNames)),
     ),
     home.teens,
   )
