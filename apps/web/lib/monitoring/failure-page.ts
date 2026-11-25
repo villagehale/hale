@@ -372,6 +372,15 @@ export const OPS_PAGE_VOCABULARY = {
   billing_refund_pending: {
     reason: ['insufficient_funds', 'requires_action', 'unknown'],
   },
+  /** A family due for erasure that Stripe may still bill. It is kept for the next sweep. */
+  erasure_billing_not_ended: {
+    reason: ['no_key', 'stripe_refused', 'stripe_unavailable', 'truncated'],
+  },
+  /** A family erased past its erasure wait that Stripe may still bill. `ref` is its id, the
+   * metadata.familyId its subscriptions carry, so ops can find and cancel them. */
+  erasure_billing_erased_not_ended: {
+    reason: ['no_key', 'stripe_refused', 'stripe_unavailable', 'truncated'],
+  },
   retention_step_failed: {
     step: [
       'deletion_sweep',
@@ -412,6 +421,7 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  'erasure_billing_erased_not_ended',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

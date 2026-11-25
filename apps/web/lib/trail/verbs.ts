@@ -2500,11 +2500,17 @@ export function calendarWithdrawnSentences(): readonly string[] {
 }
 
 /**
- * The registry sentence says a refund could not be matched, and a dispute is not that. It
- * never names the dispute: one adult paid, and every parent seat reads the family export.
+ * The registry sentence says a refund could not be matched, and neither a dispute nor a
+ * refund that failed is that. It names neither: one adult paid, and every parent seat
+ * reads the family export.
  */
 export const DISPUTE_NEEDS_REVIEW_SENTENCE =
   'a payment needs a second look, so the plan was left as it is';
+
+const NEEDS_REVIEW_REASONS: ReadonlySet<unknown> = new Set([
+  'dispute_needs_review',
+  'refund_failed',
+]);
 
 /** The registry sentence does not say the plan moved. This row did. */
 export const PLAN_CHANGED_UNSETTLED_SENTENCE =
@@ -2512,7 +2518,7 @@ export const PLAN_CHANGED_UNSETTLED_SENTENCE =
 
 export function billingRevokeUnresolvedSentence(after: unknown): string | null {
   if (typeof after !== 'object' || after === null) return null;
-  return (after as { reason?: unknown }).reason === 'dispute_needs_review'
+  return NEEDS_REVIEW_REASONS.has((after as { reason?: unknown }).reason)
     ? DISPUTE_NEEDS_REVIEW_SENTENCE
     : null;
 }

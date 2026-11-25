@@ -1,5 +1,9 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte, or } from 'drizzle-orm';
+import {
+  type ErasureBillingOutcome,
+  endBillingForFamilyErasure,
+} from '../billing/erasure-billing.js';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import {
   type UndecodableIntakeOutcome,
@@ -229,6 +233,10 @@ export interface DeletionSweepSummary {
   /** Intake sessions of the erased families that would not decode, and the page about them.
    * Such a session never stops the erasure: zero sessions is `nothing_to_page`. */
   undecodableIntake: UndecodableIntakeOutcome;
+  /** Stripe subscriptions ended before their family was erased, families kept because
+   * Stripe would not end one, and families erased past their wait that Stripe may still
+   * bill. All zero while the refund flags are off. */
+  erasureBilling: { cancelled: number; notEnded: number; erasedNotEnded: number };
 }
 
 /** A Google row of a due family. Past the wait, `google_unconfirmed` is a revoke Google
@@ -256,6 +264,9 @@ export function erasureGoogleLogLine(summary: DeletionSweepSummary) {
 
 /** Pages #ops with every owed erasure claim (failure-page.ts). */
 type PageErasureGoogle = () => Promise<FailurePageCounts>;
+
+/** Ends what Stripe still bills a family for, before the family is erased. */
+type EndErasureBilling = (familyId: string) => Promise<ErasureBillingOutcome>;
 
 /**
  * How long a due family is kept waiting for Google: its scheduled deletion plus the same
@@ -362,6 +373,8 @@ export async function runDeletionSweep(
   now: Date = new Date(),
   removeObject: RemoveObject = removeDocument,
   pageErasureGoogle: PageErasureGoogle = () => pageErasureGoogleUnconfirmed(database, { now }),
+  endBilling: EndErasureBilling = (familyId) =>
+    endBillingForFamilyErasure(database, familyId, { now }),
 ): Promise<DeletionSweepSummary> {
   const due = await selectFamiliesDueForDeletion(database, now);
   // FIRST, because the cascade deletes keys and pending tokens and deleting a key revokes
@@ -377,7 +390,18 @@ export async function runDeletionSweep(
   let googleEndFailed = 0;
   const pastWait = { unconfirmed: 0, endFailed: 0 };
   const erasedPastWait = new Map<string, { unconfirmed: number; endFailed: number }>();
+  const erasureBilling = { cancelled: 0, notEnded: 0, erasedNotEnded: 0 };
   for (const familyId of due) {
+    // Before anything irreversible: a family Stripe still bills is kept, and paged, until
+    // its subscriptions are ended or its erasure wait runs out. Nothing is read while the
+    // refund flags are off.
+    const billing = await endBilling(familyId);
+    if (billing.status === 'not_ended') {
+      erasureBilling.notEnded += 1;
+      continue;
+    }
+    if (billing.status === 'erased_not_ended') erasureBilling.erasedNotEnded += 1;
+    if (billing.status === 'ended') erasureBilling.cancelled += billing.cancelled;
     let settled: ErasureSettlement[] | null = null;
     try {
       settled = await endGoogleForFamilyErasure(database, familyId);
@@ -510,5 +534,6 @@ export async function runDeletionSweep(
     google,
     orphans,
     undecodableIntake,
+    erasureBilling,
   };
 }

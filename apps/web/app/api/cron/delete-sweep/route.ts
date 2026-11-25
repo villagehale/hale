@@ -123,6 +123,19 @@ export const GET = cronRoute('delete-sweep', async () => {
       'cron/delete-sweep: erased families past grace',
     );
   }
+  if (
+    summary &&
+    (summary.erasureBilling.cancelled > 0 ||
+      summary.erasureBilling.notEnded > 0 ||
+      summary.erasureBilling.erasedNotEnded > 0)
+  ) {
+    // Counts only (rule #1). The erased family's own audit rows cascade away with it, so
+    // this line is the run's record of the subscriptions it ended and the families it kept.
+    console.info(
+      summary.erasureBilling,
+      'cron/delete-sweep: stripe subscriptions of families due for erasure',
+    );
+  }
   if (google) {
     // Counts and outcome codes only (rule #1): families kept for Google, erased past the
     // wait, the page that went to #ops, and each Google row's outcome.

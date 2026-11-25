@@ -39,6 +39,12 @@ const LATEST_PERIOD_REASONS: ReadonlySet<string> = new Set([
   'subscription_create',
   'subscription_cycle',
 ]);
+/** The audit verbs whose rows remember a Stripe customer the family paid from. */
+export const CUSTOMER_MEMORY_VERBS = [
+  'family_plan_updated',
+  'billing_refunded',
+  'billing_plan_unsettled',
+] as const;
 const REFUND_PENDING_PAGES: ReadonlySet<RefundPendingReason> = new Set([
   'insufficient_funds',
   'requires_action',
@@ -260,7 +266,10 @@ async function readFamily(database: Database, familyId: string): Promise<FamilyR
       customers: sql<string>`coalesce((
         select json_agg(distinct a.after->>'stripeCustomerId')::text from audit_log a
         where a.family_id = families.id
-          and a.action_taken in ('family_plan_updated', 'billing_refunded', 'billing_plan_unsettled')
+          and a.action_taken in (${sql.join(
+            CUSTOMER_MEMORY_VERBS.map((verb) => sql`${verb}`),
+            sql`, `,
+          )})
           and a.after->>'stripeCustomerId' is not null
       ), '[]')`,
       holds: sql<string>`coalesce((
