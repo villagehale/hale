@@ -192,10 +192,11 @@ describe('terms (migrated verbatim)', () => {
    * shipped fact (SMS is the product surface, sign-in is the phone number plus a
    * one-time code, STOP ends the conversation, carrier rates are the reader's).
    */
-  it('governs the product that actually exists — an AI agent you reach by text, not a Google-only app', () => {
+  it('governs the product that actually exists — an assistant you reach by text, not a Google-only app', () => {
     expect(termsHtml).not.toContain('You sign in through Google.');
     expect(termsHtml).not.toContain('passive, event-driven assistant');
-    expect(termsHtml).toContain('an AI agent you reach by iMessage or text message');
+    expect(termsHtml).toContain('an assistant you reach by iMessage or text message');
+    expect(termsHtml).not.toContain('an AI agent');
     expect(termsHtml).not.toContain('an AI service');
     expect(termsHtml).not.toContain('helps carry them out');
     expect(termsHtml).toContain(

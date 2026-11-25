@@ -141,7 +141,7 @@ export default async function TermsPage({
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is an AI agent you reach by iMessage or text message, not an app you install.
+          Hale is an assistant you reach by iMessage or text message, not an app you install.
           Email and the web app are available too, and carry the same record.
         </p>
         <p>
