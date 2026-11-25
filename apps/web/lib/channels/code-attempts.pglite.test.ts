@@ -355,6 +355,52 @@ describe('a guess on one door leaves a code sent for another alone', () => {
     });
     expect(right.status).toBe('claimed');
   });
+
+  it('a new-visitor join guess neither spends nor consumes a pending connect-link code', async () => {
+    const parent = await seedTextParent();
+    const link = await linkDoorFor(parent.userId);
+    await link.send();
+    const code = lastCode();
+
+    for (const guess of [wrongFor(code), code]) {
+      expect(
+        await verifyPromoJoinCode(db.database, {
+          phoneRaw: parent.phone,
+          code: guess,
+          now: new Date(),
+        }),
+      ).toEqual({ status: 'refused', reason: 'no_pending_code' });
+    }
+    expect(await newestCode(parent.userId)).toEqual({ attemptCount: 0, consumedAt: null });
+
+    // Positive control: the same read sees a try spent on the code's own door.
+    expect(await link.guess(wrongFor(code))).toBe('wrong_code');
+    expect((await newestCode(parent.userId)).attemptCount).toBe(1);
+    expect(await link.guess(code)).toBe('ok');
+  });
+
+  it('a Settings number check neither spends nor consumes a pending connect-link code', async () => {
+    const parent = await seedTextParent();
+    const link = await linkDoorFor(parent.userId);
+    await link.send();
+    const code = lastCode();
+
+    for (const guess of [wrongFor(code), code]) {
+      expect(
+        await verifyPhoneOtp(
+          db.database,
+          { userId: parent.userId, familyId: parent.familyId, code: guess },
+          { sender, now: new Date() },
+        ),
+      ).toEqual({ status: 'no_pending' });
+    }
+    expect(await newestCode(parent.userId)).toEqual({ attemptCount: 0, consumedAt: null });
+
+    // Positive control, as above.
+    expect(await link.guess(wrongFor(code))).toBe('wrong_code');
+    expect((await newestCode(parent.userId)).attemptCount).toBe(1);
+    expect(await link.guess(code)).toBe('ok');
+  });
 });
 
 describe('turning the flag back off', () => {

@@ -246,6 +246,15 @@ describe('requestClaimCode', () => {
 });
 
 describe('verifyClaimCode', () => {
+  // These test main's read-then-write path, so they pin the flag the flags-on job turns on.
+  // The atomic path is tested in lib/channels/code-attempts.pglite.test.ts.
+  beforeEach(() => {
+    vi.stubEnv('SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('resolves to the EXISTING identity and creates no new user (anti-fork)', async () => {
     const { db, writes } = makeFakeDb({
       channels: [activeChannel()],

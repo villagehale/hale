@@ -393,6 +393,9 @@ describe('a texted connect link needs a code', () => {
     });
 
     it('does not open /sign-in', async () => {
+      // Main's path: with SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED on, /sign-in never sees a link
+      // code at all (no_pending_code), tested in lib/channels/code-attempts.pglite.test.ts.
+      vi.stubEnv('SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED', '');
       const parent = await seedParent();
       const link = await mintLink(parent.userId);
       await tap(link.token, 'gcal');
