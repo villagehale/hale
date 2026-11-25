@@ -596,6 +596,7 @@ export function productionGroupPlanReportPorts(
             parentRequested: false,
             dedupeKey: plan.dedupeKey,
             payload: { auditVerb: 'calendar_alert_sent' },
+            contentClass: plan.contentClass,
           },
         ],
         'candidate',

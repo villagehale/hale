@@ -2,6 +2,7 @@ import { type Database, schema } from '@hale/db';
 import { and, eq, ne, or, sql } from 'drizzle-orm';
 import type { FamilySendKey } from '~/lib/channel/family-send-key';
 import type { ProactiveSendKind } from '~/lib/channel/outbound-gate';
+import type { ContentClass } from '~/lib/channel/role-scope';
 import { proactiveCadence } from './flag';
 
 /**
@@ -88,6 +89,11 @@ export interface CandidateDraft {
    * Omitted on kinds that need none.
    */
   payload?: Record<string, unknown> | null;
+  /**
+   * VIL-776 · the class this line's sweep asked the group-audience rule about. Omitted or
+   * null on a line with no class, which the review only ever sends 1:1.
+   */
+  contentClass?: ContentClass | null;
 }
 
 export type HandOff = 'send' | 'queued' | 'send_shadow_unqueued';

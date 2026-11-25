@@ -329,6 +329,9 @@ export const FLAGS = [
   // VIL-763. When a proactive text would mean the same thing as one Hale already
   // sent this parent, the writer sends nothing. Exact `true` only.
   exact('proactive-no-repeat', 'PROACTIVE_NO_REPEAT_ENABLED', { envOnly: true }),
+  // VIL-776. A household line the proactive queue holds keeps its content class, so the
+  // review routes it to the family group when the group may hear it. Exact `true` only.
+  exact('queued-line-content-class', 'QUEUED_LINE_CONTENT_CLASS_ENABLED', { envOnly: true }),
   exact('proactive-review-guards', 'PROACTIVE_REVIEW_GUARDS_ENABLED'),
   exact('proactive-sends-paused', 'PROACTIVE_SENDS_PAUSED'),
   exact('nudge-model-only', 'NUDGE_MODEL_ONLY_ENABLED', { envOnly: true }),

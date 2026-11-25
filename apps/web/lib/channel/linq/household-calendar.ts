@@ -2194,6 +2194,7 @@ async function sendGroupNotice(
           auditVerb:
             input.notice.kind === 'followup' ? 'followup_activity_asked' : 'calendar_alert_sent',
         },
+        contentClass: NOTICE_CLASS[input.notice.kind],
       },
     ],
     'candidate',

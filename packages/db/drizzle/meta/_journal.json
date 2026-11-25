@@ -1716,6 +1716,13 @@
       "when": 1795458387882,
       "tag": "0266_linq_group_loop_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1795587861115,
+      "tag": "0267_proactive_candidates_content_class",
+      "breakpoints": true
     }
   ]
 }

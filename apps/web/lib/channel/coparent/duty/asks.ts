@@ -32,7 +32,7 @@ import { readParentCopyLanguage } from '~/lib/channel/parent-language';
 import { handOffProactive, isFamilySendQueued } from '~/lib/channel/proactive/queue';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { teenChildIds } from '~/lib/channel/role-scope';
+import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
 import { resolveSendablePhone } from '~/lib/channels/sms-consent-core';
 import { isWithinQuietHours, localParts } from '~/lib/loop/prefs';
 import { HALE_RECORD, closeFacts, writeFact } from '~/lib/memory/facts';
@@ -145,10 +145,13 @@ export interface DutySendPorts {
   pager?: OpsPager;
 }
 
+/** Who takes whom: what the group is asked about, and what a queued ask carries. */
+const DUTY_CLASS: ContentClass = 'pickup_duty';
+
 export function defaultDutySendPorts(): DutySendPorts {
   return {
     target: (database, familyId) =>
-      familyOutboundTarget(database, familyId, { contentClass: 'pickup_duty' }),
+      familyOutboundTarget(database, familyId, { contentClass: DUTY_CLASS }),
     gate: assertProactiveSendAllowed,
     gatePorts: buildOutboundGatePorts,
     send: (input) =>
@@ -1313,6 +1316,7 @@ export async function deliverDutyGroupLine(
         worthlessAfter: null,
         parentRequested: false,
         dedupeKey: input.dedupeKey,
+        contentClass: DUTY_CLASS,
       },
     ],
     'candidate',

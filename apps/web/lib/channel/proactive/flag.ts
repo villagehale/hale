@@ -100,6 +100,17 @@ export function proactiveNoRepeatEnabled(): boolean {
   return isEnabled('proactive-no-repeat');
 }
 
+export const QUEUED_LINE_CONTENT_CLASS_ENV = 'QUEUED_LINE_CONTENT_CLASS_ENABLED';
+
+/**
+ * VIL-776 · the hourly review routes each queued line by the content class its sweep
+ * stored, so a household line the family group may hear goes to the group. Off unless
+ * the env is exactly `true`: every queued line goes 1:1, as before.
+ */
+export function queuedLineContentClassEnabled(): boolean {
+  return isEnabled('queued-line-content-class');
+}
+
 /**
  * VIL-701 · per-family daily model-decision cap inside the hourly review. Off unless
  * the env is exactly `true`.
