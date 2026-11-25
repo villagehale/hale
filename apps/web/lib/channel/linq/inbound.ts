@@ -116,6 +116,8 @@ import {
   considerGroupPlanRsvp,
   considerGroupPollCardVote,
   considerPrivateCalendarReply,
+  settleCalendarsAfterLockedStart,
+  settleGroupExperienceCalendar,
 } from './group-plan-rsvp/inbound';
 import type { GroupPollCardPort } from './group-plan-rsvp/poll-turn';
 import { isGroupPollCardKind } from './group-plan-rsvp/poll-turn';
@@ -445,7 +447,10 @@ export async function handleLinqInboundRequest(
       }
     } catch (err) {
       deps.log.error(
-        { outcome: 'secret_santa_release_failed', err: err instanceof Error ? err.name : 'unknown' },
+        {
+          outcome: 'secret_santa_release_failed',
+          err: err instanceof Error ? err.name : 'unknown',
+        },
         'linq inbound: held secret santa draws not released',
       );
     }
@@ -618,6 +623,45 @@ function multiFamilyPorts(deps: LinqDoorDeps) {
   };
 }
 
+/** Hands a group-experience yes, no, or maybe to the consent calendar path. */
+function calendarConsentFrom(deps: LinqDoorDeps) {
+  return (answer: {
+    chatId: string;
+    planId: string;
+    userId: string | null;
+    memberKey: string;
+    displayName: string;
+    householdLabel: string | null;
+    response: 'yes' | 'no' | 'maybe';
+    parentWords: string | null;
+    now: Date;
+  }) =>
+    settleGroupExperienceCalendar(
+      {
+        database: deps.database,
+        now: answer.now,
+        composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
+      },
+      answer,
+    );
+}
+
+function calendarStartChangeFrom(deps: LinqDoorDeps) {
+  return (input: { chatId: string; planId: string; now: Date }) =>
+    settleCalendarsAfterLockedStart(
+      {
+        database: deps.database,
+        now: input.now,
+        composer: deps.groupPlanRsvpComposer,
+        consentReader: deps.groupPlanCalendarConsentReader,
+        oneToOne: deps.oneToOne,
+      },
+      input,
+    );
+}
+
 /**
  * VIL-399 — RSVP/time polls, a posted link, or a private question, behind the
  * new default-off flags. Chatter and a missed read stay quiet and leave the
@@ -689,6 +733,8 @@ async function tryGroupExperienceTurn(
       send: deps.sendGroupText,
       reader: deps.groupExperienceReader,
       composer: deps.groupExperienceComposer,
+      calendarAfterAnswer: calendarConsentFrom(deps),
+      calendarAfterStartChange: calendarStartChangeFrom(deps),
     },
     {
       chatId: input.chatId,
@@ -728,6 +774,7 @@ async function tryGroupExperiencePollVote(
       now: deps.now?.() ?? new Date(),
       send: deps.sendGroupText,
       composer: deps.groupExperienceComposer,
+      calendarAfterAnswer: calendarConsentFrom(deps),
     },
     {
       chatId: input.chatId,

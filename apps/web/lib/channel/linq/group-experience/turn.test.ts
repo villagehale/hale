@@ -321,4 +321,132 @@ describe('takeGroupExperienceTurn', () => {
     );
     expect(group).toEqual([]);
   });
+
+  it('asks that household and writes nothing when the consent calendar flag is on', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 4).toString('base64'));
+    vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const asked: string[] = [];
+    const result = await takeGroupExperienceTurn(
+      {
+        chatId: CHAT,
+        familyId: FAMILY,
+        senderHandle: '+15555550111',
+        senderUserId: 'user-1',
+        senderName: 'Priya',
+        senderFamilyId: FAMILY,
+        text: 'we are in',
+        language: 'en',
+        now: NOW,
+      },
+      {
+        database: {} as never,
+        reader: { read: async () => reading({ kind: 'rsvp_vote', response: 'yes' }) },
+        composer: fakeGroupExperienceComposer(),
+        store: memoryStore(),
+        plans: {
+          loadLivePlan: async () => ({
+            id: 'plan-1',
+            chatId: CHAT,
+            familyId: FAMILY,
+            title: 'picnic',
+            startsAt: NOW,
+            location: null,
+            rsvpDeadlineAt: null,
+            expectedCount: 2,
+          }),
+          upsertRsvp: async () => ({ edited: false }),
+          loadTally: async () => ({
+            tally: {
+              toGo: 1,
+              yesCount: 1,
+              yesHeads: 1,
+              yesNames: ['Priya'],
+              noCount: 0,
+              noNames: [],
+              maybeCount: 0,
+              maybeHeads: 0,
+              maybeNames: [],
+              waitingCount: 1,
+              waitingNames: ['Sam'],
+            },
+            rows: [],
+            expected: [],
+          }),
+        } as never,
+        calendarAfterAnswer: async (answer) => {
+          asked.push(answer.response);
+        },
+        households: async () => [FAMILY],
+        send: async () => ({ providerMessageId: 'g1' }),
+      },
+    );
+    expect(result).toMatchObject({ handled: true, outcome: 'group_experience_recorded' });
+    expect(asked).toEqual(['yes']);
+  });
+
+  it('does not ask when the consent calendar flag is off', async () => {
+    vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 4).toString('base64'));
+    vi.stubEnv('GROUP_POLLS_ENABLED', 'true');
+    vi.stubEnv('LINQ_GROUP_PLAN_RSVP_CALENDAR_ENABLED', '');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const asked: string[] = [];
+    const result = await takeGroupExperienceTurn(
+      {
+        chatId: CHAT,
+        familyId: FAMILY,
+        senderHandle: '+15555550111',
+        senderUserId: 'user-1',
+        senderName: 'Priya',
+        senderFamilyId: FAMILY,
+        text: 'we are in',
+        language: 'en',
+        now: NOW,
+      },
+      {
+        database: {} as never,
+        reader: { read: async () => reading({ kind: 'rsvp_vote', response: 'yes' }) },
+        composer: fakeGroupExperienceComposer(),
+        store: memoryStore(),
+        plans: {
+          loadLivePlan: async () => ({
+            id: 'plan-1',
+            chatId: CHAT,
+            familyId: FAMILY,
+            title: 'picnic',
+            startsAt: NOW,
+            location: null,
+            rsvpDeadlineAt: null,
+            expectedCount: 2,
+          }),
+          upsertRsvp: async () => ({ edited: false }),
+          loadTally: async () => ({
+            tally: {
+              toGo: 1,
+              yesCount: 1,
+              yesHeads: 1,
+              yesNames: ['Priya'],
+              noCount: 0,
+              noNames: [],
+              maybeCount: 0,
+              maybeHeads: 0,
+              maybeNames: [],
+              waitingCount: 1,
+              waitingNames: ['Sam'],
+            },
+            rows: [],
+            expected: [],
+          }),
+        } as never,
+        calendarAfterAnswer: async (answer) => {
+          asked.push(answer.response);
+        },
+        households: async () => [FAMILY],
+        send: async () => ({ providerMessageId: 'g1' }),
+      },
+    );
+    expect(result).toMatchObject({ handled: true, outcome: 'group_experience_recorded' });
+    expect(asked).toEqual([]);
+  });
 });
