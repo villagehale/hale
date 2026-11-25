@@ -44,7 +44,11 @@ import {
   GROUP_POLL_TEMPLATE,
   sendGroupPlanRsvpLine,
 } from './send';
-import { type LockedPlanStart, createPostgresGroupPlanRsvpStore } from './store';
+import {
+  type CalendarConsentRow,
+  type LockedPlanStart,
+  createPostgresGroupPlanRsvpStore,
+} from './store';
 import type { PlanTally } from './tally';
 import { type GroupPlanRsvpTurnOutcome, takeGroupPlanRsvpTurn } from './turn';
 import type { GroupPlanRsvpComposer } from './voice';
@@ -474,18 +478,29 @@ async function askedParentOf(
  * One household's work after a lock. The poll is already closed, so a retry never redoes
  * it: a throw pages #ops for that household and never stops the next household's work.
  */
-async function settleOneHousehold(pager: OpsPager, work: () => Promise<unknown>) {
+async function settleOneHousehold(
+  pager: OpsPager,
+  row: CalendarConsentRow,
+  work: () => Promise<unknown>,
+) {
   try {
     await work();
   } catch (err) {
     console.error(
       {
         outcome: 'group_plan_calendar_after_lock_failed',
+        ref: row.id,
+        planId: row.planId,
+        familyId: row.familyId,
         err: err instanceof Error ? err.name : 'unknown',
       },
       "group plan calendar: one household's work after the lock failed",
     );
-    await pager.page({ site: 'group_plan_calendar_move', facts: { failure: 'follow_up_failed' } });
+    await pager.page({
+      site: 'group_plan_calendar_move',
+      facts: { failure: 'follow_up_failed' },
+      ref: row.id,
+    });
   }
 }
 
@@ -505,7 +520,7 @@ export async function settleCalendarsAfterLock(
   const turnPorts = { store, ...calendarPorts(ports) };
   const pager = ports.pager ?? failurePageOpsPager(() => ports.database);
   for (const row of locked.withdrawn) {
-    await settleOneHousehold(pager, async () => {
+    await settleOneHousehold(pager, row, async () => {
       const userId = await askedParentOf(ports.database, row.askProviderMessageId);
       if (!userId) {
         console.warn(
@@ -527,7 +542,7 @@ export async function settleCalendarsAfterLock(
     });
   }
   for (const row of locked.written) {
-    await settleOneHousehold(pager, async () =>
+    await settleOneHousehold(pager, row, async () =>
       moveWrittenCopy(
         {
           plan: locked.plan,

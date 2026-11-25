@@ -670,10 +670,14 @@ export async function moveWrittenCopy(
   });
   if (moved.status === 'failed') {
     console.error(
-      { outcome: 'group_plan_calendar_move_failed' },
+      { outcome: 'group_plan_calendar_move_failed', ref: input.row.id },
       'group plan calendar: the accepted copy did not move',
     );
-    await ports.pager.page({ site: 'group_plan_calendar_move', facts: { failure: 'move_failed' } });
+    await ports.pager.page({
+      site: 'group_plan_calendar_move',
+      facts: { failure: 'move_failed' },
+      ref: input.row.id,
+    });
     return { status: 'skipped', reason: 'write_failed' };
   }
   const effect: CalendarEffect = { status: 'moved', familyId, familyEventId: moved.familyEventId };
@@ -708,12 +712,13 @@ export async function moveWrittenCopy(
   );
   if (spoken.status === 'skipped') {
     console.error(
-      { outcome: 'group_plan_calendar_moved_unwritten', reason: spoken.reason },
+      { outcome: 'group_plan_calendar_moved_unwritten', reason: spoken.reason, ref: input.row.id },
       'group plan calendar: moved line not written',
     );
     await ports.pager.page({
       site: 'group_plan_calendar_move',
       facts: { failure: 'line_unwritten' },
+      ref: input.row.id,
     });
     return effect;
   }

@@ -417,6 +417,8 @@ const OPS_PAGE_PER_REF = [
   'registration_receipt_unrecorded',
   'registration_stop_unverified',
   'billing_notice_unsent',
+  // One household's calendar copy after a group lock; its ref is that household's ask row.
+  'group_plan_calendar_move',
 ] as const;
 type OpsPagePerRefSite = (typeof OPS_PAGE_PER_REF)[number];
 

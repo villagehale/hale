@@ -698,6 +698,7 @@ describe('a locked new start', () => {
       create trigger refuse_copy_move before update on family_events
       for each row execute function refuse_copy_move();
     `);
+    const askS = await consentIdOf(w.famS);
     const posted: string[] = [];
     try {
       await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), { posted });
@@ -707,7 +708,9 @@ describe('a locked new start', () => {
       );
     }
     expect(await events()).toEqual([{ familyId: w.famS, startsAt: OLD_START, deletedAt: null }]);
-    expect(posted).toEqual(['Hale: ops page. site group_plan_calendar_move. failure move_failed.']);
+    expect(posted).toEqual([
+      `Hale: ops page. site group_plan_calendar_move. failure move_failed. ref ${askS}.`,
+    ]);
   });
 
   it('when the model cannot write the moved line, the copy still moves and #ops is paged', async () => {
@@ -729,6 +732,7 @@ describe('a locked new start', () => {
     });
     await timePoll(w.plan.id, w.famA);
     const sentBefore = out.lines.length;
+    const askS = await consentIdOf(w.famS);
     const posted: string[] = [];
     const mute = fakeGroupPlanRsvpComposer({
       body: (input: GroupLineInput) => {
@@ -743,7 +747,7 @@ describe('a locked new start', () => {
     expect(await events()).toEqual([{ familyId: w.famS, startsAt: NEW_START, deletedAt: null }]);
     expect(out.lines).toHaveLength(sentBefore);
     expect(posted).toEqual([
-      'Hale: ops page. site group_plan_calendar_move. failure line_unwritten.',
+      `Hale: ops page. site group_plan_calendar_move. failure line_unwritten. ref ${askS}.`,
     ]);
     const audits = await db.database
       .select({ familyId: schema.auditLog.familyId })
@@ -804,6 +808,7 @@ describe("after a lock, one household's failure never stops another's", () => {
     await okInOwnOneToOne(out, w.s, S_PHONE, at(2));
     expect(await events()).toEqual([{ familyId: w.famS, startsAt: OLD_START, deletedAt: null }]);
     await timePoll(w.plan.id, w.famA);
+    const askA = await consentIdOf(w.famA);
     const posted: string[] = [];
 
     const result = await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), {
@@ -817,11 +822,100 @@ describe("after a lock, one household's failure never stops another's", () => {
     expect(await events()).toEqual([{ familyId: w.famS, startsAt: NEW_START, deletedAt: null }]);
     expect(kinds(out.to(S_PHONE)).at(-1)).toBe('calendar_moved');
     expect(posted).toEqual([
-      'Hale: ops page. site group_plan_calendar_move. failure follow_up_failed.',
+      `Hale: ops page. site group_plan_calendar_move. failure follow_up_failed. ref ${askA}.`,
     ]);
     expect(result).toMatchObject({ handled: true, outcome: 'group_experience_spoken' });
   });
+
+  it('two households that both fail after one lock page twice, each naming its own ask', async () => {
+    const w = await world();
+    await thread(w.famA, w.a, A_PHONE);
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.a, A_PHONE, NOW);
+    await sayYes(out, w.s, S_PHONE, at(1));
+    await okInOwnOneToOne(out, w.s, S_PHONE, at(2));
+    await timePoll(w.plan.id, w.famA);
+    const askA = await consentIdOf(w.famA);
+    const askS = await consentIdOf(w.famS);
+    const posted: string[] = [];
+    const error = vi.spyOn(console, 'error');
+
+    await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), {
+      posted,
+      findDirectChat: async () => {
+        throw new Error('direct chat lookup broke');
+      },
+    });
+
+    expect([...posted].sort()).toEqual(
+      [
+        `Hale: ops page. site group_plan_calendar_move. failure follow_up_failed. ref ${askA}.`,
+        `Hale: ops page. site group_plan_calendar_move. failure follow_up_failed. ref ${askS}.`,
+      ].sort(),
+    );
+    for (const [familyId, ref] of [
+      [w.famA, askA],
+      [w.famS, askS],
+    ]) {
+      expect(error).toHaveBeenCalledWith(
+        {
+          outcome: 'group_plan_calendar_after_lock_failed',
+          ref,
+          planId: w.plan.id,
+          familyId,
+          err: 'Error',
+        },
+        expect.any(String),
+      );
+    }
+  });
+
+  it('a throw while telling one household its copy moved still moves the next household', async () => {
+    const w = await world();
+    await thread(w.famA, w.a, A_PHONE);
+    await thread(w.famS, w.s, S_PHONE);
+    const out = linq();
+    await sayYes(out, w.a, A_PHONE, NOW);
+    await okInOwnOneToOne(out, w.a, A_PHONE, at(1));
+    await sayYes(out, w.s, S_PHONE, at(2));
+    await okInOwnOneToOne(out, w.s, S_PHONE, at(3));
+    await timePoll(w.plan.id, w.famA);
+    const askA = await consentIdOf(w.famA);
+    const posted: string[] = [];
+
+    const result = await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(4), {
+      posted,
+      findDirectChat: async (phone) => {
+        if (phone === A_PHONE) throw new Error('direct chat lookup broke');
+        return dm(phone);
+      },
+    }).catch((err: unknown) => err);
+
+    expect(result).toMatchObject({ handled: true, outcome: 'group_experience_spoken' });
+    const byFamily = (x: { familyId: string }, y: { familyId: string }) =>
+      x.familyId.localeCompare(y.familyId);
+    expect((await events()).sort(byFamily)).toEqual(
+      [
+        { familyId: w.famA, startsAt: NEW_START, deletedAt: null },
+        { familyId: w.famS, startsAt: NEW_START, deletedAt: null },
+      ].sort(byFamily),
+    );
+    expect(kinds(out.to(S_PHONE)).at(-1)).toBe('calendar_moved');
+    expect(kinds(out.to(A_PHONE))).toEqual(['calendar_ask', 'calendar_written']);
+    expect(posted).toEqual([
+      `Hale: ops page. site group_plan_calendar_move. failure follow_up_failed. ref ${askA}.`,
+    ]);
+  });
 });
+
+async function consentIdOf(familyId: string): Promise<string> {
+  const [row] = await db.database
+    .select({ id: schema.linqGroupPlanCalendarConsents.id })
+    .from(schema.linqGroupPlanCalendarConsents)
+    .where(eq(schema.linqGroupPlanCalendarConsents.familyId, familyId));
+  return row?.id as string;
+}
 
 describe('a lock texts only an adult who is still a parent of that household', () => {
   it('a co-parent removed from the family after the ask gets no re-ask; a parent still in theirs does', async () => {
@@ -889,6 +983,7 @@ describe('a moved copy always has its audit row', () => {
       create trigger refuse_moved_audit before insert on audit_log
       for each row execute function refuse_moved_audit();
     `);
+    const askS = await consentIdOf(w.famS);
     const posted: string[] = [];
     try {
       await lock(out, w.famA, { phone: A_PHONE, userId: w.a }, at(3), { posted }).catch(
@@ -903,7 +998,9 @@ describe('a moved copy always has its audit row', () => {
     expect(await events()).toEqual([{ familyId: w.famS, startsAt: OLD_START, deletedAt: null }]);
     expect(await movedAudits()).toEqual([]);
     expect(kinds(out.to(S_PHONE))).toEqual(['calendar_ask', 'calendar_written']);
-    expect(posted).toEqual(['Hale: ops page. site group_plan_calendar_move. failure move_failed.']);
+    expect(posted).toEqual([
+      `Hale: ops page. site group_plan_calendar_move. failure move_failed. ref ${askS}.`,
+    ]);
   });
 });
 
