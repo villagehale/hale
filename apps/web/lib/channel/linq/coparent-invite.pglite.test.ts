@@ -46,6 +46,9 @@ beforeEach(() => {
   vi.stubEnv('JOIN_DOOR_MODEL_COPY_ENABLED', 'true');
   vi.stubEnv('LINQ_API_KEY', 'linq_test_key_not_a_secret');
   vi.stubEnv('LINQ_FROM_E164', FROM);
+  // These cases are the invite flow. With the flag on there is none
+  // (coparent-number-no-cold-text.pglite.test.ts).
+  vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => {

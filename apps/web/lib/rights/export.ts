@@ -65,8 +65,6 @@ const NOT_IN_FAMILY_EXPORT = [
   'billing_notice_sent',
   'billing_notice_send_failed',
   'billing_notice_dropped',
-  // VIL-759. One adult's invite that Linq did not accept.
-  'third_party_invite_send_failed',
   // VIL-758. That a sign-in code went to one adult's number.
   'connector_link_code_sent',
 ] as const satisfies readonly AuditVerb[];
@@ -81,7 +79,6 @@ const OWN_ROWS_IN_EXPORT = [
   'ack_eta_late_note_sent',
   'team_schedule_driver_unreachable',
   'team_schedule_change_not_run',
-  'third_party_invite_send_failed',
   'connector_link_code_sent',
 ] as const satisfies readonly (typeof NOT_IN_FAMILY_EXPORT)[number][];
 

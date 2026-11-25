@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakeDb } from '~/lib/channel/intake/fakes';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { encryptString } from '~/lib/crypto/string-cipher';
@@ -40,6 +40,12 @@ function seedParent(fake: ReturnType<typeof makeFakeDb>): void {
     providerMessageId: 'in-1',
   } as never);
 }
+
+beforeEach(() => {
+  // These cases are the invite flow. With the flag on there is none
+  // (open-chosen-group-no-cold-text.pglite.test.ts).
+  vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
+});
 
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';
