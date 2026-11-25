@@ -11,10 +11,10 @@ import { payerThreadProof } from './notices/thread';
 /**
  * Which state the checkout success page shows, from the Stripe session and Hale's DB.
  *
- * Whoever holds the success URL can read this answer, and the session id is also the
- * purchase id Google and Meta receive. So it carries no personal data, family rows are
- * read only until the session's `expires_at`, and `checkInDue` exists only on
- * `plan_active`. `upgraded` and `already_on_plan` render on the page but nothing here
+ * The route computes it only for a signed-in parent of the paying family, but the page it
+ * picks can still be seen over a shoulder or in a screenshot. So it carries no personal
+ * data, family rows are read only until the session's `expires_at`, and `checkInDue`
+ * exists only on `plan_active`. `upgraded` and `already_on_plan` render on the page but nothing here
  * selects them: no billing flow charges "only the difference" or queues a duplicate's
  * refund, so their copy would be untrue today.
  */
