@@ -24,12 +24,37 @@ afterEach(() => {
   localStorage.clear();
   for (const node of document.head.querySelectorAll('script')) node.remove();
   document.body.replaceChildren();
-  const w = window as Window & { fbq?: unknown; _fbq?: unknown; __haleMetaPixel?: boolean };
+  const w = window as Window & {
+    fbq?: unknown;
+    _fbq?: unknown;
+    __haleMetaPixel?: boolean;
+    gtag?: unknown;
+    dataLayer?: unknown;
+    __haleAds?: boolean;
+  };
   w.fbq = undefined;
   w._fbq = undefined;
   w.__haleMetaPixel = undefined;
+  w.gtag = undefined;
+  w.dataLayer = undefined;
+  w.__haleAds = undefined;
   vi.unstubAllGlobals();
 });
+
+/** The gtag tag already on the page, as the consent banner leaves it after Accept. */
+function installedGtag() {
+  const gtag = vi.fn();
+  vi.stubGlobal('gtag', gtag);
+  Object.assign(window, { gtag, __haleAds: true });
+  return gtag;
+}
+
+function googleConversions(): unknown[][] {
+  const layer = (window as Window & { dataLayer?: ArrayLike<unknown>[] }).dataLayer ?? [];
+  return layer
+    .map((entry) => Array.from(entry))
+    .filter(([kind, name]) => kind === 'event' && name === 'conversion');
+}
 
 async function mountAcrossPolling(render: (transactionId: string) => React.ReactElement) {
   const container = document.createElement('div');
@@ -47,9 +72,8 @@ async function mountAcrossPolling(render: (transactionId: string) => React.React
 
 describe('purchase conversions across the pending state', () => {
   it('fires Google once per session, and again only for a different session', async () => {
-    const gtag = vi.fn();
-    vi.stubGlobal('gtag', gtag);
-    Object.assign(window, { gtag });
+    localStorage.setItem('hale-site-consent', 'granted');
+    const gtag = installedGtag();
     await mountAcrossPolling((transactionId) =>
       createElement(GooglePurchaseConversion, { ...BASE, sendTo: 'AW-1/test', transactionId }),
     );
@@ -157,6 +181,57 @@ describe('purchase conversions across the pending state', () => {
     expect(
       queued.filter(([method, name]) => method === 'track' && name === 'Purchase'),
     ).toHaveLength(1);
+    await act(async () => root.unmount());
+  });
+
+  it('fires Google once when Accept happens after the receipt mounts', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(GooglePurchaseConversion, {
+          ...BASE,
+          sendTo: 'AW-1/test',
+          transactionId: 'cs_test_google_late',
+        }),
+      );
+    });
+    expect(googleConversions()).toEqual([]);
+    await act(async () => {
+      writeConsent('granted');
+    });
+    expect(googleConversions()).toEqual([
+      [
+        'event',
+        'conversion',
+        { send_to: 'AW-1/test', value: 59, currency: 'CAD', transaction_id: 'cs_test_google_late' },
+      ],
+    ]);
+    await act(async () => {
+      writeConsent('granted');
+    });
+    expect(googleConversions()).toHaveLength(1);
+    await act(async () => root.unmount());
+  });
+
+  it('does not fire Google without consent, even when a tag is already on the page', async () => {
+    localStorage.setItem('hale-site-consent', 'denied');
+    const gtag = installedGtag();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(GooglePurchaseConversion, {
+          ...BASE,
+          sendTo: 'AW-1/test',
+          transactionId: 'cs_test_google_denied',
+        }),
+      );
+    });
+    expect(gtag.mock.calls.filter(([kind]) => kind === 'event')).toEqual([]);
+    expect(sessionStorage.getItem('hale.google_ads_purchase.cs_test_google_denied')).toBeNull();
     await act(async () => root.unmount());
   });
 });
