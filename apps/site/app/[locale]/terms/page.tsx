@@ -138,15 +138,15 @@ export default async function TermsPage({
     >
       <LegalSectionBlock id="what-hale-is" title="What Hale is">
         <p>
-          Hale is a family assistant you reach by iMessage or text message, not an app you install.
+          Hale is an AI agent you reach by iMessage or text message, not an app you install.
           Email and the web app are available too, and carry the same record.
         </p>
         <p>
-          Hale helps with kids&rsquo; activities (city, YMCA and private programs), reminders before
-          registration opens, open-spot watches, family group chats and parenting questions. Today
-          Hale does not book, register or pay for anything on your behalf. Future features may let
-          Hale act on your instruction, for example completing a sign-up, but only after you confirm
-          each action, and under any extra terms we show you at the time. Hale is a tool to support
+          Hale knows your family, finds what fits, runs a group chat you add it to, and reads Gmail
+          and calendar when you connect them. Starting Dec 1, with your ok, it may sign them up.
+          Today Hale does not book, register or pay for anything on your behalf. It will only sign
+          them up after you confirm that action, and under any extra terms we show you at the time.
+          Hale is a tool to support
           you as a parent; it does not replace your judgment.
         </p>
       </LegalSectionBlock>
@@ -242,18 +242,17 @@ export default async function TermsPage({
 
       <LegalSectionBlock id="approval-model" title="How Hale works: you decide">
         <p>
-          Hale writes and sends you messages, reminders and suggestions. It does not take actions in
-          the outside world for you, such as registering, paying, or sending email in your name. If
-          we add such a feature, Hale will act only after you confirm the specific action, and
-          spending limits will apply.
+          Hale writes and sends you messages and suggestions. It does not pay, and it does not send
+          email in your name. Starting Dec 1, with your ok, it may sign them up. It does not do that
+          before then. Spending limits apply to any action that costs money.
         </p>
       </LegalSectionBlock>
 
       <LegalSectionBlock id="paid-plans" title="Price and paid plans">
         <p>
-          Hale has a Free tier. Paid plans are Plus and Max. We show the price before you choose a
+          Paid plans are Plus and Max. We show the price before you choose a
           paid plan, and we charge you only if you choose one. Full refund anytime if it’s not for
-          you. Free features you already use will not start costing money without notice.
+          you. What you already use will not start costing money without notice.
         </p>
       </LegalSectionBlock>
 
@@ -323,7 +322,7 @@ export default async function TermsPage({
           responsible for reviewing them before you act. Hale is provided{' '}
           <strong>&ldquo;as is&rdquo; and &ldquo;as available,&rdquo;</strong> without warranties of
           any kind, whether express or implied, to the fullest extent permitted by law. We do not
-          warrant that Hale will be uninterrupted or error-free.
+          warrant that Hale will be uninterrupted or without error.
         </p>
         <p>
           To that same extent, we disclaim the implied warranties and conditions of merchantability,

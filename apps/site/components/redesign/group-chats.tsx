@@ -92,7 +92,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             <TypingBubble />
             <div className="im-b in tail">
               {t(
-                'Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+). Want me to track RSVPs?',
+                'Two nearby take Saturday groups of 8: the climbing gym (ages 3–7) or the clay café (ages 4+).',
               )}
             </div>
           </div>
@@ -105,7 +105,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
         </>,
         <span className="hs-did" {...step('3')}>
           <Check />
-          {t('6 yes, 2 to go · on everyone’s calendar')}
+          {t('Gets every family to a yes')}
         </span>,
       )}
     </div>,
@@ -135,7 +135,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             <TypingBubble />
             <div className="im-b in tail">
               {t(
-                'Got it. Tom on Tuesday, Mei on Thursday, 5:30 after soccer. I’ll remind whoever’s driving the night before.',
+                'Got it. Tom on Tuesday, Mei on Thursday, 5:30 after soccer. I’ll keep the driver straight.',
               )}
             </div>
           </div>
@@ -168,7 +168,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             <TypingBubble />
             <div className="im-b in tail">
               {t(
-                'Saturdays 9:30 at the community pool has room for all three. Sign-ups open Tuesday at 7. I’ll send you each the link the night before.',
+                'Saturdays 9:30 at the community pool has room for all three. Starting Dec 1, with your ok, I can sign them up.',
               )}
             </div>
           </div>
@@ -179,7 +179,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
         </>,
         <span className="hs-did" {...step('2.2')}>
           <Check />
-          {t('Reminder set · Mon 7 PM')}
+          {t('Gets the spot · starting Dec 1')}
         </span>,
       )}
     </div>,

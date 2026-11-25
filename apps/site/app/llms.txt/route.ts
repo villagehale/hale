@@ -1,7 +1,8 @@
-import { type FamilyStage, MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
+import { type FamilyStage, PROMO_PRICE_DISPLAY } from '@hale/types';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
 import { REFUND_LINE } from '~/lib/billing/plain-price';
+import { ONE_LINER, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 
 /**
  * /llms.txt — the emerging convention for telling AI assistants what a site is
@@ -25,17 +26,16 @@ function buildLlmsTxt(): string {
   const lines: string[] = [
     '# Hale',
     '',
-    '> Hale is a planner for your kids\' year, for every stage of childhood (0–18). Find what\'s on. Hear how it went. Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family\'s own health provider.',
+    `> ${ONE_LINER} ${PLUS_SIGNUP_LINE} For every stage of childhood (0–18). Its answer pages give calm, plain answers to the parenting-health questions families search for — each one grounded in trusted, cited frameworks (Canadian Paediatric Society, Health Canada, American Academy of Pediatrics, and named parenting authors) and honest that it is general guidance, never a substitute for a family's own health provider.`,
     '',
     '## About Hale',
     '',
-    '- What it is: an iMessage and text (SMS) helper that plans kids\' activities and the family year. No app to download.',
-    '- Who it is for: parents and caregivers in the US and Canada with kids from newborn to 18, plus co-parents and other parents they plan with.',
-    '- What it does: finds activities near you by age (swim, camps, drop-ins, library programs, rec classes) with the source page for each; watches full classes for spots; reminds you before registration; asks how it went; works in group chats; reads photos of flyers and schedules; replies in the language you write in; with permission, reads Gmail and Google Calendar to keep dates straight, asking before it adds or changes anything.',
-    '- Sign-ups and payment: Hale signs your kid up when you say yes, then hands you the payment step. You always pay yourself.',
-    '- How it works: text Hale, tell it where you are and your kids\' ages, and it shows what\'s on this week. It texts only when there is a reason. Reply STOP any time.',
-    `- Price: Free is $0 with unlimited chat. In Canada, Plus is ${PLUS_LIST_PRICE_DISPLAY.CAD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.CAD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.CAD.annualLabel}. In the US, Plus is ${PLUS_LIST_PRICE_DISPLAY.USD.monthlyLabel} or ${PLUS_LIST_PRICE_DISPLAY.USD.annualLabel}, and Max is ${MAX_LIST_PRICE_DISPLAY.USD.annualLabel}. The number on the site follows where you are. ${REFUND_LINE}`,
-    '- Company: Village Hale Technologies Inc., Georgetown, Ontario. Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
+    `- What it is: ${ONE_LINER} No app to download.`,
+    '- Who it is for: parents and caregivers in Canada and the US with kids from newborn to 18, plus co-parents and other parents they plan with.',
+    `- Sign-ups: ${PLUS_SIGNUP_LINE} You say yes, and you pay.`,
+    '- How it works: you text first. Hale asks where you are and how old the kids are, then shows what fits this week. Reply STOP any time.',
+    `- Price: In Canada, Plus is ${PROMO_PRICE_DISPLAY.plus.CAD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.CAD.perYear}. In the US, Plus is ${PROMO_PRICE_DISPLAY.plus.USD.perYear} and Max is ${PROMO_PRICE_DISPLAY.family.USD.perYear}. Through Dec 31. ${REFUND_LINE}`,
+    '- Company: Village Hale Technologies Inc., Toronto. Barton Dong (CEO) and Eugene Song (CTO). Contact aloha@villagehale.com.',
     `- Pages: [About](${SITE_URL}/about), [FAQ](${SITE_URL}/faq), [Pricing](${SITE_URL}/pricing)`,
     '',
     '## Answer pages',

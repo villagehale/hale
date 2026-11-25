@@ -6,10 +6,10 @@
     "notFoundTitle": "Page not found · Hale"
   },
   "HomeMeta": {
-    "title": "Hale · Your kids’ year, handled.",
-    "description": "Your kids’ plans already live in group chats. Add Hale, and it finds what’s on, gets everyone to a yes, and puts it on the calendar.",
-    "ogDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat.",
-    "twitterDescription": "Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat."
+    "title": "Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d",
+    "description": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "ogDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "twitterDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -18,7 +18,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale is a planner for your kids’ year. Find what’s on. Hear how it went.",
+    "blurb": "Hale finds what's on near you. It gets the whole group chat to a yes.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -54,12 +54,12 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale is an AI agent you text that knows your family and takes the kids’ year off your plate, for parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes. For parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "An AI agent you text that knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -71,7 +71,7 @@
   },
   "Activities": {
     "metaTitle": "Things to do with kids, near you · Hale",
-    "metaDescription": "Free and low-cost activities for babies, toddlers, and young kids — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs."
+    "metaDescription": "Low-cost and no-cost activities for babies, toddlers, and young kids — library story-times, drop-in play, parent-and-tot swim, parks, and local family programs."
   },
   "Answers": {
     "metaTitle": "Parenting guides · Hale",
@@ -105,7 +105,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Find what’s on. Hear how it went. What’s worth doing with the kids."
+    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   },
   "CheckoutSuccess": {
     "plan": "You’re on {plan}.",
@@ -139,7 +139,7 @@
     "emailUs": "Email us"
   },
   "Jsonld": {
-    "orgDescription": "Hale is a planner for your kids’ year — it finds what’s on near your kids, watches for spots, and comes back to ask how it went.",
-    "appDescription": "Your kids’ year, handled. A planner for your kids’ year: Hale finds what’s on, watches for spots, and comes back to ask how it went."
+    "orgDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
+    "appDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
   }
 }

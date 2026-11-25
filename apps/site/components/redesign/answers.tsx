@@ -115,7 +115,7 @@ export function RedesignAnswers({
             heading={t('A question about your own child?')}
             sub={t('Text Hale. It answers with your child’s age in mind, in a line or two.')}
             cta={t('Text Hale')}
-            terms={t('Free. You text first; standard message rates apply, reply STOP any time.')}
+            terms={t('You text first. Standard message rates apply, reply STOP any time.')}
           />
         </div>
       </div>

@@ -41,6 +41,21 @@ describe('sitemap', () => {
     expect(urls).not.toContain(`${SITE_URL}/checkout/success`);
   });
 
+  it('lists the live French and Chinese URLs with hreflang alternates', () => {
+    for (const path of ['', '/pricing', '/faq', '/activities']) {
+      const en = path === '' ? SITE_URL : `${SITE_URL}${path}`;
+      const fr = entries.find((entry) => entry.url === `${SITE_URL}/fr${path === '' ? '' : path}`);
+      const zh = entries.find((entry) => entry.url === `${SITE_URL}/zh${path === '' ? '' : path}`);
+      expect(fr?.alternates?.languages).toMatchObject({
+        en,
+        fr: `${SITE_URL}/fr${path === '' ? '' : path}`,
+        zh: `${SITE_URL}/zh${path === '' ? '' : path}`,
+        'x-default': en,
+      });
+      expect(zh?.alternates?.languages?.en).toBe(en);
+    }
+  });
+
   it('lists exactly the published answer slugs (and the /answers index)', () => {
     const answerUrls = urls.filter((u) => u.startsWith(`${SITE_URL}/answers`)).sort();
     const expected = [

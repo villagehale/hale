@@ -11,7 +11,7 @@ import type { Locale } from './routing';
 export const SITE_TIMEZONE = 'America/Toronto';
 
 /**
- * A synchronous, request-scope-free translator for Server Components.
+ * A synchronous translator for Server Components, with no request scope.
  *
  * We deliberately build on `createTranslator` (the framework-agnostic primitive)
  * rather than the request-scoped `getTranslations`: the marketing pages render

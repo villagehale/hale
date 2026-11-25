@@ -12,7 +12,7 @@ import {
 } from '@hale/types';
 
 /**
- * Holiday 2026 founding-family promo, as the marketing site shows it.
+ * Holiday 2026 promo, as the marketing site shows it.
  *
  * Barton's decisions (Nov 2026), held here so every surface reads one source:
  *  - "Black Friday Sale" before HOLIDAY_SALE_STARTS_AT, then "Holiday Sale"
@@ -35,6 +35,9 @@ import {
  */
 
 export type { PromoPhase };
+/** Anchor the banner and the mobile bar both use. */
+export const PROMO_OFFER_ID = 'founding';
+
 export const PROMO_STARTS_AT = FOUNDING_PROMO_STARTS_AT;
 export const HOLIDAY_PHASE_STARTS_AT = HOLIDAY_SALE_STARTS_AT;
 
@@ -46,7 +49,7 @@ export interface PromoTierPrice {
   name: 'Plus' | 'Max';
   /** Regular annual price, shown struck through. */
   regular: number;
-  /** Sale annual price, locked in for founding families. */
+  /** Sale annual price, locked in for families who join by Dec 31. */
   sale: number;
   /** "$329/yr" */
   regularLabel: string;

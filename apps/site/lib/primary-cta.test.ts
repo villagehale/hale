@@ -9,7 +9,7 @@ import { INTAKE_PREFILL } from './text-entry.js';
  * prefill, in the form that OS reads. Windows, Linux, and unknown stay on
  * /text (the page that already shows the QR and the number). The body is
  * whatever the caller passes: EN is INTAKE_PREFILL, FR is INTAKE_PREFILL_FR,
- * handed in so this module stays copy-free.
+ * handed in so this module stays without its own sentences.
  */
 
 const NUMBER = '+16475551234';

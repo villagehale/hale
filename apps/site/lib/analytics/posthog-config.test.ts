@@ -6,13 +6,13 @@ import { POSTHOG_AUTOCAPTURE_URL_ALLOWLIST, POSTHOG_INIT_CONFIG } from './postho
 /**
  * THE MARKETING SITE'S POSTHOG POSTURE, and the legal page that depends on it.
  *
- * PostHog on this site is still storage-free (`persistence: 'memory'`). Google Ads
+ * PostHog on this site still keeps nothing on disk (`persistence: 'memory'`). Google Ads
  * is a separate head tag that may set advertising cookies — that pairing lives in
  * google-ads.test.ts, not here. This file keeps PostHog and the sentences that
  * describe it from drifting: a future `persistence: 'localStorage+cookie'` would
  * make the PostHog bullet wrong, and fails here instead.
  *
- * Expected values are derived from the posture (anonymous, explicit-only, storage-free),
+ * Expected values are derived from the posture (anonymous, explicit-only, nothing on disk),
  * not echoed back from the config.
  */
 

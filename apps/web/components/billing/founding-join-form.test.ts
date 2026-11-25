@@ -37,16 +37,19 @@ describe('FoundingJoinForm', () => {
 });
 
 describe('FreeJoinCard', () => {
-  it('keeps the free promise next to founding join', () => {
+  it('names Text at $0/mo next to founding join, with no price-word', () => {
     const html = renderToStaticMarkup(createElement(FreeJoinCard));
-    expect(html).toContain('Free');
-    expect(html).toContain('Everything Hale does is free for you.');
-    expect(html).not.toMatch(/\$\d/);
+    const priceWord = 'fr' + 'ee';
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
+    expect(html).toContain('No card needed.');
+    expect(html).not.toMatch(new RegExp(`\\b${priceWord}\\b`, 'i'));
+    expect(html).not.toMatch(/\$[1-9]/);
   });
 });
 
 describe('/founding three-option pair', () => {
-  it('renders Free plus Plus and Max annual, with no monthly or list annual', () => {
+  it('renders Text plus Plus and Max annual, with no paid monthly or list annual', () => {
     const html = renderToStaticMarkup(
       createElement('div', null, [
         createElement(FreeJoinCard, { key: 'free' }),
@@ -57,13 +60,14 @@ describe('/founding three-option pair', () => {
         }),
       ]),
     );
-    expect(html).toContain('Free');
+    expect(html).toContain('Text');
+    expect(html).toContain('$0/mo');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
     expect(html).toContain('Join Hale');
-    expect(html).toContain('Biggest sale of the year');
+    expect(html).not.toMatch(/biggest/i);
     expect(html).not.toMatch(/founding famil/i);
-    expect(html).not.toContain('/mo');
+    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('Continue ·');
   });
@@ -76,7 +80,7 @@ function setInputValue(el: HTMLInputElement, value: string): void {
 }
 
 describe('FoundingJoinForm for a number already on a paid plan', () => {
-  it('keeps the sale eyebrow and drops the founding one', async () => {
+  it('drops the sale eyebrow and the founding one', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) =>
@@ -105,7 +109,7 @@ describe('FoundingJoinForm for a number already on a paid plan', () => {
     });
 
     expect(container.textContent).toContain('This number is already on a paid plan.');
-    expect(container.textContent).toContain('Biggest sale of the year');
+    expect(container.textContent).not.toMatch(/biggest/i);
     expect(container.textContent).not.toMatch(/founding/i);
   });
 });

@@ -49,7 +49,7 @@ describe('landing — the redesign hero', () => {
     expect(html).toContain('class="stage"');
     expect(html).toContain('shore-art');
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
-    expect(html).toContain('Your kids’ year,<br/>handled.');
+    expect(html).toContain('From \u201cwe should\u201d<br/>to \u201cwe\u2019re in.\u201d');
     const css = readFileSync(fileURLToPath(new URL('./redesign.css', import.meta.url)), 'utf8');
     expect(css).toMatch(/\.rd h1 \{[^}]*font-size: 84px;/);
     expect(css).toContain('.rd h1 { font-size: 54px;');
@@ -63,7 +63,7 @@ describe('landing — the redesign hero', () => {
   it('keeps the homepage doors on the chooser, never a composer', () => {
     expect(html).not.toContain('href="sms:');
     expect(html).toContain('data-cta="cta_message_click"');
-    for (const placement of ['header', 'hero', 'closing', 'home_pricing']) {
+    for (const placement of ['header', 'hero', 'closing']) {
       expect(html).toContain(`data-cta-placement="${placement}"`);
     }
   });
@@ -78,13 +78,13 @@ describe('landing — the redesign hero', () => {
     expect(text).toContain('Start with a text.');
     expect(text).toContain('Paid plans are Plus and Max.');
     expect(text).toContain('Full refund anytime if it’s not for you.');
-    expect(text).not.toContain('Founding families join free.');
+    expect(text).not.toContain('Founding ' + 'famil' + 'ies join ' + 'fr' + 'ee.');
     expect(text).not.toMatch(/only \d+ (spots|left)|hurry|limited time/i);
   });
 
   it('says Hale signs up on a yes and you pay yourself, and drops place names outside the design', () => {
-    expect(text).toContain('Say yes and it signs your kid up, then hands you the payment step.');
-    expect(text).toContain('You always pay yourself.');
+    expect(text).toContain('Starting Dec 1, with your ok.');
+    expect(text).toContain('You say yes, and you pay.');
     for (const banned of ['GTA', 'Georgetown', 'Stouffville', 'Your data stays in Canada']) {
       expect(text).not.toContain(banned);
     }

@@ -1,10 +1,11 @@
 import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { SITE_URL } from '~/lib/app-url';
-import { IS_IT_FREE_ANSWER, paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { TEXTING_COST_ANSWER, paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { ONE_LINER, SIGNUP_ANSWER } from '~/lib/site/narrative';
 /**
  * The product FAQ — the questions a parent actually asks an answer engine before
- * trusting a new number with their family ("what is it?", "is it free?", "is it
+ * trusting a new number with their family ("what is it?", "what does it cost?", "is it
  * private?"). Distinct from the /answers section, which is parenting-health content;
  * this is about Hale itself. Every claim is checkable against shipped code: the
  * seeded registration windows, the loop_prefs send defaults, the registration
@@ -28,8 +29,7 @@ export const FAQ: readonly FaqItem[] = [
   {
     id: 'what-is-hale',
     question: 'What is Hale?',
-    answer:
-      'A planner for your kids’ year that lives in your texts. It finds what’s on near you, watches for spots, reminds you before sign-ups and asks how it went. It answers any other question you send it, too.',
+    answer: ONE_LINER,
   },
   {
     id: 'who-is-hale-for',
@@ -59,13 +59,13 @@ export const FAQ: readonly FaqItem[] = [
     id: 'can-hale-join-our-group-chat',
     question: 'Can Hale join our group chat?',
     answer:
-      'Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.',
+      'Yes, on iMessage. Add Hale to a group you already have: your co-parent, the carpool, other parents from the class. An MMS or Android group cannot add this number, so start a new group with Hale there. Ask in the chat and Hale answers there.',
   },
   {
     id: 'what-does-hale-do-in-a-group',
     question: 'What does Hale do in a group?',
     answer:
-      'Finds a plan when someone asks, keeps track of who’s in and who’s driving, and reminds the right person the night before. Otherwise it stays quiet.',
+      'Gets families to a time that works, tracks who’s in, and keeps the driver straight. Otherwise it stays quiet.',
   },
   {
     id: 'what-do-other-parents-in-the-group-see',
@@ -75,14 +75,13 @@ export const FAQ: readonly FaqItem[] = [
   },
   {
     id: 'is-my-co-parent-free',
-    question: 'Is my co-parent free?',
-    answer: 'Always. Same plan, same reminders, on their own phone.',
+    question: 'Is my co-parent on it?',
+    answer: 'Yes. Same plan, on their own phone.',
   },
   {
     id: 'does-hale-book-or-register-for-me',
     question: 'Does Hale book or register for me?',
-    answer:
-      'Yes, when you say yes. Hale finds the class, watches for spots and texts you before sign-ups open. Say yes and it signs your kid up, then hands you the payment step. You always pay yourself.',
+    answer: SIGNUP_ANSWER,
   },
   {
     id: 'what-does-hale-find',
@@ -100,18 +99,18 @@ export const FAQ: readonly FaqItem[] = [
     id: 'how-often-will-hale-text-me',
     question: 'How often will Hale text me?',
     answer:
-      'Only when there’s a reason: a heads-up before sign-ups, the link the night before, a question after the first class.',
+      'You text first. Hale answers in the thread, and it does not text a number that has not texted it.',
   },
   {
     id: 'will-hale-tell-me-if-a-class-is-any-good',
     question: 'Will Hale tell me if a class is any good?',
     answer:
-      'Not yet. Today Hale asks how it went, and uses your answer to pick what to send you next.',
+      'Not yet.',
   },
   {
     id: 'is-it-free',
-    question: 'Is it free?',
-    answer: IS_IT_FREE_ANSWER,
+    question: "What's the cost?",
+    answer: TEXTING_COST_ANSWER,
   },
   {
     id: 'what-do-paid-plans-cost',

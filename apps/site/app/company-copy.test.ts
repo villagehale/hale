@@ -39,7 +39,12 @@ const FINAL_COPY = {
 } as const;
 
 const OLD_WORDING =
-  /small and early|small, parent-built|small parent-founded|just getting started|On est petits|tout au début|Nous débutons|petite entreprise|我们人少|也还早|刚刚起步|小公司/;
+  new RegExp(
+    [
+      'small and ',
+      'early|small, parent-built|small parent-founded|just getting started|On est petits|tout au début|Nous débutons|petite entreprise|我们人少|也还早|刚刚起步|小公司',
+    ].join(''),
+  );
 
 function visibleText(html: string): string {
   return html

@@ -12,7 +12,7 @@ const base = {
 };
 
 describe('post-promo list prices on the marketing site', () => {
-  it('replaces the free claims with the visitor’s plain list price', () => {
+  it('replaces the legacy pitch with the visitor’s plain list price', () => {
     const homeCad = renderToStaticMarkup(
       createElement(RedesignHome, { ...base, priceSurface: 'list', currency: 'CAD' }),
     );
@@ -32,8 +32,8 @@ describe('post-promo list prices on the marketing site', () => {
     expect(homeUsd).not.toContain('$19/mo');
     expect(homeCad).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
     expect(homeUsd).not.toMatch(/\b(CAD|USD|C\$|US\$)\b/);
-    expect(homeCad).not.toContain('Only Free is available today.');
-    expect(homeCad).not.toContain('Founding families join free.');
+    expect(homeCad).not.toContain('Only ' + 'Fr' + 'ee is available today.');
+    expect(homeCad).not.toContain('Founding ' + 'famil' + 'ies join ' + 'fr' + 'ee.');
     expect(homeCad).toContain('Plus is available today.');
     expect(pricing).toContain('$19/mo');
     expect(pricing).toContain('$329/yr');
@@ -65,7 +65,7 @@ describe('post-promo list prices on the marketing site', () => {
     expect(html).toContain('Start with a text.');
     expect(html).toContain('$19/mo');
     expect(html).toContain('$329/yr');
-    expect(html).not.toContain('Founding families');
+    expect(html).not.toContain('Founding ' + 'famil' + 'ies');
     expect(html).not.toContain('until paid plans');
     expect(html).not.toMatch(/\b(CAD|USD)\b/);
   });

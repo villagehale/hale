@@ -10,6 +10,7 @@ import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { requestHolidayPromo } from '~/lib/promo/server';
 import { shareCardImage } from '~/lib/site/share-cards';
+import { pricingJsonLd } from '~/lib/site/structured-data';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -50,7 +51,13 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
   const currency = checkoutCurrency ?? 'CAD';
   const search = (await searchParams) ?? {};
   return (
-    <RedesignPricing
+    <>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd(locale)) }}
+      />
+      <RedesignPricing
       regionBlocked={checkoutCurrency === null}
       noChargeLine={
         checkoutWasCancelled(search) ? getTranslator(locale, 'Pricing')('noCharge') : null
@@ -63,5 +70,6 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
       priceSurface={priceSurface}
       currency={currency}
     />
+    </>
   );
 }

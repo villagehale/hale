@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
 import { socialCardCopy } from './social-card-copy';
 
 /**
@@ -9,11 +10,11 @@ import { socialCardCopy } from './social-card-copy';
  */
 
 describe('homepage share card copy', () => {
-  it('sells the kids-year agent', () => {
+  it('uses the page title and the one-liner', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe('Your kids’ year, handled.');
-    expect(copy.subline).toBe('An AI agent you text that knows your family.');
-    expect(copy.alt).toBe('Hale, an AI agent you text for your kids’ year');
+    expect(copy.headline).toBe(PAGE_TITLE);
+    expect(copy.subline).toBe(ONE_LINER);
+    expect(copy.alt).toBe(PAGE_TITLE);
     const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
     expect(blob).not.toContain('assistant');
     expect(blob).not.toContain('planner');

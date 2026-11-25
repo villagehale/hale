@@ -303,7 +303,6 @@ describe('the chooser doors are wired the same way', () => {
       'closing',
       'faq',
       'about',
-      'pricing_tier',
       'answers',
       'activities',
       'text',

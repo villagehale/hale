@@ -90,7 +90,7 @@ describe('FAQ accordion ids', () => {
       if (item.question === 'What happens to our data?' || item.question === 'Is Hale a person?') {
         continue;
       }
-      expect(faq).toContain(item.answer);
+      expect(faq).toContain(item.answer.replaceAll("'", '&#x27;'));
     }
   });
 

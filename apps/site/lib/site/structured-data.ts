@@ -1,13 +1,35 @@
+import { PROMO_PRICE_DISPLAY } from '@hale/types';
 import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { APP_URL, SITE_URL } from '~/lib/app-url';
 
+/** Sale offers stay valid through the Dec 31 join date. */
+export const SALE_PRICE_VALID_UNTIL = '2026-12-31';
+
+/** Canada and the US, Plus and Max. Amounts come from the promo display table. */
+export function saleOffers(): Array<Record<string, string>> {
+  const rows = [
+    ['Plus', 'CAD', PROMO_PRICE_DISPLAY.plus.CAD.amount],
+    ['Max', 'CAD', PROMO_PRICE_DISPLAY.family.CAD.amount],
+    ['Plus', 'USD', PROMO_PRICE_DISPLAY.plus.USD.amount],
+    ['Max', 'USD', PROMO_PRICE_DISPLAY.family.USD.amount],
+  ] as const;
+  return rows.map(([name, priceCurrency, amount]) => ({
+    '@type': 'Offer',
+    name,
+    price: String(amount),
+    priceCurrency,
+    priceValidUntil: SALE_PRICE_VALID_UNTIL,
+    url: `${SITE_URL}/pricing`,
+  }));
+}
+
 /**
  * The site-identity JSON-LD for the homepage: the three nodes an answer engine or
  * Google needs to treat Hale as a real, accountable entity rather than an anonymous
  * page — the Organization (who publishes), the WebSite (the canonical property), and
- * the SoftwareApplication (the product itself, with its free tier).
+ * the SoftwareApplication (the product itself, with the Canada and US sale Offers).
  * Emitted as one `@graph` so a single script tag carries all three, cross-linked by
  * `@id`. Pure + exported so the shape is unit-tested against these constants rather
  * than eyeballed in the browser. No user input ever reaches it (hard rule #1). The
@@ -49,9 +71,7 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     inLanguage,
     publisher: { '@id': `${SITE_URL}/#organization` },
     description: t('appDescription'),
-    // The free tier. A concrete Offer node is the signal an answer
-    // engine reads when a parent asks whether Hale costs anything.
-    offers: { '@type': 'Offer', price: '0', priceCurrency: 'CAD' },
+    offers: saleOffers(),
   };
 
   return {
@@ -64,6 +84,23 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
  * AboutPage JSON-LD for /about: the page, about the Organization, with its
  * founders and the countries Hale serves. Pure, no user input.
  */
+/** /pricing JSON-LD. Same sale Offers as the homepage, in the page's language. */
+export function pricingJsonLd(locale: Locale = routing.defaultLocale): Record<string, unknown> {
+  const t = getTranslator(locale, 'Jsonld');
+  const prefix = locale === routing.defaultLocale ? '' : `/${locale}`;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Hale',
+    applicationCategory: 'LifestyleApplication',
+    operatingSystem: 'Web, iOS',
+    url: `${SITE_URL}${prefix}/pricing`,
+    inLanguage: languageTag(locale),
+    description: t('appDescription'),
+    offers: saleOffers(),
+  };
+}
+
 export function aboutJsonLd(locale: Locale = routing.defaultLocale): Record<string, unknown> {
   const t = getTranslator(locale, 'Jsonld');
   const prefix = locale === routing.defaultLocale ? '' : `/${locale}`;

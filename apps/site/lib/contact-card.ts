@@ -1,4 +1,5 @@
 import { SITE_URL } from './app-url';
+import { PAGE_TITLE } from './site/narrative';
 
 /**
  * Hale's saved-contact card, as vCard 3.0 (RFC 2426).
@@ -27,7 +28,7 @@ const ENCODER = new TextEncoder();
 
 /** The card's one sentence of self-description. No commas, semicolons, or
  * backslashes — those would need escaping under RFC 2426 §4. */
-const NOTE = 'Hale — a planner for your kids’ year.';
+const NOTE = PAGE_TITLE;
 
 /**
  * One logical line as the physical lines a parser reads: the first up to `limit`

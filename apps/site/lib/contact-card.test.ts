@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from './app-url.js';
 import { VCARD_OCTET_LIMIT, buildVCard, foldLine } from './contact-card.js';
+import { PAGE_TITLE } from './site/narrative.js';
 
 /**
  * The saved-contact card (/hale.vcf) — what a parent's phone reads when they tap
@@ -66,7 +67,7 @@ describe('buildVCard — envelope and fields', () => {
   it('points at the site and says what Hale is', () => {
     const lines = unfold(card);
     expect(lines).toContain(`URL:${SITE_URL}`);
-    expect(lines).toContain('NOTE:Hale — a planner for your kids’ year.');
+    expect(lines).toContain(`NOTE:${PAGE_TITLE}`);
   });
 });
 
@@ -113,9 +114,9 @@ describe('foldLine — the rule iOS is strict about', () => {
   });
 
   it('keeps multi-byte characters whole', () => {
-    // The NOTE's em dash is three octets; a fold that counted characters could
-    // split it and hand the phone a mojibake note.
-    const note = 'NOTE:Hale — a planner for your kids’ year.';
+    // An em dash is three octets; a fold that counted characters could split it
+    // and hand the phone a mojibake note.
+    const note = 'NOTE:Hale \u2014 home.';
     const folded = foldLine(note, 12);
     for (const physical of folded.split('\r\n')) expect(octets(physical)).toBeLessThanOrEqual(12);
     expect(folded.replace(/\r\n /g, '')).toBe(note);

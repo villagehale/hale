@@ -8,8 +8,8 @@ import {
 import { PlanCheckoutButton } from './plan-checkout-button';
 import styles from './portal.module.css';
 
-/** Free card. */
-export function FoundingPlan({ badge = 'Free' }: { badge?: string }) {
+/** Text card. The price-word is not used. */
+export function FoundingPlan({ badge = 'Text' }: { badge?: string }) {
   return (
     <section className={`${styles.card} ${styles['fp-card']}`}>
       <div className={styles['fp-head']}>
@@ -23,10 +23,8 @@ export function FoundingPlan({ badge = 'Free' }: { badge?: string }) {
         </span>
         <span className={styles['fp-badge']}>{badge}</span>
       </div>
-      <h2 className={styles['fp-title']}>Everything Hale does is free for you.</h2>
-      <p className={styles['fp-body']}>
-        Every feature, including new ones as they ship. There’s no plan to pick and nothing to pay.
-      </p>
+      <h2 className={styles['fp-title']}>$0/mo</h2>
+      <p className={styles['fp-body']}>No card needed.</p>
       <div className={styles['fp-rule']} />
       <div className={styles['fp-note']}>
         <span className={styles['fp-bell']} aria-hidden="true">
@@ -115,7 +113,7 @@ export function PlanOffer({
   }
   return (
     <>
-      <FoundingPlan badge="Free" />
+      <FoundingPlan badge="Text" />
       <PromoOfferPlan currency={currency} tier="plus" />
       <PromoOfferPlan currency={currency} tier="family" />
     </>

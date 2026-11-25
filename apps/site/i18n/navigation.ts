@@ -1,7 +1,7 @@
 import { type Locale, routing } from './routing';
 
 /**
- * Locale-aware internal links, built provider-free so Server Components can call
+ * Locale-aware internal links, built without a client provider so Server Components can call
  * them directly. With `as-needed`, the default locale keeps the bare path
  * (`/pricing`) and the others carry a prefix (`/fr/pricing`). Every internal
  * `href` on a localized page MUST go through this, or a link on `/fr/about` would

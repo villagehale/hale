@@ -176,7 +176,7 @@ describe('legal pages (long-form shell)', () => {
 
 describe('terms (migrated verbatim)', () => {
   it('keeps the approval model, the AI disclaimer, and Ontario governing law', () => {
-    expect(termsHtml).toContain('does not take actions in the outside world');
+    expect(termsHtml).toContain('It does not pay, and it does not send email in your name.');
     expect(termsHtml).toContain(
       'Hale is not a substitute for professional advice. It does not provide medical, legal,',
     );
@@ -192,10 +192,10 @@ describe('terms (migrated verbatim)', () => {
    * shipped fact (SMS is the product surface, sign-in is the phone number plus a
    * one-time code, STOP ends the conversation, carrier rates are the reader's).
    */
-  it('governs the product that actually exists — a family assistant you reach by text, not a Google-only app', () => {
+  it('governs the product that actually exists — an AI agent you reach by text, not a Google-only app', () => {
     expect(termsHtml).not.toContain('You sign in through Google.');
     expect(termsHtml).not.toContain('passive, event-driven assistant');
-    expect(termsHtml).toContain('a family assistant you reach by iMessage or text message');
+    expect(termsHtml).toContain('an AI agent you reach by iMessage or text message');
     expect(termsHtml).not.toContain('an AI service');
     expect(termsHtml).not.toContain('helps carry them out');
     expect(termsHtml).toContain(

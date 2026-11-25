@@ -1,4 +1,6 @@
 import type { MetadataRoute } from 'next';
+import { localeHref } from '~/i18n/navigation';
+import { type Locale, routing } from '~/i18n/routing';
 import { publishedAnswers } from '~/lib/answers/index';
 import { SITE_URL } from '~/lib/app-url';
 
@@ -7,13 +9,8 @@ import { SITE_URL } from '~/lib/app-url';
 // route must never be advertised for indexing.
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
-  const staticRoutes: MetadataRoute.Sitemap = ['', '/about', '/contact', '/faq', '/pricing'].map(
-    (path) => ({
-      url: `${SITE_URL}${path}`,
-      lastModified,
-      changeFrequency: 'monthly',
-      priority: path === '' ? 1 : 0.7,
-    }),
+  const staticRoutes = ['', '/about', '/contact', '/faq', '/pricing'].flatMap((path) =>
+    localized(path, lastModified, 'monthly', path === '' ? 1 : 0.7),
   );
 
   // Answer pages enter the sitemap only once a human reviews them and flips
@@ -23,30 +20,42 @@ export default function sitemap(): MetadataRoute.Sitemap {
     publishedAnswers.length === 0
       ? []
       : [
-          {
-            url: `${SITE_URL}/answers`,
-            lastModified,
-            changeFrequency: 'weekly',
-            priority: 0.6,
-          },
-          ...publishedAnswers.map((page) => ({
-            url: `${SITE_URL}/answers/${page.slug}`,
-            lastModified: new Date(page.updated),
-            changeFrequency: 'weekly' as const,
-            priority: 0.6,
-          })),
+          ...localized('/answers', lastModified, 'weekly', 0.6),
+          ...publishedAnswers.flatMap((page) =>
+            localized(`/answers/${page.slug}`, new Date(page.updated), 'weekly', 0.6),
+          ),
         ];
 
   // The activities hub stays. The per-city guides are retired (308 to this URL),
   // so they are not advertised for indexing.
-  const activityRoutes: MetadataRoute.Sitemap = [
-    {
-      url: `${SITE_URL}/activities`,
-      lastModified,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    },
-  ];
+  const activityRoutes = localized('/activities', lastModified, 'monthly', 0.6);
 
   return [...staticRoutes, ...answerRoutes, ...activityRoutes];
+}
+
+function absolute(locale: Locale, path: string): string {
+  const href = localeHref(locale, path === '' ? '/' : path);
+  return href === '/' ? SITE_URL : `${SITE_URL}${href}`;
+}
+
+function languages(path: string): Record<string, string> {
+  const languages: Record<string, string> = {};
+  for (const locale of routing.locales) languages[locale] = absolute(locale, path);
+  languages['x-default'] = absolute(routing.defaultLocale, path);
+  return languages;
+}
+
+function localized(
+  path: string,
+  lastModified: Date,
+  changeFrequency: 'weekly' | 'monthly',
+  priority: number,
+): MetadataRoute.Sitemap {
+  return routing.locales.map((locale) => ({
+    url: absolute(locale, path),
+    lastModified,
+    changeFrequency,
+    priority,
+    alternates: { languages: languages(path) },
+  }));
 }

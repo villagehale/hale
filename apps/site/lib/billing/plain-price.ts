@@ -9,12 +9,11 @@ import { FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 
 export const REFUND_LINE = FOUNDING_REFUND_LINE;
 
-/** Free exists, Plus and Max are the paid tiers, refund anytime. No prices invented. */
-export const FREE_TIER_LINE =
-  'Free is $0, with unlimited chat. Paid plans are Plus and Max. Full refund anytime if it’s not for you.';
+/** Plus and Max are the paid tiers, refund anytime. No prices invented, and no price-word pitch. */
+export const PAID_PLANS_LINE =
+  'Paid plans are Plus and Max. Full refund anytime if it’s not for you.';
 
-export const IS_IT_FREE_ANSWER =
-  'Yes. There is a Free tier, with unlimited chat. Paid plans are Plus and Max. Full refund anytime if it’s not for you.';
+export const TEXTING_COST_ANSWER = PAID_PLANS_LINE;
 
 export function plusMonthlyLabel(currency: BillingCurrency): string {
   return PLUS_LIST_PRICE_DISPLAY[currency].monthlyLabel;
@@ -46,5 +45,5 @@ export function plusCloseSentence(currency: BillingCurrency): string {
 
 /** Location-specific cost answer. Default geo (no header) is CAD, same as checkout. */
 export function paidPlansCostAnswer(currency: BillingCurrency): string {
-  return `Free is $0 with unlimited chat. Plus is ${plusMonthlyLabel(currency)} or ${plusAnnualLabel(currency)}, and Max is ${maxAnnualLabel(currency)}. ${REFUND_LINE}`;
+  return `Plus is ${plusMonthlyLabel(currency)} or ${plusAnnualLabel(currency)}, and Max is ${maxAnnualLabel(currency)}. ${REFUND_LINE}`;
 }

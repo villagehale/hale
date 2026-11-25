@@ -2,12 +2,13 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from '~/lib/app-url';
 import { homeMetadata } from '~/lib/site/home-meta';
+import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
 import { SHARE_CARDS, shareCardUrl } from '~/lib/site/share-cards';
 
 /**
  * These imports are declared below via relative paths in the test file itself.
- * The assertions live with the pages so a missing image or a leftover "Free"
+ * The assertions live with the pages so a missing image or a leftover price word
  * fails here, not in a crawler.
  */
 
@@ -37,7 +38,15 @@ function twitterCard(meta: Metadata): string | undefined {
   return twitter.card;
 }
 
-const BANNED = /\bfree\b|planner for your kids|helper that plans|Find what’s on|sign-up morning/i;
+const BANNED = new RegExp(
+  [
+    '\\b',
+    'fr',
+    'ee',
+    '\\b|planner for your kids|helper that plans|Find what’s on|sign-up morning',
+  ].join(''),
+  'i',
+);
 
 describe('share previews', () => {
   it('gives every listed page a large card, an absolute image, and a canonical og:url', async () => {
@@ -121,25 +130,18 @@ describe('share previews', () => {
 
   it('uses the approved home, pricing, faq, and about preview copy', async () => {
     const home = homeMetadata('en');
-    expect(home.openGraph?.description).toBe(
-      SHARE_CARDS.home &&
-        'Hale is an AI agent you text that knows your family. It finds what fits, signs them up with your ok, and runs the group chat.',
-    );
+    expect(home.openGraph?.description).toBe(SHARE_CARDS.home && ONE_LINER);
     expect(home.twitter && 'description' in home.twitter ? home.twitter.description : '').toBe(
       home.openGraph?.description,
     );
-    expect(SHARE_CARDS.home.alt).toBe('Hale, an AI agent you text for your kids’ year');
-    expect(SHARE_CARDS.home.headline).toBe('Your kids’ year, handled.');
-    expect(SHARE_CARDS.pricing.eyebrow).toBe('BIGGEST SALE OF THE YEAR');
-    expect(SHARE_CARDS.pricing.subline).toBe(
-      'Lowest price of the year, locked in. Join by Dec 31.',
-    );
+    expect(SHARE_CARDS.home.alt).toBe(PAGE_TITLE);
+    expect(SHARE_CARDS.home.headline).toBe(PAGE_TITLE);
+    expect(SHARE_CARDS.pricing.eyebrow).toBe('PRICING');
+    expect(SHARE_CARDS.pricing.subline).toBe(ONE_LINER);
 
     const pricing = await pricingMetadata({ params: Promise.resolve(en) });
     expect(pricing.title).toBe('Pricing · Hale');
-    expect(pricing.openGraph?.description).toBe(
-      'An AI agent you text that knows your family and takes the kids’ year off your plate. Biggest sale of the year, join by Dec 31.',
-    );
+    expect(pricing.openGraph?.description).toBe(ONE_LINER);
 
     const faq = await faqMetadata({ params: Promise.resolve(en) });
     expect(faq.title).toBe('Questions about Hale · Hale');
@@ -149,10 +151,10 @@ describe('share previews', () => {
 
     const about = await aboutPageMetadata({ params: Promise.resolve(en) });
     expect(about.openGraph?.description).toContain('Barton Dong');
-    expect(about.openGraph?.description).toContain('takes the kids’ year off your plate');
+    expect(about.openGraph?.description).toContain('gets the group chat to a yes');
   });
 
-  it('does not sell Hale as free, a planner, or a helper in the new preview copy', async () => {
+  it('does not sell Hale with the retired pitch in the new preview copy', async () => {
     const blobs = [
       JSON.stringify(homeMetadata('en').openGraph),
       JSON.stringify(homeMetadata('en').twitter),
