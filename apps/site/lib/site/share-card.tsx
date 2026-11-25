@@ -78,9 +78,8 @@ function Slogan({ card }: { card: PaintedShareCard }) {
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={line}>{slogan.lead}</div>
       {slogan.quote ? <div style={line}>{slogan.quote}</div> : null}
-      {card.locale === 'fr' && slogan.bridge ? <div style={line}>{slogan.bridge}</div> : null}
       <div style={{ ...line, alignItems: 'flex-end' }}>
-        {card.locale !== 'fr' && slogan.bridge ? (
+        {slogan.bridge ? (
           <div style={{ display: 'flex', marginRight: 12 }}>{slogan.bridge}</div>
         ) : null}
         <div style={{ display: 'flex', position: 'relative' }}>

@@ -4,7 +4,7 @@ import { paintAnswerCard, shareCardQueryFromUrl } from '~/lib/site/share-cards';
 
 export const runtime = 'nodejs';
 
-/** Absolute article card: https://www.villagehale.com/og/answers/<slug>?v=d6&… */
+/** Absolute article card: https://www.villagehale.com/og/answers/<slug>?v=d7&… */
 export async function GET(
   request: Request,
   context: { params: Promise<{ slug: string }> },

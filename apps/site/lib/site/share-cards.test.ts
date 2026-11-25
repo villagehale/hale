@@ -244,6 +244,21 @@ describe('share card copy', () => {
     }
   });
 
+  it('breaks the French headline into two lines and keeps the Chinese break', () => {
+    const nbsp = '\u00A0';
+    expect(HOME_SLOGAN.fr.lead).toBe(`De «${nbsp}on${nbsp}devrait${nbsp}»`);
+    expect(HOME_SLOGAN.fr.quote).toBe('');
+    expect(HOME_SLOGAN.fr.bridge).toBe('à');
+    expect(HOME_SLOGAN.fr.marked).toBe(`«${nbsp}on${nbsp}y${nbsp}va${nbsp}».`);
+    expect(HOME_SLOGAN.zh.lead).toBe('从“改天吧”');
+    expect(HOME_SLOGAN.zh.quote).toBe('');
+    expect(HOME_SLOGAN.zh.bridge).toBe('');
+    expect(HOME_SLOGAN.zh.marked).toBe('到“就这么定了”。');
+    const about = paintShareCard('about', query({ locale: 'fr' }));
+    expect(about.slogan?.lead).toBe(HOME_SLOGAN.fr.lead);
+    expect(about.slogan?.marked).toBe(HOME_SLOGAN.fr.marked);
+  });
+
   it('paints no banned phrase on any page, locale, phase, or article', () => {
     const blobs: string[] = [];
     for (const locale of LOCALES) {

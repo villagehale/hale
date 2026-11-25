@@ -27,11 +27,10 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. /og caches for a day, and v=d5 was already
- * fetched with the previous about line, the pricing line, and a sale chip on
- * French and Chinese. This copy is d6.
+ * Cache key for the painted PNG. /og caches for a day, and v=d6 was already
+ * fetched with the French headline on four lines. This two-line break is d7.
  */
-export const SHARE_CARD_VERSION = 'd6';
+export const SHARE_CARD_VERSION = 'd7';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -197,7 +196,8 @@ export function answerShareUrl(
 
 /**
  * The home line, split the way the card draws it. The words are the page H1
- * in each locale. French keeps "à" on its own line so it stays clear of the phone.
+ * in each locale. French is two lines, with non-breaking spaces inside the
+ * guillemets so a word cannot drop onto its own line.
  */
 export const HOME_SLOGAN: Record<
   Locale,
@@ -211,10 +211,10 @@ export const HOME_SLOGAN: Record<
     plain: 'From “we should” to “we’re in.”',
   },
   fr: {
-    lead: 'De',
-    quote: '« on devrait »',
+    lead: 'De «\u00A0on\u00A0devrait\u00A0»',
+    quote: '',
     bridge: 'à',
-    marked: '« on y va ».',
+    marked: '«\u00A0on\u00A0y\u00A0va\u00A0».',
     plain: 'De « on devrait » à « on y va ».',
   },
   zh: {
