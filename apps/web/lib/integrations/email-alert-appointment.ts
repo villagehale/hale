@@ -227,6 +227,7 @@ export async function loadKnownCommitments(
         location: schema.familyEvents.location,
         childId: schema.familyEvents.childId,
         calendarStanding: schema.familyEvents.calendarStanding,
+        sensitive: schema.familyEvents.sensitive,
       })
       .from(schema.familyEvents)
       .where(
@@ -247,8 +248,17 @@ export async function loadKnownCommitments(
         messageId: schema.activityBookings.messageId,
         integrationId: schema.activityBookings.integrationId,
         cancelledAt: schema.activityBookings.cancelledAt,
+        calendarChildId: schema.familyEvents.childId,
+        calendarSensitive: schema.familyEvents.sensitive,
       })
       .from(schema.activityBookings)
+      .leftJoin(
+        schema.familyEvents,
+        and(
+          eq(schema.familyEvents.id, schema.activityBookings.eventId),
+          eq(schema.familyEvents.familyId, schema.activityBookings.familyId),
+        ),
+      )
       .where(
         and(
           eq(schema.activityBookings.familyId, input.familyId),
@@ -296,6 +306,9 @@ export async function loadKnownCommitments(
   for (const row of events) {
     // An unanswered invite is not a commitment. A household row has no standing.
     if (row.calendarStanding === 'invited') continue;
+    // A health row is left out, not named generically: the judge cannot tell a visit
+    // with no title or place apart from any other at that hour.
+    if (row.sensitive) continue;
     const child = input.children.find((one) => one.id === row.childId);
     // A 13+ child's title, time and place stay out of a parent text.
     if (child !== undefined && child.ageInMonths >= TEENAGER_START_MONTHS) continue;
@@ -310,10 +323,21 @@ export async function loadKnownCommitments(
   }
   for (const row of bookings) {
     if (row.cancelledAt !== null || row.messageId === input.messageId) continue;
+    if (row.calendarSensitive === true) continue;
+    // A booking has no child column. Its child is the one on the calendar row it was
+    // added as. Without one it could be any child, so a family with a 13+ child, or
+    // with no child on record, does not hear it named.
+    const child = input.children.find((one) => one.id === row.calendarChildId);
+    const mayBeTeen =
+      child === undefined
+        ? input.children.length === 0 ||
+          input.children.some((one) => one.ageInMonths >= TEENAGER_START_MONTHS)
+        : child.ageInMonths >= TEENAGER_START_MONTHS;
+    if (mayBeTeen) continue;
     held.push({
       id: row.id,
       title: row.title,
-      child: null,
+      child: child === undefined ? null : childName(input.children, child.id),
       startsAt: row.startsAt,
       endsAt: null,
       location: row.location?.trim() || row.address?.trim() || null,
