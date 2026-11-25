@@ -1,12 +1,18 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
-import { installMetaPixel } from '~/lib/analytics/meta-pixel-client';
+import { installMetaPixel, metaPixelAllowedOn } from '~/lib/analytics/meta-pixel-client';
 
-/** Loads the Meta Pixel PageView snippet when the conversions flag handed us an id. */
+/**
+ * Loads the Meta Pixel PageView snippet when the conversions flag handed us an id,
+ * and only on a path `metaPixelAllowedOn` admits.
+ */
 export function MetaPixel({ pixelId }: { pixelId: string }): null {
+  const pathname = usePathname();
   useEffect(() => {
+    if (!metaPixelAllowedOn(pathname, window.location.search)) return;
     installMetaPixel(pixelId);
-  }, [pixelId]);
+  }, [pixelId, pathname]);
   return null;
 }
