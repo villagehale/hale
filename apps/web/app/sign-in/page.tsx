@@ -4,9 +4,31 @@ import { ConnectStage } from '~/components/hale/connect/connect-stage';
 import { safeInternalRedirect } from '~/lib/auth/redirect';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
 import { noStopKeywordCopyEnabled } from '~/lib/channel/no-stop-keyword';
+import { MARKETING_OG_IMAGE } from '~/lib/legal-links';
 import { parsePortalSourceCode } from '~/lib/text-hale-target';
 
-export const metadata: Metadata = { title: 'Sign in' };
+// Same sentence as the root layout. Repeated here so this page's share card
+// keeps it when its own Open Graph fields replace the layout's.
+const PORTAL_DESCRIPTION =
+  'Sign in to Hale to see your family, your messages with Hale, and your settings.';
+
+export const metadata: Metadata = {
+  title: 'Sign in',
+  description: PORTAL_DESCRIPTION,
+  openGraph: {
+    title: 'Sign in · Hale',
+    description: PORTAL_DESCRIPTION,
+    images: [MARKETING_OG_IMAGE],
+    siteName: 'Hale',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Sign in · Hale',
+    description: PORTAL_DESCRIPTION,
+    images: [MARKETING_OG_IMAGE],
+  },
+};
 
 // AUTH_SECRET is a runtime-only secret, so evaluate configuredness at request time
 // rather than caching a build-time "not configured" fallback.

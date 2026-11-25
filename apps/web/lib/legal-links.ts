@@ -10,5 +10,13 @@
  */
 export const MARKETING_SITE_URL = 'https://www.villagehale.com';
 
+/** The marketing home share card. The app reuses it and does not draw a second one. */
+export const MARKETING_OG_IMAGE = {
+  url: `${MARKETING_SITE_URL}/og/home`,
+  width: 1200,
+  height: 630,
+  alt: 'Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d',
+} as const;
+
 export const TERMS_URL = `${MARKETING_SITE_URL}/terms`;
 export const PRIVACY_URL = `${MARKETING_SITE_URL}/privacy`;

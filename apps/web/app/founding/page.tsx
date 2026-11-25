@@ -27,8 +27,27 @@ import {
   signPromoPreviewCookie,
 } from '~/lib/billing/promo-preview';
 import { haleTextsNumber } from '~/lib/channel/connect/hale-texts-href';
+import { MARKETING_OG_IMAGE } from '~/lib/legal-links';
 
-export const metadata: Metadata = { title: { absolute: 'Join Hale' } };
+const JOIN_DESCRIPTION = 'Join Hale. Choose Plus or Max, billed yearly, then text Hale.';
+
+export const metadata: Metadata = {
+  title: { absolute: 'Join Hale' },
+  description: JOIN_DESCRIPTION,
+  openGraph: {
+    title: 'Join Hale',
+    description: JOIN_DESCRIPTION,
+    images: [MARKETING_OG_IMAGE],
+    siteName: 'Hale',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Join Hale',
+    description: JOIN_DESCRIPTION,
+    images: [MARKETING_OG_IMAGE],
+  },
+};
 export const dynamic = 'force-dynamic';
 
 type FoundingSearch = Record<string, string | string[] | undefined>;

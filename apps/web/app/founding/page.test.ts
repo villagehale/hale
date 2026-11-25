@@ -73,6 +73,20 @@ describe('/founding offer surface', () => {
     expect(resolveDocumentTitle(metadata.title, PORTAL_TITLE.template, PORTAL_TITLE.default)).toBe(
       'Join Hale',
     );
+    expect(metadata.description).toBe(
+      'Join Hale. Choose Plus or Max, billed yearly, then text Hale.',
+    );
+    expect(metadata.description).not.toContain('Sign in to Hale');
+    expect(metadata.openGraph?.title).toBe('Join Hale');
+    expect(metadata.openGraph?.description).toBe(metadata.description);
+    expect(metadata.openGraph?.images).toEqual([
+      expect.objectContaining({ url: 'https://www.villagehale.com/og/home' }),
+    ]);
+    expect(metadata.twitter).toMatchObject({
+      card: 'summary_large_image',
+      title: 'Join Hale',
+      description: metadata.description,
+    });
   });
 
   it('shows the same three options with a matching preview token while flags stay off', async () => {

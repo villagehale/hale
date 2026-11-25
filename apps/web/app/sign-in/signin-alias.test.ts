@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { MARKETING_OG_IMAGE } from '~/lib/legal-links';
 import nextConfig from '~/next.config';
 
 /**
@@ -55,5 +56,17 @@ describe('the portal meta description', () => {
     expect(layout).toContain('openGraph: { description: PORTAL_DESCRIPTION }');
     expect(layout).toContain('twitter: { description: PORTAL_DESCRIPTION }');
     expect(layout).not.toContain('This is the receipts room');
+  });
+
+  it('gives /sign-in an Open Graph title and the marketing home card', () => {
+    const page = readFileSync(fileURLToPath(new URL('./page.tsx', import.meta.url)), 'utf8');
+    expect(page).toContain("title: 'Sign in'");
+    expect(page).toContain(`'${PORTAL_DESCRIPTION}'`);
+    expect(page).toContain("title: 'Sign in · Hale'");
+    expect(page).toContain('description: PORTAL_DESCRIPTION');
+    expect(page).toContain("card: 'summary_large_image'");
+    expect(page).toContain('images: [MARKETING_OG_IMAGE]');
+    expect(MARKETING_OG_IMAGE.url).toBe('https://www.villagehale.com/og/home');
+    expect(MARKETING_OG_IMAGE).toMatchObject({ width: 1200, height: 630 });
   });
 });
