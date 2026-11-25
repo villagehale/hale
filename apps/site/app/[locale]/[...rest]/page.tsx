@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { Locale } from '~/i18n/routing';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 
 /**
  * Unknown paths under a locale. next-intl only renders `not-found.tsx` when a
@@ -11,11 +12,13 @@ import { notFoundMetadata } from '~/lib/site/not-found-copy';
  */
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  return notFoundMetadata(locale);
+  return notFoundMetadata(locale, await shareQueryForRequest(locale, await searchParams));
 }
 
 export default function UnknownPage() {

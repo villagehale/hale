@@ -5,6 +5,7 @@ import { GooglePurchaseConversion } from '~/components/google-purchase-conversio
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { absolutePageUrl } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
@@ -23,6 +24,7 @@ import {
 } from '~/lib/billing/checkout-success';
 import { type Platform, platformFromUa } from '~/lib/chooser';
 import { intakePrefill } from '~/lib/intake-prefill';
+import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -57,10 +59,18 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const facts = sessionId ? await fetchCheckoutSessionFacts(sessionId) : null;
   const view = checkoutViewForPage(sessionId, facts);
   const purchased = view ? CONFIRMED_PURCHASE_STATES.has(view.state) : facts?.paid === true;
+  const title = purchased ? t('metaTitle') : t('unpaidTitle');
+  const image = shareCardImage('checkout', await shareQueryForRequest(locale, search, purchased));
   return {
-    title: purchased ? t('metaTitle') : t('unpaidTitle'),
+    title,
     robots: { index: false, follow: false },
     alternates: { canonical: localeHref(locale, '/checkout/success') },
+    openGraph: {
+      title,
+      url: absolutePageUrl(locale, '/checkout/success'),
+      images: [image],
+    },
+    twitter: { card: 'summary_large_image', title, images: [image] },
   };
 }
 

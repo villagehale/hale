@@ -8,13 +8,18 @@ import {
   notFoundHeading,
   notFoundMetadata,
 } from '~/lib/site/not-found-copy';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 
 /**
  * Localized 404. The title comes from metadata only — an inline `<title>`
  * would sit beside it and the page would have two.
  */
-export async function generateMetadata() {
-  return notFoundMetadata(await requestLocale());
+export async function generateMetadata(props?: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const locale = await requestLocale();
+  const search = props?.searchParams ? await props.searchParams : undefined;
+  return notFoundMetadata(locale, await shareQueryForRequest(locale, search));
 }
 
 export function NotFoundView({ locale }: { locale: Locale }) {

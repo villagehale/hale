@@ -4,7 +4,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import { MUNICIPALITY_COUNT } from '~/lib/site/municipalities';
-import { shareCardImage } from '~/lib/site/share-cards';
+import { type ShareCardQuery, defaultShareQuery, shareCardImage } from '~/lib/site/share-cards';
 
 /**
  * The homepage's positioning (D21): link previews and search snippets must
@@ -12,13 +12,13 @@ import { shareCardImage } from '~/lib/site/share-cards';
  * Title, og:title, and twitter:title are the same string. There is no title
  * template — a template would suffix every page that already ends in "· Hale".
  */
-export function homeMetadata(locale: Locale): Metadata {
+export function homeMetadata(locale: Locale, query?: ShareCardQuery): Metadata {
   const t = getTranslator(locale, 'HomeMeta');
   // The town count is a derived number, never a hand-written one: a 22nd
   // municipality must not leave the search snippet claiming 21 (municipalities.ts
   // derives it from the list for the same reason the page does).
   const counted = { count: MUNICIPALITY_COUNT };
-  const image = shareCardImage('home');
+  const image = shareCardImage('home', query ?? defaultShareQuery(locale));
   const preview = t('ogDescription', counted);
   return {
     metadataBase: new URL(SITE_URL),

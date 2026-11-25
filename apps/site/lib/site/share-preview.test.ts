@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from '~/lib/app-url';
 import { homeMetadata } from '~/lib/site/home-meta';
-import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
+import { ONE_LINER } from '~/lib/site/narrative';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
-import { SHARE_CARDS, shareCardUrl } from '~/lib/site/share-cards';
+import { HOME_SLOGAN, answerShareUrl, shareCardUrl } from '~/lib/site/share-cards';
 
 /**
  * These imports are declared below via relative paths in the test file itself.
@@ -130,14 +130,11 @@ describe('share previews', () => {
 
   it('uses the approved home, pricing, faq, and about preview copy', async () => {
     const home = homeMetadata('en');
-    expect(home.openGraph?.description).toBe(SHARE_CARDS.home && ONE_LINER);
+    expect(home.openGraph?.description).toBe(ONE_LINER);
     expect(home.twitter && 'description' in home.twitter ? home.twitter.description : '').toBe(
       home.openGraph?.description,
     );
-    expect(SHARE_CARDS.home.alt).toBe(PAGE_TITLE);
-    expect(SHARE_CARDS.home.headline).toBe(PAGE_TITLE);
-    expect(SHARE_CARDS.pricing.eyebrow).toBe('PRICING');
-    expect(SHARE_CARDS.pricing.subline).toBe(ONE_LINER);
+    expect(HOME_SLOGAN.en.plain).toBe('From “we should” to “we’re in.”');
 
     const pricing = await pricingMetadata({ params: Promise.resolve(en) });
     expect(pricing.title).toBe('Pricing · Hale');
@@ -161,7 +158,6 @@ describe('share previews', () => {
       JSON.stringify((await pricingMetadata({ params: Promise.resolve(en) })).openGraph),
       JSON.stringify((await faqMetadata({ params: Promise.resolve(en) })).openGraph),
       JSON.stringify((await aboutPageMetadata({ params: Promise.resolve(en) })).openGraph),
-      JSON.stringify(SHARE_CARDS),
     ];
     for (const blob of blobs) expect(blob).not.toMatch(BANNED);
   });
@@ -173,7 +169,7 @@ describe('share previews', () => {
     expect(meta.openGraph && 'url' in meta.openGraph ? meta.openGraph.url : '').toBe(
       `${SITE_URL}/answers/newborn-cluster-feeding`,
     );
-    expect(imageUrl(meta)).toBe(`${SITE_URL}/og/answers/newborn-cluster-feeding`);
+    expect(imageUrl(meta)).toBe(answerShareUrl('newborn-cluster-feeding'));
     expect(twitterCard(meta)).toBe('summary_large_image');
     expect(String(meta.description)).toContain('cluster feeding');
   });

@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SITE_URL } from '~/lib/app-url.js';
+import { SHARE_CARD_VERSION } from '~/lib/site/share-cards.js';
 import { homeMetadata } from '~/lib/site/home-meta.js';
 import { notFoundHeading, notFoundMetadata, notFoundTitle } from '~/lib/site/not-found-copy.js';
 import { generateMetadata as catchAllMetadata } from './[locale]/[...rest]/page.js';
@@ -15,10 +16,15 @@ import { NotFoundView, generateMetadata as notFoundMetadataFn } from './[locale]
 import { generateMetadata as textMetadata } from './[locale]/text/page.js';
 
 const headerLocale = vi.hoisted(() => ({ value: 'en' as string | null }));
+const headerSearch = vi.hoisted(() => ({ value: null as string | null }));
 
 vi.mock('next/headers', () => ({
   headers: async () => ({
-    get: (name: string) => (name === 'x-next-intl-locale' ? headerLocale.value : null),
+    get: (name: string) => {
+      if (name === 'x-next-intl-locale') return headerLocale.value;
+      if (name === 'x-hale-search') return headerSearch.value;
+      return null;
+    },
   }),
 }));
 
@@ -62,7 +68,7 @@ describe('homepage tab titles', () => {
       'utf8',
     );
     expect(layout).not.toContain('template:');
-    expect(layout).toContain('homeMetadata(locale)');
+    expect(layout).toContain('homeMetadata(locale,');
   });
 });
 
@@ -120,6 +126,29 @@ describe('404 tab titles', () => {
         NOT_FOUND_TITLES[locale],
       );
       expect(fromCatchAll.openGraph?.title, locale).not.toBe(HOME_TITLES[locale]);
+    }
+  });
+
+  it('follows the stamped request search onto the 404 share image', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-20T15:00:00-05:00'));
+    const previous = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    headerSearch.value = '?promo_phase=holiday';
+    try {
+      const meta = await notFoundMetadataFn();
+      const images = meta.openGraph?.images;
+      const first = Array.isArray(images) ? images[0] : images;
+      const url = first && typeof first === 'object' && 'url' in first ? String(first.url) : '';
+      expect(url).toContain('phase=holiday');
+      expect(url).toContain(`v=${SHARE_CARD_VERSION}`);
+      expect(meta.twitter && 'card' in meta.twitter ? meta.twitter.card : '').toBe(
+        'summary_large_image',
+      );
+    } finally {
+      headerSearch.value = null;
+      process.env.VERCEL_ENV = previous;
+      vi.useRealTimers();
     }
   });
 

@@ -13,6 +13,7 @@ import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
 import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
 import { homeMetadata } from '~/lib/site/home-meta';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
 import '../globals.css';
 import '../redesign.css';
@@ -85,7 +86,7 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  return homeMetadata(locale);
+  return homeMetadata(locale, await shareQueryForRequest(locale));
 }
 
 export const viewport: Viewport = {

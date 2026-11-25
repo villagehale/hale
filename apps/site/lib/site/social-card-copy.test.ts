@@ -1,20 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
+import { H1 } from '~/lib/site/narrative';
 import { socialCardCopy } from './social-card-copy';
 
 /**
- * The share card is the one surface a parent sees before they ever reach the page,
- * so it has to describe the page they will land on. Asserted here rather than by
- * rendering the PNG: satori would test the layout, and what can actually go wrong
- * is the copy pointing at the wrong product.
+ * The share card is the one surface a parent sees before they ever reach the page.
+ * The homepage line is the Style D headline. Asserted here rather than by
+ * rendering the PNG: what can go wrong is the copy pointing at the wrong product.
  */
 
 describe('homepage share card copy', () => {
-  it('uses the page title and the one-liner', () => {
+  it('uses the Style D headline', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe(PAGE_TITLE);
-    expect(copy.subline).toBe(ONE_LINER);
-    expect(copy.alt).toBe(PAGE_TITLE);
+    expect(copy.headline).toBe(H1);
+    expect(copy.alt).toBe(`Hale. ${H1}`);
     const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
     expect(blob).not.toContain('assistant');
     expect(blob).not.toContain('planner');
