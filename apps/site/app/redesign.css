@@ -209,6 +209,9 @@
 .rd .chip svg { width: 14px; height: 14px; color: var(--navy); flex: none; }
 
 .rd h1.h1-fr { font-size: 52px; letter-spacing: -0.04em; }
+/* Approved two-line H1. These sizes keep each line on one row. French stays on h1-fr. */
+.rd .hero h1:lang(en) { font-size: 81px; }
+.rd .hero h1:lang(zh) { font-size: 80px; }
 .rd h1 {
   margin-top: var(--s5);
   font-family: var(--font-display);
@@ -391,6 +394,8 @@
   .rd .visual-col { order: 1; }
   .rd .loop { order: 2; }
   .rd h1 { font-size: 54px; letter-spacing: -0.035em; line-height: 0.95; margin-left: 0; margin-top: var(--s5); } /* production @390: 54 / -1.89px / 51.3px */
+  .rd .hero h1:lang(en) { font-size: 48px; }
+  .rd .hero h1:lang(zh) { font-size: 47px; }
   .rd h1.h1-fr { font-size: 36px; letter-spacing: -0.04em; }
   .rd .sub { font-size: 16px; line-height: 1.45; margin-top: var(--s5); }                                          /* production @390: 16 / 23.2px */
   .rd .cta-row { margin-top: var(--s6); justify-content: center; }

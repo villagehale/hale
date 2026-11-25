@@ -35,15 +35,16 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('We should<br/>we&#x27;re in.');
+    expect(HTML.en).toContain('From &quot;we should&quot;<br/>to &quot;we&#x27;re in.&quot;');
     expect(HTML.en).toContain('we&#x27;re in.');
     expect(HTML.en).toContain('Plans already live in group chats');
     expect(HTML.en).toContain('Library playgroup');
-    expect(rd(HTML.fr)).toContain('On devrait');
-    expect(rd(HTML.fr)).toContain('on y va');
+    expect(rd(HTML.fr)).toContain('De « on devrait »');
+    expect(rd(HTML.fr)).toContain('à « on y va ».');
     expect(rd(HTML.fr)).toContain('Les plans sont déjà dans les groupes texto');
     expect(rd(HTML.fr)).not.toContain('From "we should"');
-    expect(rd(HTML.zh)).toContain('我们该去');
+    expect(rd(HTML.zh)).toContain('从“改天吧”');
+    expect(rd(HTML.zh)).toContain('到“就这么定了”。');
     expect(rd(HTML.zh)).toContain('就这么定了');
     expect(rd(HTML.zh)).toContain('计划已经在家长群里');
     expect(rd(HTML.zh)).not.toContain('From "we should"');
