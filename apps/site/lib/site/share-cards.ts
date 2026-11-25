@@ -13,6 +13,7 @@ import {
   promoPhase,
   resolveHolidayPromo,
 } from '~/lib/promo/holiday';
+import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
 
 /**
  * Style D share cards. The image URL is the cache key: version, locale, sale
@@ -94,10 +95,26 @@ export function defaultShareQuery(
   return shareCardQueryFrom({ locale, now, env });
 }
 
+/** The middleware stamps the raw query. The 404 layout metadata reads it back. */
+export function searchFromShareHeader(raw: string | null): ShareSearch {
+  if (!raw) return undefined;
+  const params = new URLSearchParams(raw.startsWith('?') ? raw.slice(1) : raw);
+  const search: Record<string, string | string[] | undefined> = {};
+  for (const key of new Set(params.keys())) {
+    const values = params.getAll(key);
+    search[key] = values.length > 1 ? values : values[0];
+  }
+  return search;
+}
+
 /**
  * Request-time query. `connection()` keeps the phase off the build clock, so
  * the Dec 1 switch happens on the next request. Outside a request (unit tests,
  * the local render script) the clock and the process env still decide.
+ *
+ * A page passes `searchParams` when Next gives them to it. The 404 does not
+ * (it is metadata on the layout), so the query comes from the header the
+ * middleware stamps onto the same request.
  */
 export async function shareQueryForRequest(
   locale: Locale,
@@ -110,12 +127,15 @@ export async function shareQueryForRequest(
     // No request store.
   }
   let country: string | null = null;
+  let resolved = search;
   try {
-    country = (await headers()).get('x-vercel-ip-country');
+    const headerStore = await headers();
+    country = headerStore.get('x-vercel-ip-country');
+    if (!resolved) resolved = searchFromShareHeader(headerStore.get(SHARE_SEARCH_HEADER));
   } catch {
     country = null;
   }
-  return shareCardQueryFrom({ locale, search, country, paid });
+  return shareCardQueryFrom({ locale, search: resolved, country, paid });
 }
 
 export function shareCardQueryFromUrl(url: URL): ShareCardQuery {
