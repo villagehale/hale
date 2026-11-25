@@ -13,6 +13,7 @@ import {
   promoPhase,
   resolveHolidayPromo,
 } from '~/lib/promo/holiday';
+import { H1 } from '~/lib/site/narrative';
 import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
 
 /**
@@ -26,10 +27,11 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. /og caches for a day, and v=d2 already
- * holds the swim card with Hale's bubbles first. This Priya-first order is d5.
+ * Cache key for the painted PNG. /og caches for a day, and v=d5 was already
+ * fetched with the previous about line, the pricing line, and a sale chip on
+ * French and Chinese. This copy is d6.
  */
-export const SHARE_CARD_VERSION = 'd5';
+export const SHARE_CARD_VERSION = 'd6';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -79,7 +81,10 @@ export function shareCardQueryFrom(input: {
   const env = input.env ?? process.env;
   const overrides: PromoOverrides = promoOverrides(input.search, env);
   const country = overrides.country ?? input.country;
-  const promo = resolveHolidayPromo({ now, country, overrides, env });
+  // English only, the same rule as requestHolidayPromo: the promo copy has no
+  // French or Chinese translation, so those cards stay on the regular page.
+  const promo =
+    input.locale === 'en' ? resolveHolidayPromo({ now, country, overrides, env }) : null;
   const currency = promo?.currency ?? currencyFromIpCountry(country);
   return {
     locale: input.locale,
@@ -191,9 +196,8 @@ export function answerShareUrl(
 }
 
 /**
- * The home line. The second clause is the opening of the existing
- * "We're in, I can drive" string in each locale file. The frame is that
- * headline in the same voice the page already uses (tu / on, 我们).
+ * The home line, split the way the card draws it. The words are the page H1
+ * in each locale. French keeps "à" on its own line so it stays clear of the phone.
  */
 export const HOME_SLOGAN: Record<
   Locale,
@@ -210,15 +214,15 @@ export const HOME_SLOGAN: Record<
     lead: 'De',
     quote: '« on devrait »',
     bridge: 'à',
-    marked: '« on est partants. »',
-    plain: 'De « on devrait » à « on est partants. »',
+    marked: '« on y va ».',
+    plain: 'De « on devrait » à « on y va ».',
   },
   zh: {
-    lead: '从「我们应该」',
+    lead: '从“改天吧”',
     quote: '',
     bridge: '',
-    marked: '到「我们去。」',
-    plain: '从「我们应该」到「我们去。」',
+    marked: '到“就这么定了”。',
+    plain: '从“改天吧”到“就这么定了”。',
   },
 };
 
@@ -276,15 +280,15 @@ function pageHeadline(
     case 'home':
       return HOME_SLOGAN[locale].plain;
     case 'pricing':
-      if (promo && locale === 'en') {
+      if (promo) {
         const max = sharePriceLabel(promo.currency, promo.max.saleLabel);
         return `${promo.saleName}: Max for ${max}.`;
       }
-      return tx(locale, 'Plus, by the year or the month.');
+      return tx(locale, 'More done for you, all year.');
     case 'faq':
       return tx(locale, 'Is Hale right for your family?');
     case 'about':
-      return tx(locale, 'A planner for your kids’ year.');
+      return tx(locale, H1);
     case 'activities':
       return tx(locale, 'Things to do with your kids, near you.');
     case 'answers':
@@ -322,13 +326,22 @@ function thread(locale: Locale): ShareThreadLine[] {
   ];
 }
 
+/**
+ * The sale chip and the promo prices. Off unless the locale is English,
+ * matching requestHolidayPromo.
+ */
+function paintedPromo(query: ShareCardQuery): HolidayPromo | null {
+  if (query.locale !== 'en' || !query.offer) return null;
+  return buildHolidayPromo(query.phase, query.currency);
+}
+
 function paint(
   id: ShareCardId | 'answer',
   headline: string,
   query: ShareCardQuery,
   slogan: PaintedShareCard['slogan'],
 ): PaintedShareCard {
-  const promo = query.offer ? buildHolidayPromo(query.phase, query.currency) : null;
+  const promo = paintedPromo(query);
   const max = promo ? sharePriceLabel(promo.currency, promo.max.saleLabel) : null;
   const plus = promo ? sharePriceLabel(promo.currency, promo.plus.saleLabel) : null;
   const prices = max && plus ? `Max ${max} · Plus ${plus}` : null;
@@ -351,9 +364,8 @@ function paint(
 }
 
 export function paintShareCard(id: ShareCardId, query: ShareCardQuery): PaintedShareCard {
-  const promo = query.offer ? buildHolidayPromo(query.phase, query.currency) : null;
-  const headline = pageHeadline(id, query.locale, promo, query.paid);
-  const slogan = id === 'home' ? HOME_SLOGAN[query.locale] : null;
+  const headline = pageHeadline(id, query.locale, paintedPromo(query), query.paid);
+  const slogan = id === 'home' || id === 'about' ? HOME_SLOGAN[query.locale] : null;
   return paint(id, headline, query, slogan);
 }
 

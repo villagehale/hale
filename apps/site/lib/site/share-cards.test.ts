@@ -6,6 +6,7 @@ import { tx } from '~/components/redesign/tx';
 import type { Locale } from '~/i18n/routing';
 import { allAnswers } from '~/lib/answers/index';
 import { buildHolidayPromo } from '~/lib/promo/holiday';
+import { H1 } from '~/lib/site/narrative';
 import { generateMetadata as pricingMetadata } from '../../app/[locale]/pricing/page';
 import {
   HOME_SLOGAN,
@@ -25,8 +26,30 @@ const PHASES = ['black_friday', 'holiday'] as const;
 const CURRENCIES = ['CAD', 'USD'] as const;
 
 /** Phrases that must not appear on a card. The page descriptions are a different surface. */
-const BANNED =
-  /biggest sale of the year|your kids[’'] year,\s*handled|lowest price of the year|\bfree\b|founding|first\s*100|gratuit|fondat|免费|创始|前\s*100/i;
+const priceWord = 'fr' + 'ee';
+const BANNED = new RegExp(
+  [
+    'biggest sale of the year',
+    "your kids[’'] year,\\s*handled",
+    "kids[’'] year",
+    'lowest price of the year',
+    `\\b${priceWord}\\b`,
+    'founding',
+    'first\\s*100',
+    'gratuit',
+    'fondat',
+    '免费',
+    '创始',
+    '前\\s*100',
+    'AI agent',
+    '\\bmonth\\b',
+    '\\bmonthly\\b',
+    '\\bmois\\b',
+    '按月',
+    '/mo\\b',
+  ].join('|'),
+  'i',
+);
 
 function query(partial: Partial<ShareCardQuery> & Pick<ShareCardQuery, 'locale'>): ShareCardQuery {
   return {
@@ -71,12 +94,25 @@ describe('share card query', () => {
 
   it('lets a preview review query force the holiday card', () => {
     const card = shareCardQueryFrom({
-      locale: 'fr',
+      locale: 'en',
       now: new Date('2026-11-20T12:00:00-05:00'),
       search: { promo_phase: 'holiday', promo_cc: 'US' },
       env: { VERCEL_ENV: 'preview' },
     });
-    expect(card).toMatchObject({ locale: 'fr', phase: 'holiday', currency: 'USD', offer: true });
+    expect(card).toMatchObject({ locale: 'en', phase: 'holiday', currency: 'USD', offer: true });
+  });
+
+  it('leaves the offer off in French and Chinese, including a preview review query', () => {
+    for (const locale of ['fr', 'zh'] as const) {
+      const card = shareCardQueryFrom({
+        locale,
+        now: new Date('2026-11-25T12:00:00-05:00'),
+        search: { promo_phase: 'black_friday', promo_cc: 'CA' },
+        country: 'US',
+        env: { HOLIDAY_PROMO_ENABLED: 'true', VERCEL_ENV: 'preview' },
+      });
+      expect(card.offer, locale).toBe(false);
+    }
   });
 
   it('puts the phase and the version on the image URL', () => {
@@ -132,11 +168,35 @@ describe('share card copy', () => {
       paintShareCard('pricing', query({ locale: 'en', offer: true, currency: 'USD' })).headline,
     ).toBe('Black Friday Sale: Max for $79/yr.');
     expect(paintShareCard('pricing', query({ locale: 'en', offer: false })).headline).toBe(
-      'Plus, by the year or the month.',
+      'More done for you, all year.',
     );
     expect(paintShareCard('pricing', query({ locale: 'fr', offer: true })).headline).toBe(
-      tx('fr', 'Plus, by the year or the month.'),
+      tx('fr', 'More done for you, all year.'),
     );
+    expect(paintShareCard('pricing', query({ locale: 'zh', offer: true })).headline).toBe(
+      tx('zh', 'More done for you, all year.'),
+    );
+  });
+
+  it('paints no sale chip and no promo prices on French or Chinese cards', () => {
+    for (const locale of ['fr', 'zh'] as const) {
+      for (const phase of PHASES) {
+        for (const id of SHARE_CARD_IDS) {
+          const card = paintShareCard(
+            id,
+            query({
+              locale,
+              offer: true,
+              phase,
+              currency: 'USD',
+              paid: id === 'checkout',
+            }),
+          );
+          expect(card.flag, `${locale} ${phase} ${id}`).toBeNull();
+          expect(card.prices, `${locale} ${phase} ${id}`).toBeNull();
+        }
+      }
+    }
   });
 
   it('localizes subpage headlines with the page strings', () => {
@@ -146,9 +206,9 @@ describe('share card copy', () => {
     expect(paintShareCard('faq', query({ locale: 'zh' })).headline).toBe(
       tx('zh', 'Is Hale right for your family?'),
     );
-    expect(paintShareCard('about', query({ locale: 'zh' })).headline).toBe(
-      tx('zh', 'A planner for your kids’ year.'),
-    );
+    expect(paintShareCard('about', query({ locale: 'en' })).headline).toBe(H1);
+    expect(paintShareCard('about', query({ locale: 'fr' })).headline).toBe(tx('fr', H1));
+    expect(paintShareCard('about', query({ locale: 'zh' })).headline).toBe(tx('zh', H1));
     expect(paintShareCard('activities', query({ locale: 'fr' })).headline).toBe(
       tx('fr', 'Things to do with your kids, near you.'),
     );
@@ -177,15 +237,10 @@ describe('share card copy', () => {
     ).toEqual(['我们周六应该做点什么', '幼儿游泳', '周六上午 10 点', '在社区中心', '我们去']);
   });
 
-  it('takes the home card’s second clause from the existing “we’re in” line', () => {
+  it('paints the page headline on the home card in each locale', () => {
     for (const locale of LOCALES) {
-      const full = tx(locale, 'We’re in, I can drive').toLocaleLowerCase();
-      const marked = HOME_SLOGAN[locale].marked.match(/[“«「]([^”»」]+)[”»」]/)?.[1] ?? '';
-      const inner = marked
-        .replace(/[.。]\s*$/, '')
-        .trim()
-        .toLocaleLowerCase();
-      expect(full.startsWith(inner)).toBe(true);
+      expect(HOME_SLOGAN[locale].plain, locale).toBe(tx(locale, H1));
+      expect(paintShareCard('home', query({ locale })).headline, locale).toBe(tx(locale, H1));
     }
   });
 
