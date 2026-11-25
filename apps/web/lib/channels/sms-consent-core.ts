@@ -1,10 +1,25 @@
 import { type Database, schema } from '@hale/db';
-import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { isEnabled } from '@hale/flags';
+import {
+  type SQL,
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  notLike,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { supersedeOpenInviteOnEnrollment } from '~/lib/channel/caregiver/invites';
 import { POLICY_VERSION } from '~/lib/consent';
 import { phoneBlindIndex } from '~/lib/crypto/blind-index';
 import { decryptString, encryptString } from '~/lib/crypto/string-cipher';
 import {
+  LINK_CODE_MARK,
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
   OTP_TTL_MS,
@@ -49,6 +64,48 @@ export interface SmsMutationDeps {
 
 /** Raised inside the enrol transaction when the code was already consumed (race). */
 class OtpConsumedRaceError extends Error {}
+
+export function codeAttemptsAtomic(): boolean {
+  return isEnabled('signin-code-atomic-attempts');
+}
+
+/**
+ * Which pending codes a door may check, with SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED on: a texted
+ * link checks only codes sent for a link, and every other door only the rest. Off, every
+ * door sees the user's newest code, as before.
+ */
+export function codesForDoor(door: 'link' | 'number'): SQL | undefined {
+  if (!codeAttemptsAtomic()) return undefined;
+  const marked = `${LINK_CODE_MARK}%`;
+  return door === 'link'
+    ? like(schema.phoneVerifications.codeHash, marked)
+    : notLike(schema.phoneVerifications.codeHash, marked);
+}
+
+/**
+ * Spend one try on an unused code before it is compared, in one statement, so guesses sent
+ * at the same moment cannot all read the same count. Returns the count after this try, or
+ * null when there was no try to spend (the code is locked or was used meanwhile): that
+ * check is not a guess and must refuse without comparing.
+ */
+export async function spendCodeAttempt(
+  database: Database,
+  verificationId: string,
+): Promise<number | null> {
+  const table = schema.phoneVerifications;
+  const [spent] = await database
+    .update(table)
+    .set({ attemptCount: sql`${table.attemptCount} + 1` })
+    .where(
+      and(
+        eq(table.id, verificationId),
+        isNull(table.consumedAt),
+        lt(table.attemptCount, OTP_MAX_ATTEMPTS),
+      ),
+    )
+    .returning({ attemptCount: table.attemptCount });
+  return spent ? spent.attemptCount : null;
+}
 
 export type RequestOtpResult =
   | { status: 'sent'; maskedPhone: string }
@@ -124,7 +181,9 @@ export async function requestPhoneOtp(
     await tx.insert(schema.phoneVerifications).values({
       userId: input.userId,
       phoneE164Encrypted: encryptString(phoneE164),
-      codeHash: input.codeBinding ? hashBoundOtpCode(code, input.codeBinding) : hashOtpCode(code),
+      codeHash: input.codeBinding
+        ? `${codeAttemptsAtomic() ? LINK_CODE_MARK : ''}${hashBoundOtpCode(code, input.codeBinding)}`
+        : hashOtpCode(code),
       expiresAt: new Date(now.getTime() + OTP_TTL_MS),
       lastSentAt: now,
     });
@@ -166,6 +225,7 @@ export async function verifyPhoneOtp(
       and(
         eq(schema.phoneVerifications.userId, input.userId),
         isNull(schema.phoneVerifications.consumedAt),
+        codesForDoor('number'),
       ),
     )
     .orderBy(desc(schema.phoneVerifications.createdAt))
@@ -181,7 +241,15 @@ export async function verifyPhoneOtp(
     return { status: 'expired' };
   }
 
-  if (!verifyOtpCode(input.code, pending.codeHash)) {
+  if (codeAttemptsAtomic()) {
+    const attemptCount = await spendCodeAttempt(database, pending.id);
+    if (attemptCount === null) return { status: 'locked' };
+    if (!verifyOtpCode(input.code, pending.codeHash)) {
+      return isOtpLockedOut(attemptCount)
+        ? { status: 'locked' }
+        : { status: 'wrong_code', attemptsRemaining: OTP_MAX_ATTEMPTS - attemptCount };
+    }
+  } else if (!verifyOtpCode(input.code, pending.codeHash)) {
     const attemptCount = pending.attemptCount + 1;
     await database
       .update(schema.phoneVerifications)

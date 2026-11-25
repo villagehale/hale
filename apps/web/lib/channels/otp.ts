@@ -39,14 +39,24 @@ export function hashBoundOtpCode(code: string, binding: string): string {
   return hashOtpCode(`${binding}:${code}`);
 }
 
-/** {@link verifyOtpCode} for a code stored with {@link hashBoundOtpCode}. */
+/**
+ * With SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED, a link-bound hash is stored behind this mark, so
+ * a check on another door can pass the code by without spending one of its tries. A code
+ * sent while the flag was off carries no mark.
+ */
+export const LINK_CODE_MARK = 'link:';
+
+/** {@link verifyOtpCode} for a code stored with {@link hashBoundOtpCode}, marked or not. */
 export function verifyBoundOtpCode(
   candidate: string,
   binding: string,
   storedHash: string,
 ): boolean {
   if (candidate.length > 12) return false;
-  return hashesEqual(hashBoundOtpCode(candidate, binding), storedHash);
+  const hash = storedHash.startsWith(LINK_CODE_MARK)
+    ? storedHash.slice(LINK_CODE_MARK.length)
+    : storedHash;
+  return hashesEqual(hashBoundOtpCode(candidate, binding), hash);
 }
 
 function hashesEqual(candidateHex: string, storedHash: string): boolean {
