@@ -9,6 +9,7 @@ type Fbq = ((...args: unknown[]) => void) & {
   loaded?: boolean;
   version?: string;
   push?: Fbq;
+  disablePushState?: boolean;
 };
 
 interface PixelWindow extends Window {
@@ -61,6 +62,9 @@ export function installMetaPixel(pixelId: string | readonly string[]): void {
   fbq.loaded = true;
   fbq.version = '2.0';
   fbq.queue = [];
+  // The allowlist is checked only here. Left on, fbevents.js would send a PageView with
+  // the new URL on every later client-side navigation, wherever it leads.
+  fbq.disablePushState = true;
   w.fbq = fbq;
   w._fbq = fbq;
   for (const id of ids) fbq('init', id);

@@ -20,7 +20,7 @@ const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 interface PixelWindow extends Window {
-  fbq?: { queue?: unknown[][] };
+  fbq?: { queue?: unknown[][]; disablePushState?: boolean };
   _fbq?: unknown;
   __haleMetaPixel?: boolean;
   happyDOM?: {
@@ -75,6 +75,13 @@ describe('MetaPixel on the /founding join page', () => {
       expect(scripts).toEqual([PIXEL_SRC]);
     },
   );
+
+  // fbevents.js otherwise sends a PageView with the new URL on every history change, so
+  // a later client-side visit to a token or family page would reach Meta from here.
+  it('turns off the pixel’s own history-change PageViews before fbevents.js loads', async () => {
+    await mountAt('/founding');
+    expect((window as PixelWindow).fbq?.disablePushState).toBe(true);
+  });
 });
 
 describe('MetaPixel everywhere else in the app', () => {
