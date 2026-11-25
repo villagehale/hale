@@ -183,7 +183,88 @@ describe('erasing a family Stripe still bills', () => {
     expect(second.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
   });
 
-  it('positive control: a family Stripe has nothing on file for is erased with no Stripe call', async () => {
+  it('a family whose row holds no Stripe id is still found by its metadata and cancelled', async () => {
+    const fake = createFakeStripe();
+    const pages: string[] = [];
+    const familyId = await dueFamily(null);
+    live(fake, `sub_meta${serial}`, `cus_meta${serial}`, familyId);
+
+    const summary = await runDeletionSweep(
+      db.database,
+      NOW,
+      async () => {},
+      noPager,
+      (id) => endBillingForFamilyErasure(db.database, id, billingDeps(fake, pages)),
+    );
+
+    expect(fake.deletes()).toEqual([`sub_meta${serial}`]);
+    expect(fake.subscriptions.get(`sub_meta${serial}`)?.status).toBe('canceled');
+    expect(await familyStands(familyId)).toBe(false);
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(pages).toEqual([]);
+  });
+
+  it('a refund-ready subscription search has not indexed yet is cancelled before erasure', async () => {
+    const fake = createFakeStripe();
+    const pages: string[] = [];
+    const familyId = await dueFamily(null);
+    const subscriptionId = `sub_ready${serial}`;
+    live(fake, subscriptionId, `cus_ready${serial}`, familyId);
+    fake.unindexed.add(subscriptionId);
+    await db.database.insert(schema.auditLog).values({
+      familyId,
+      actor: 'system',
+      actionTaken: 'billing_refund_ready',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { stripeEventId: `evt_ready${serial}`, subscriptionId, refund: 'ready' },
+    });
+
+    const summary = await runDeletionSweep(
+      db.database,
+      NOW,
+      async () => {},
+      noPager,
+      (id) => endBillingForFamilyErasure(db.database, id, billingDeps(fake, pages)),
+    );
+
+    expect(fake.deletes()).toEqual([subscriptionId]);
+    expect(fake.subscriptions.get(subscriptionId)?.status).toBe('canceled');
+    expect(await familyStands(familyId)).toBe(false);
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(pages).toEqual([]);
+  });
+
+  it('a subscription list Stripe cut short keeps the family for the next sweep and pages #ops', async () => {
+    const fake = createFakeStripe();
+    const pages: string[] = [];
+    const suffix = `cut${serial}`;
+    const familyId = await dueFamily(suffix);
+    live(fake, `sub_${suffix}`, `cus_${suffix}`, familyId);
+    fake.intercept(
+      (call) => call.path === '/v1/subscriptions/search',
+      () => Response.json({ object: 'search_result', has_more: true, data: [] }),
+      1,
+    );
+
+    const summary = await runDeletionSweep(
+      db.database,
+      NOW,
+      async () => {},
+      noPager,
+      (id) => endBillingForFamilyErasure(db.database, id, billingDeps(fake, pages)),
+    );
+
+    expect(fake.deletes()).toEqual([`sub_${suffix}`]);
+    expect(await familyStands(familyId)).toBe(true);
+    expect(summary.erased).toBe(0);
+    expect(summary.erasureBilling.notEnded).toBe(1);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]).toContain('erasure_billing_not_ended');
+    expect(pages[0]).toContain('truncated');
+  });
+
+  it('positive control: a family Stripe has no subscription for is erased after one search', async () => {
     const fake = createFakeStripe();
     const pages: string[] = [];
     const familyId = await dueFamily(null);
@@ -197,35 +278,37 @@ describe('erasing a family Stripe still bills', () => {
     );
 
     expect(await familyStands(familyId)).toBe(false);
-    expect(fake.calls).toEqual([]);
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /v1/subscriptions/search',
+    ]);
     expect(summary.erasureBilling).toEqual({ cancelled: 0, notEnded: 0 });
-  });
-
-  it('flags off: nothing is read or cancelled and the family is erased, as on main', async () => {
-    const fake = createFakeStripe();
-    const pages: string[] = [];
-    const suffix = `off${serial}`;
-    const familyId = await dueFamily(suffix);
-    live(fake, `sub_${suffix}`, `cus_${suffix}`, familyId);
-
-    await runDeletionSweep(
-      db.database,
-      NOW,
-      async () => {},
-      noPager,
-      (id) =>
-        endBillingForFamilyErasure(
-          db.database,
-          id,
-          billingDeps(fake, pages, {
-            ...FLAGS_ON,
-            STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED: 'false',
-          }),
-        ),
-    );
-
-    expect(fake.calls).toEqual([]);
-    expect(await familyStands(familyId)).toBe(false);
     expect(pages).toEqual([]);
   });
+
+  for (const off of ['STRIPE_REFUND_ENDS_SUBSCRIPTION_ENABLED', 'STRIPE_BILLING_REVOKE_ENABLED']) {
+    it(`${off} off: nothing is read or cancelled and the family is erased, as on main`, async () => {
+      const fake = createFakeStripe();
+      const pages: string[] = [];
+      const suffix = `off${serial}`;
+      const familyId = await dueFamily(suffix);
+      live(fake, `sub_${suffix}`, `cus_${suffix}`, familyId);
+
+      await runDeletionSweep(
+        db.database,
+        NOW,
+        async () => {},
+        noPager,
+        (id) =>
+          endBillingForFamilyErasure(
+            db.database,
+            id,
+            billingDeps(fake, pages, { ...FLAGS_ON, [off]: 'false' }),
+          ),
+      );
+
+      expect(fake.calls).toEqual([]);
+      expect(await familyStands(familyId)).toBe(false);
+      expect(pages).toEqual([]);
+    });
+  }
 });

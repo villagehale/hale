@@ -19,7 +19,6 @@ type NotEndedReason = 'no_key' | 'stripe_refused' | 'stripe_unavailable' | 'trun
 
 export type ErasureBillingOutcome =
   | { status: 'off' }
-  | { status: 'nothing_on_file' }
   | { status: 'ended'; cancelled: number }
   | { status: 'not_ended'; reason: NotEndedReason; opsAlert: OpsPagerOutcome };
 
@@ -56,26 +55,28 @@ export async function endBillingForFamilyErasure(
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
   const remembered = await database
-    .select({ customerId: sql<string | null>`${schema.auditLog.after}->>'stripeCustomerId'` })
+    .select({
+      customerId: sql<string | null>`${schema.auditLog.after}->>'stripeCustomerId'`,
+      subscriptionId: sql<string | null>`${schema.auditLog.after}->>'subscriptionId'`,
+    })
     .from(schema.auditLog)
     .where(
       and(
         eq(schema.auditLog.familyId, familyId),
-        inArray(schema.auditLog.actionTaken, [...CUSTOMER_MEMORY_VERBS]),
+        inArray(schema.auditLog.actionTaken, [...CUSTOMER_MEMORY_VERBS, 'billing_refund_ready']),
       ),
     );
+  const present = (id: string | null | undefined): id is string =>
+    typeof id === 'string' && id.length > 0;
   const customerIds = [
+    ...new Set([family?.customerId, ...remembered.map((row) => row.customerId)].filter(present)),
+  ];
+  // A refund-ready purchase stores no customer id, and search may not have indexed it yet.
+  const subscriptionIds = [
     ...new Set(
-      [family?.customerId, ...remembered.map((row) => row.customerId)].filter(
-        (id): id is string => typeof id === 'string' && id.length > 0,
-      ),
+      [family?.subscriptionId, ...remembered.map((row) => row.subscriptionId)].filter(present),
     ),
   ];
-  const subscriptionIds = family?.subscriptionId ? [family.subscriptionId] : [];
-  // The same rule the plan settle follows: with no Stripe identity there is nothing to read.
-  if (customerIds.length === 0 && subscriptionIds.length === 0) {
-    return { status: 'nothing_on_file' };
-  }
 
   const reader = stripePlanReaderFromEnv(env, deps.stripeFetch);
   if (!reader) return notEnded('no_key');
