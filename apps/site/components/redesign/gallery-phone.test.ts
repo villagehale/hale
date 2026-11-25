@@ -36,9 +36,16 @@ it('starts a short gallery thread under the header and still scrolls when playba
   expect(css).toContain('justify-content: flex-start');
   expect(css).not.toContain('.rd .gallery-phone .hs-thread::before');
   expect(css).not.toContain('flex: 1 0 0;');
-  expect(css).toContain(
-    '.rd .hs-chats { margin-top: var(--s7); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));',
+});
+
+it('shows the chat gallery from 768px and does not keep a static grid', () => {
+  expect(css).not.toContain('hs-chats-static');
+  expect(css).not.toContain('.rd .chat-gallery { display: none; }');
+  expect(css).not.toContain(
+    'grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: stretch;',
   );
+  expect(css).toContain('--gallery-card: min(342px, calc(100vw - 48px));');
+  expect(css).toContain('width: min(100%, 720px);');
 });
 
 it('follows the latest visible line and leaves a finished thread on the padding edge', () => {

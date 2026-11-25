@@ -518,9 +518,6 @@
 .rd .hs-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── 1. Group chats ── */
-.rd .hs-chats { margin-top: var(--s7); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gutter); align-items: stretch; }
-.rd .hs-chats > div { display: flex; flex-direction: column; }
-.rd .hs-chats .im-chat { flex: 1; }
 .rd .hs-chat-cap { display: flex; align-items: baseline; gap: var(--s3); margin-bottom: var(--s4); }
 .rd .hs-chat-cap .n { font-family: var(--font-mono); font-size: 12.8px; color: var(--meta); }
 .rd .hs-chat-cap .hs-h3 { font-size: 18.4px; }
@@ -699,7 +696,6 @@
   .rd .hs-h3 { font-size: 17.28px; }
   .rd .hs-p { font-size: 16px; }
 
-  .rd .hs-chats { grid-template-columns: 1fr; gap: var(--s7); margin-top: var(--s6); }
   .rd .hs-chat-cap { justify-content: center; }
   .rd .hs-solo { flex-direction: column; text-align: center; padding: var(--s5); gap: var(--s4); margin-top: var(--s7); }
   .rd .hs-solo-l { flex-direction: column; gap: var(--s3); }
@@ -723,8 +719,6 @@
   .rd .hs-wrow { grid-template-columns: 40px 1fr; row-gap: 6px; }
   .rd .hs-wrow .hs-driver { grid-column: 2; justify-self: start; }
   .rd .hs-memory { width: auto; margin: var(--s4) 0 0; }
-  .rd .hs-chats > div { display: block; }
-
 
   .rd .hs-tiers { grid-template-columns: 1fr; gap: var(--s4); margin-top: var(--s6); }
   .rd .hs-tier { padding: var(--s5); }
@@ -1182,10 +1176,13 @@
   .rd .gallery-arrow { position: static; transform: none; }
 }
 @media (min-width: 768px) {
-  .rd .chat-gallery { display: none; }
-}
-@media (max-width: 767.98px) {
-  .rd .hs-chats-static { display: none; }
+  /* One handset, centred. 720px is the content width at 767px, so the active
+     card stays centred and the neighbours keep that peek instead of filling
+     the 1200px row. The handset's own cap (320px) keeps the phone's ratio. */
+  .rd .chat-gallery {
+    width: min(100%, 720px);
+    margin-inline: auto;
+  }
 }
 
 .rd .phone,
@@ -1501,12 +1498,6 @@ body:has(.rd) footer > .shell { max-width: calc(1200px + 48px); padding-inline: 
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 .rd .im-head { flex: none; }
-.rd .hs-chats-static > div > [data-motion-scene] {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
 .rd .im-chips .hs-did { max-width: 100%; }
 .rd .chat-gallery .im-chips { justify-content: center; }
 @media (max-width: 640px) {

@@ -21,8 +21,8 @@ function Check() {
   );
 }
 
-/** The three group-chat examples. `framed` is the phone gallery; the desktop grid is the still. */
-export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
+/** The three group-chat examples, each in a phone. */
+export function groupChatSlides(locale: Locale): ReactNode[] {
   const t = (s: string) => tx(locale, s);
   const step = (value: string) => ({ 'data-motion-step': value });
   const stamp = () => (
@@ -41,29 +41,18 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
         <span className="im-members">{members}</span>
       </>
     );
-    const screen = framed ? (
-      <PhoneChat>
-        <div className="im-phone-head">
-          <ImBack />
-          {head}
-        </div>
-        <div className="im-thread im-phone-thread">
-          {stamp()}
-          {thread}
-        </div>
-      </PhoneChat>
-    ) : (
-      <article className="im-screen im-chat">
-        <div className="im-head">{head}</div>
-        <div className="im-thread">
-          {stamp()}
-          {thread}
-        </div>
-      </article>
-    );
     return (
       <div data-motion-scene="chat">
-        {screen}
+        <PhoneChat>
+          <div className="im-phone-head">
+            <ImBack />
+            {head}
+          </div>
+          <div className="im-thread im-phone-thread">
+            {stamp()}
+            {thread}
+          </div>
+        </PhoneChat>
         <div className="im-chips">{chip}</div>
       </div>
     );

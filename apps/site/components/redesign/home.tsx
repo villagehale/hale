@@ -234,7 +234,6 @@ export function RedesignHome({
    <h2 className="hs-h2">{t("Hale joins the chats you already have.")}</h2>
    <p className="hs-lede">{t("Ask in the chat. Hale answers in a line or two, keeps track of what you decided, then goes quiet.")}</p>
   </div>
-  <div className="hs-chats hs-chats-static">{groupChatSlides(locale, false)}</div>
   <ChatGallery
     labels={{
       carousel: t("Family group chat examples"),
@@ -244,7 +243,7 @@ export function RedesignHome({
       slide: t("Example {index} of {count}"),
     }}
   >
-    {groupChatSlides(locale, true)}
+    {groupChatSlides(locale)}
   </ChatGallery>
   <div className="hs-solo">
    <div className="hs-solo-l"><span className="hs-solo-ic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true"><path d="M10 3.5c3.9 0 7 2.6 7 5.8s-3.1 5.8-7 5.8c-.8 0-1.5-.1-2.2-.3L4.3 16.3l1-2.9C4 12.4 3 10.9 3 9.3 3 6.1 6.1 3.5 10 3.5z" /></svg></span><p className="hs-p"><b>{t("Not in a group?")}</b> {t("Text Hale on your own. It knows your family, just the two of you now.")}</p></div>
