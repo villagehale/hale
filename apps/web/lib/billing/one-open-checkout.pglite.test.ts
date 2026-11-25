@@ -1,10 +1,10 @@
 import { schema } from '@hale/db';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeOtpSender } from '~/lib/channels/otp-sender';
 import { pageOps } from '~/lib/monitoring/failure-page';
 import { type FakeStripe, createFakeStripe, stripeError } from '~/lib/testing/fake-stripe';
-import { type TestDb, createTestDb, migrationFiles, seedFamily } from '~/lib/testing/pglite';
+import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { createBillingCheckout } from './create-checkout';
 import { requestPromoJoinCode, verifyPromoJoinCode } from './new-visitor-join';
 import { type StripeCheckoutClient, stripeCheckoutClientFromEnv } from './stripe-client';
@@ -120,14 +120,21 @@ async function auditVerbs(familyId: string, verb: string): Promise<number> {
   return rows.length;
 }
 
-async function openCheckoutRows(familyId: string) {
-  return test.database
-    .select({
-      sessionId: schema.familyOpenCheckouts.sessionId,
-      openedBy: schema.familyOpenCheckouts.openedBy,
-    })
-    .from(schema.familyOpenCheckouts)
-    .where(eq(schema.familyOpenCheckouts.familyId, familyId));
+/** The sessions this path recorded on its audit rows, oldest first, with who opened each. */
+async function recordedSessions(familyId: string) {
+  const rows = await test.database
+    .select({ actor: schema.auditLog.actor, after: schema.auditLog.after })
+    .from(schema.auditLog)
+    .where(
+      and(
+        eq(schema.auditLog.familyId, familyId),
+        eq(schema.auditLog.actionTaken, 'billing_checkout_started'),
+      ),
+    )
+    .orderBy(asc(schema.auditLog.occurredAt));
+  return rows
+    .map((r) => ({ sessionId: (r.after as { sessionId?: string }).sessionId, actor: r.actor }))
+    .filter((r) => r.sessionId !== undefined);
 }
 
 describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
@@ -146,9 +153,8 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
     expect(second).toEqual({ status: 'created', url });
     const create = fake.calls.find((c) => c.path === '/v1/checkout/sessions');
     expect(create?.headers.get('idempotency-key')).toMatch(/^[0-9a-f]{64}$/);
-    expect(await openCheckoutRows(parent.familyId)).toEqual([
-      { sessionId: payable[0]?.id, openedBy: parent.userId },
-    ]);
+    const opened = { sessionId: payable[0]?.id, actor: parent.userId };
+    expect(await recordedSessions(parent.familyId)).toEqual([opened, opened]);
   });
 
   it('decides under a row lock on the family, which is what makes Postgres take turns', async () => {
@@ -179,7 +185,7 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
 
     const lockedRead = statements.findIndex((s) => /from "families".* for update$/is.test(s));
     expect(lockedRead).toBeGreaterThan(-1);
-    const write = statements.findIndex((s) => /^insert into "family_open_checkouts"/i.test(s));
+    const write = statements.findIndex((s) => /^insert into "audit_log"/i.test(s));
     expect(write).toBeGreaterThan(lockedRead);
   });
 
@@ -242,6 +248,18 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
     const again = await checkout(parent, MAX);
     expect(again.status).toBe('created');
     expect(creates()).toBe(2);
+  });
+
+  it('a checkout started while the flag was off does not hide the session opened with it on', async () => {
+    const parent = await signedInParent();
+    await checkout(parent, PLUS);
+    const [plusSession] = fake.payableCheckoutSessions(parent.familyId);
+    await checkout(parent, PLUS, ENV_OFF);
+
+    const max = await checkout(parent, MAX);
+
+    expect(max.status).toBe('created');
+    expect(fake.checkoutSessions.get(plusSession?.id ?? '')?.status).toBe('expired');
   });
 
   it('a family already on a paid plan is refused as on main, and Stripe is never called', async () => {
@@ -307,46 +325,6 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
   });
 });
 
-describe('the open-checkout migration', () => {
-  const FILE = migrationFiles().find((f) => f.endsWith('_family_open_checkouts.sql'));
-
-  it('adds the table, survives a second pass, and goes with its family', async () => {
-    if (!FILE) throw new Error('migration file not found');
-    const before = migrationFiles()
-      .filter((f) => f < FILE)
-      .at(-1);
-    if (!before) throw new Error('no migration before it');
-    const db = await createTestDb(before);
-    const columns = async () =>
-      (
-        await db.client.query<{ column_name: string }>(
-          "select column_name from information_schema.columns where table_name = 'family_open_checkouts' order by column_name",
-        )
-      ).rows.map((r) => r.column_name);
-    try {
-      expect(await columns()).toEqual([]);
-      await db.applyMigration(FILE);
-      await db.applyMigration(FILE);
-      expect(await columns()).toEqual(['family_id', 'opened_by', 'session_id', 'updated_at']);
-      const family = await db.client.query<{ id: string }>(
-        "insert into families (display_name) values ('Household') returning id",
-      );
-      const familyId = family.rows[0]?.id;
-      await db.client.query(
-        'insert into family_open_checkouts (family_id, session_id, opened_by) values ($1, $2, gen_random_uuid())',
-        [familyId, 'cs_test_cascade'],
-      );
-      const rows = async () =>
-        (await db.client.query('select 1 from family_open_checkouts')).rows.length;
-      expect(await rows()).toBe(1);
-      await db.client.query('delete from families where id = $1', [familyId]);
-      expect(await rows()).toBe(0);
-    } finally {
-      await db.close();
-    }
-  });
-});
-
 describe('ONE_OPEN_CHECKOUT_ENABLED off', () => {
   it('is main: two requests make two payable sessions, with no Idempotency-Key', async () => {
     const parent = await signedInParent();
@@ -359,6 +337,7 @@ describe('ONE_OPEN_CHECKOUT_ENABLED off', () => {
       'POST /v1/checkout/sessions',
     ]);
     expect(fake.calls.every((c) => c.headers.get('idempotency-key') === null)).toBe(true);
-    expect(await openCheckoutRows(parent.familyId)).toEqual([]);
+    expect(await recordedSessions(parent.familyId)).toEqual([]);
+    expect(await auditVerbs(parent.familyId, 'billing_checkout_started')).toBe(2);
   });
 });

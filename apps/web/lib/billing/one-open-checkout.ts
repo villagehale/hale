@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { OpsPage, OpsPagerOutcome } from '~/lib/monitoring/failure-page';
 import { familyAlreadySubscribed } from './already-subscribed.js';
 import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-client.js';
@@ -11,7 +11,11 @@ import type { CheckoutSessionParams, StripeCheckoutClient } from './stripe-clien
  * checkout.session.completed webhook lands can never end in two subscriptions.
  *
  * The family row is locked for the whole decision, Stripe calls included, so two requests
- * for one family take turns. Under the lock the family's last session is read from Stripe:
+ * for one family take turns. The family's last session is the newest `billing_checkout_started`
+ * audit row that names one (`after.sessionId`, written only on this path); its actor is the
+ * adult who opened it. Rows are stamped with the database clock at the write, under the
+ * lock, so the newest row is the last session made. Under the lock that session is read
+ * from Stripe:
  *   - open, same adult, same price: that session is returned, and nothing new is made;
  *   - open otherwise: it is expired in Stripe first. Another adult gets their own session,
  *     because the payer is read from who opened it. If Stripe will not expire it, nothing
@@ -63,14 +67,16 @@ export async function createOneOpenCheckout(input: {
     throw new Error('one open checkout: the Stripe client cannot read or expire a session');
   }
 
-  const started = {
-    familyId,
-    actor: userId,
-    actionTaken: 'billing_checkout_started',
-    targetTable: 'families',
-    targetId: familyId,
-    after: input.audit,
-  } as const;
+  const started = (sessionId: string) =>
+    ({
+      familyId,
+      actor: userId,
+      actionTaken: 'billing_checkout_started',
+      targetTable: 'families',
+      targetId: familyId,
+      after: { ...input.audit, sessionId },
+      occurredAt: sql`clock_timestamp()`,
+    }) as const;
 
   const decision = await database.transaction(async (rawTx): Promise<Decision> => {
     const tx = rawTx as unknown as Database;
@@ -84,15 +90,20 @@ export async function createOneOpenCheckout(input: {
     if (familyAlreadySubscribed(family))
       return { kind: 'done', result: { status: 'already_paid' } };
 
-    const [open] = await tx
-      .select({
-        sessionId: schema.familyOpenCheckouts.sessionId,
-        openedBy: schema.familyOpenCheckouts.openedBy,
-      })
-      .from(schema.familyOpenCheckouts)
-      .where(eq(schema.familyOpenCheckouts.familyId, familyId))
+    const { auditLog } = schema;
+    const [last] = await tx
+      .select({ actor: auditLog.actor, sessionId: sql<string>`${auditLog.after} ->> 'sessionId'` })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.familyId, familyId),
+          eq(auditLog.actionTaken, 'billing_checkout_started'),
+          isNotNull(sql`${auditLog.after} ->> 'sessionId'`),
+        ),
+      )
+      .orderBy(desc(auditLog.occurredAt))
       .limit(1);
-    const priorSessionId = open?.sessionId ?? null;
+    const priorSessionId = last?.sessionId ?? null;
     const prior = priorSessionId
       ? ((await retrieve(priorSessionId, { expand: ['subscription'] })) as StripeSession | null)
       : null;
@@ -101,8 +112,8 @@ export async function createOneOpenCheckout(input: {
       return { kind: 'done', result: { status: 'already_paid' } };
     }
     if (prior?.status === 'open') {
-      if (prior.url && open?.openedBy === userId && prior.metadata?.priceId === params.priceId) {
-        await tx.insert(schema.auditLog).values(started);
+      if (prior.url && last?.actor === userId && prior.metadata?.priceId === params.priceId) {
+        await tx.insert(auditLog).values(started(prior.id));
         return { kind: 'done', result: { status: 'created', url: prior.url } };
       }
       try {
@@ -110,13 +121,14 @@ export async function createOneOpenCheckout(input: {
       } catch {
         return { kind: 'unexpired' };
       }
-      await tx.insert(schema.auditLog).values({
+      await tx.insert(auditLog).values({
         familyId,
         actor: userId,
         actionTaken: 'billing_checkout_expired',
         targetTable: 'families',
         targetId: familyId,
         before: { sessionId: prior.id },
+        occurredAt: sql`clock_timestamp()`,
       });
     }
 
@@ -135,12 +147,7 @@ export async function createOneOpenCheckout(input: {
         err: new Error('stripe checkout session response missing id'),
       };
     }
-    const row = { sessionId: created.id, openedBy: userId, updatedAt: new Date() };
-    await tx
-      .insert(schema.familyOpenCheckouts)
-      .values({ familyId, ...row })
-      .onConflictDoUpdate({ target: schema.familyOpenCheckouts.familyId, set: row });
-    await tx.insert(schema.auditLog).values(started);
+    await tx.insert(auditLog).values(started(created.id));
     return { kind: 'done', result: { status: 'created', url: created.url } };
   });
 

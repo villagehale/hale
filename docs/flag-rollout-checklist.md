@@ -310,7 +310,7 @@ Dependencies, as the code reads them:
 - `GROUP_CARPOOL_ENABLED` arms the same path as `LINQ_GROUP_CARPOOL_ENABLED`.
 - `GROUP_BRING_LIST_ENABLED` arms the same path as `GROUP_SHARED_LISTS_ENABLED`.
 - `GROUP_MAIL_NOTICE_ENABLED` posts into the household group after a provider time-change; it does not replace the 1:1 email alert.
-- `ONE_OPEN_CHECKOUT_ENABLED` needs migration `0267_family_open_checkouts` applied first (it reads and writes that table). It depends on no other flag. Light it any time, and before checkout traffic grows: while it is off, two checkouts opened before the first webhook lands can both be paid.
+- `ONE_OPEN_CHECKOUT_ENABLED` needs no migration and depends on no other flag: the session it tracks is the newest `billing_checkout_started` audit row that names one. Light it any time, and before checkout traffic grows: while it is off, two checkouts opened before the first webhook lands can both be paid.
 - `GROUP_LOOP_GUARD_ENABLED` needs migration `0266_linq_group_loop_guards` applied first. Lit before it, every group message from an unverified sender logs `group_loop_guard_unread` and runs unguarded. It depends on no other flag.
 - `INTEREST_PASSPORT_DEMO` needs `INTEREST_PASSPORT_ENABLED`; a Calendar stamp needs `CALENDAR_ALERT_ENABLED`.
 - `AUTHORIZED_SIGNUP_ENABLED` is its own gate: `BROWSER_USE_SIGNUP_ENABLED` and `SIGNUP_SANDBOX_RUNTIME_ENABLED` do not turn signup on (`apps/web/lib/signup/browser-use/flag.ts:9-11`). `SIGNUP_BROWSER_RUNTIME` is read only after `SIGNUP_SANDBOX_RUNTIME_ENABLED` is `true`.
