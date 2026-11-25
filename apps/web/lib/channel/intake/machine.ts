@@ -1639,8 +1639,8 @@ const REASK_CAP = 2;
 async function friendSpeak(
   deps: IntakeDeps,
   heard: {
-    transcript: readonly Pick<TranscriptEntry, 'direction' | 'body' | 'inGroup'>[];
-    inGroup: boolean;
+    transcript: readonly Pick<TranscriptEntry, 'direction' | 'body' | 'inGroup' | 'chatId'>[];
+    door: TurnDoor;
   },
   input: Omit<FriendVoiceInput, 'recentTurns'>,
   options?: Omit<SpeakOptions, 'page'> & {
@@ -1666,16 +1666,22 @@ async function friendSpeak(
   );
 }
 
+/** Where a turn arrived: whether it is a group, and which chat. */
+type TurnDoor = Pick<SendContext['pipe'], 'isGroup' | 'chatId'>;
+
 /**
- * VIL-721. A group turn is handed only what was said in that group: an entry with no bit
- * predates it and is not assumed to be. Dark, the transcript goes through untouched.
+ * VIL-721. A group turn is handed only what was said in that same group chat: a parent in
+ * two groups never has one group's words reach the other. An entry with no bit or no chat
+ * id predates this and is not assumed to be. Dark, the transcript goes through untouched.
  */
-function sayableHere<T extends Pick<TranscriptEntry, 'inGroup'>>(heard: {
+function sayableHere<T extends Pick<TranscriptEntry, 'inGroup' | 'chatId'>>(heard: {
   transcript: readonly T[];
-  inGroup: boolean;
+  door: TurnDoor;
 }): readonly T[] {
-  if (!heard.inGroup || !threadOnboardingV2Enabled()) return heard.transcript;
-  return heard.transcript.filter((entry) => entry.inGroup === true);
+  const { door } = heard;
+  if (!door.isGroup || !threadOnboardingV2Enabled()) return heard.transcript;
+  if (!door.chatId) return [];
+  return heard.transcript.filter((entry) => entry.inGroup === true && entry.chatId === door.chatId);
 }
 
 /** A judged model reply. Empty means the retries already paged #ops. */
@@ -1861,9 +1867,9 @@ function threadForNext(
   now: Date,
   asked = false,
   /** Lit only: where this turn was said. Undefined keeps a dark entry's bytes. */
-  inGroup?: boolean,
+  door?: TurnDoor,
 ): TranscriptEntry[] {
-  const heard = inGroup === undefined ? {} : { inGroup };
+  const heard = door === undefined ? {} : { inGroup: door.isGroup, chatId: door.chatId };
   const last = transcript.at(-1);
   const base =
     last?.direction === 'in' && last.body === inboundBody
@@ -2276,7 +2282,7 @@ async function friendOnboardingTurn(
   };
   const spoken = await friendSpeak(
     deps,
-    { transcript, inGroup: ctx.pipe.isGroup },
+    { transcript, door: ctx.pipe },
     friendFields(
       friendStepForGap(onboardingMissing(checklist)[0], card),
       language,
@@ -2735,7 +2741,7 @@ async function friendColdTurn(
   if (progress.findDelivered === false) {
     const owed = await friendSpeak(
       deps,
-      { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
+      { transcript: session.transcript, door: ctx.pipe },
       friendFields('find_show', language, friendAddress(ctx), {
         parentWords: inbound.body,
         placeLabel:
@@ -2809,7 +2815,7 @@ async function friendColdTurn(
   });
   const spoken = await friendSpeak(
     deps,
-    { transcript: session.transcript, inGroup: ctx.pipe.isGroup },
+    { transcript: session.transcript, door: ctx.pipe },
     friendFields(step, language, friendAddress(ctx), {
       parentWords: inbound.body,
       placeLabel: session.firstTouch?.place?.city || session.firstTouch?.place?.areaCoarse || null,
@@ -3154,7 +3160,7 @@ async function friendColdTurn(
         voicedOut ? voiced : null,
         now,
         spoken.asks,
-        threadOnboardingV2Enabled() ? ctx.pipe.isGroup : undefined,
+        threadOnboardingV2Enabled() ? ctx.pipe : undefined,
       ),
       firstTouch: { ...withColdStart(session, language, nextProgress), given: nextGiven },
       ...(complete ? { state: 'complete' as const, closedAt: now, ladderNext: null } : {}),
@@ -3515,7 +3521,7 @@ async function sendPostYearFindLadder(
       transcript: [],
       parentWords: args.inbound.body,
       address: pipe.isGroup ? 'vous' : 'tu',
-      inGroup: pipe.isGroup,
+      door: pipe,
     },
   });
   // No voice, no fixed line: the ask is skipped and the ladder moves on.
@@ -3709,7 +3715,7 @@ async function provision(
       discoveryOn && !empty
         ? friendSpeak(
             deps,
-            { transcript: thread, inGroup: ctx.pipe.isGroup },
+            { transcript: thread, door: ctx.pipe },
             friendFields('find_show', language, friendAddress(ctx), {
               ...common,
               parentWords: inbound.body,
@@ -3721,7 +3727,7 @@ async function provision(
         : Promise.resolve(null),
       friendSpeak(
         deps,
-        { transcript: thread, inGroup: ctx.pipe.isGroup },
+        { transcript: thread, door: ctx.pipe },
         friendFields(step, language, friendAddress(ctx), {
           ...common,
           introduce: !discoveryOn && step === 'names',
@@ -4017,7 +4023,7 @@ async function handleWatchReply(
   const safety = await crisisReply(database, session, inbound, language, deps);
   const body = safety
     ? safety.body
-    : await helpBody(deps, session, language, inbound.body, ctx.pipe.isGroup);
+    : await helpBody(deps, session, language, inbound.body, ctx.pipe);
   if (body) await sendAndRecord(database, ctx, body, deps, recorded.transcript);
   await saveSession(
     database,
@@ -4133,7 +4139,7 @@ async function handleLadder(
         transcript: recorded.transcript,
         parentWords: inbound.body,
         address: friendAddress(ctx),
-        inGroup: ctx.pipe.isGroup,
+        door: ctx.pipe,
       },
     });
     next = asked ? 'name_reply' : 'gmail';
@@ -4168,7 +4174,7 @@ async function handleLadder(
     const join = coparentJoinFor(ctx, language);
     const spoken = await friendSpeak(
       deps,
-      { transcript: recorded.transcript, inGroup: ctx.pipe.isGroup },
+      { transcript: recorded.transcript, door: ctx.pipe },
       friendFields('coparent', language, friendAddress(ctx), {
         parentWords: inbound.body,
         coparentJoin: join,
@@ -4242,7 +4248,7 @@ async function sendLadderFriendCard(
     : null;
   const spoken = await friendSpeak(
     deps,
-    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
+    { transcript: args.transcript, door: ctx.pipe },
     friendFields(step, args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
       parentName: held ? safeGivenName(held.googleGivenName) : null,
@@ -4280,7 +4286,7 @@ async function sendLadderFriendCard(
   }
   const retry = await friendSpeak(
     deps,
-    { transcript: args.transcript, inGroup: ctx.pipe.isGroup },
+    { transcript: args.transcript, door: ctx.pipe },
     friendFields('link_retry', args.language, friendAddress(ctx), {
       parentWords: args.inbound.body,
     }),
@@ -4304,7 +4310,7 @@ async function askParentCallName(
       transcript: TranscriptEntry[];
       parentWords: string;
       address: 'tu' | 'vous';
-      inGroup: boolean;
+      door: TurnDoor;
     };
   },
 ): Promise<boolean> {
@@ -4327,7 +4333,7 @@ async function askParentCallName(
         }
         const spoken = await friendSpeak(
           friend.deps,
-          { transcript: friend.transcript, inGroup: friend.inGroup },
+          { transcript: friend.transcript, door: friend.door },
           friendFields(
             decision.kind === 'confirm' ? 'name_confirm' : 'names',
             args.language,
@@ -4359,8 +4365,9 @@ async function helpBody(
   session: IntakeSession | null,
   language: ReplyLanguage | null,
   parentWords: string,
-  inGroup: boolean,
+  door: TurnDoor,
 ): Promise<string | null> {
+  const inGroup = door.isGroup;
   const given = session?.firstTouch?.given ?? null;
   const children = session?.collected.children ?? [];
   const checklist: OnboardingChecklist = {
@@ -4379,7 +4386,7 @@ async function helpBody(
   };
   const spoken = await friendSpeak(
     deps,
-    { transcript: session?.transcript ?? [], inGroup },
+    { transcript: session?.transcript ?? [], door },
     friendFields('help', language, 'tu', {
       parentWords,
       placeLabel:

@@ -43,6 +43,7 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const PHONE = '+15555550177';
 const CHAT = '11111111-2222-4333-8444-555555555501';
 const GROUP_CHAT = '11111111-2222-4333-8444-555555555502';
+const OTHER_GROUP_CHAT = '11111111-2222-4333-8444-555555555503';
 const FROM = '+15555550100';
 const T0 = new Date('2026-07-30T12:00:00.000Z');
 const SIX_MINUTES = 6 * 60_000;
@@ -151,7 +152,7 @@ function conversation(
     onFetch: (override: FetchOverride | null) => {
       fetchOverride = override;
     },
-    say: async (body: string, where: { group?: boolean } = {}) => {
+    say: async (body: string, where: { group?: boolean; groupChat?: string } = {}) => {
       sequence += 1;
       clock = new Date(clock.getTime() + 60_000);
       vi.setSystemTime(clock);
@@ -163,7 +164,7 @@ function conversation(
         providerId: `before-lighting-${sequence}`,
         receivedAt: clock,
         transport: 'imessage',
-        chatId: where.group ? GROUP_CHAT : CHAT,
+        chatId: where.group ? (where.groupChat ?? GROUP_CHAT) : CHAT,
         isGroup: where.group === true,
       };
       const outcome = await deliver(last);
@@ -623,6 +624,54 @@ describe('the in-thread walk, before its flag goes on', () => {
       expect(group.inputs.at(-1)?.recentTurns.map((turn) => turn.body)).toContain("she's 4");
       const stored = (await openSession()).transcript;
       expect(stored.filter((entry) => entry.direction === 'out' && 'inGroup' in entry)).toEqual([]);
+    });
+  });
+
+  describe('3b. what was said in one group stays out of another', () => {
+    const IN_A = 'the soccer carpool leaves at 8 from our place';
+    const inA = { group: true, groupChat: GROUP_CHAT };
+    const inB = { group: true, groupChat: OTHER_GROUP_CHAT };
+
+    it("never hands a group turn the other group's words", async () => {
+      const talk = conversation(db.database);
+      for (const words of [...UP_TO_ACTIVITIES, 'Dana']) await talk.say(words);
+      const a = await talk.say(IN_A, inA);
+      expect(a.inputs.length).toBeGreaterThan(0);
+
+      const b = await talk.say('what works for everyone?', inB);
+
+      expect(b.inputs.length).toBeGreaterThan(0);
+      for (const input of b.inputs) {
+        expect(JSON.stringify(input).includes(IN_A)).toBe(false);
+        expect(input.recentTurns).toEqual([]);
+      }
+    });
+
+    it("still hands a group turn that group's own earlier entries", async () => {
+      const talk = conversation(db.database);
+      for (const words of [...UP_TO_ACTIVITIES, 'Dana']) await talk.say(words);
+      const firstB = await talk.say('what works for everyone?', inB);
+      expect(firstB.bodies.length).toBeGreaterThan(0);
+      await talk.say(IN_A, inA);
+
+      const secondB = await talk.say('and on the weekend?', inB);
+
+      expect(secondB.inputs.at(-1)?.recentTurns.map((turn) => turn.body)).toEqual([
+        'what works for everyone?',
+        firstB.bodies.at(-1),
+      ]);
+    });
+
+    it('leaves a 1:1 turn reading the whole transcript', async () => {
+      const talk = conversation(db.database);
+      for (const words of [...UP_TO_ACTIVITIES, 'Dana']) await talk.say(words);
+      await talk.say(IN_A, inA);
+
+      const oneToOne = await talk.say('what happens next?');
+
+      const bodies = oneToOne.inputs.at(-1)?.recentTurns.map((turn) => turn.body) ?? [];
+      expect(bodies).toContain(IN_A);
+      expect(bodies).toContain("she's 4");
     });
   });
 
