@@ -39,6 +39,8 @@ import {
   familyOutboundTarget,
   householdCopies,
 } from '~/lib/channel/linq/family-outbound';
+import type { ListChatHandles } from '~/lib/channel/linq/roster';
+import { listLinqParticipantHandles } from '~/lib/channel/linq/transport';
 import { onCheckbackClock } from '~/lib/channel/next-day-checkback/clock';
 import {
   type OpenAskClosedReason,
@@ -57,6 +59,7 @@ import {
 } from '~/lib/channel/outbound-gate';
 import { createOutboundTransport } from '~/lib/channel/outbound-transport';
 import { readParentLanguage } from '~/lib/channel/parent-language';
+import { CONTENT_CLASSES, type ContentClass } from '~/lib/channel/role-scope';
 import { threadProactiveMessage } from '~/lib/channel/thread';
 import {
   SCHOOL_BREAK_ASK_TEMPLATE_KEY,
@@ -101,6 +104,7 @@ import {
   proactiveCadence,
   proactiveNoRepeatEnabled,
   proactiveReviewGuardsEnabled,
+  queuedLineContentClassEnabled,
   requestedCadence,
   unroutedKinds,
 } from './flag';
@@ -192,7 +196,11 @@ export interface ProactiveReviewDeps {
   lineHold(database: Database): Promise<LineHold | null>;
   /** Every parent seat with a live number: who a claimed group's one bubble reaches. */
   loadRecipients(database: Database, familyId: string): Promise<FamilyTextRecipient[]>;
-  outboundTarget(database: Database, familyId: string): Promise<FamilyOutboundTarget>;
+  outboundTarget(
+    database: Database,
+    familyId: string,
+    options?: { contentClass?: ContentClass; listChatHandles?: ListChatHandles },
+  ): Promise<FamilyOutboundTarget>;
   /** The sweep's own thread write (finalize.ts). Required: a send with no thread is a
    * sentence the parent's reply has no antecedent for (rule #11). */
   threadMessage: typeof threadProactiveMessage;
@@ -265,6 +273,8 @@ interface QueuedItem extends OpenCandidate {
   templateKey: string;
   dedupeKey: string;
   payload: Record<string, unknown> | null;
+  /** The class the line's sweep stored, or null for a line with none (VIL-776). */
+  contentClass: ContentClass | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -629,6 +639,7 @@ async function loadOpenItems(
       templateKey: row.templateKey,
       dedupeKey: row.dedupeKey,
       payload: row.payload ?? null,
+      contentClass: storedContentClass(row.contentClass),
       what: row.what,
       why: row.why,
       decision: row.decision,
@@ -1492,35 +1503,44 @@ async function sendChosen(
     return;
   }
 
-  const byParent = new Map<string, QueuedItem[]>();
-  for (const item of chosen) {
-    byParent.set(item.parentUserId, [...(byParent.get(item.parentUserId) ?? []), item]);
-  }
-  const target = await deps.outboundTarget(database, familyId);
-  const perParent = [...byParent.entries()].map(([parentUserId, items]) => ({
-    parentUserId,
-    items,
-  }));
+  const routes = queuedLineContentClassEnabled()
+    ? await classRoutes(database, deps, familyId, chosen)
+    : [{ target: await deps.outboundTarget(database, familyId), items: chosen }];
   // A claimed group is one bubble for the household, so its one copy carries every
-  // chosen item and reaches every member: each of them is gated, and one refusal holds
-  // the copy. Without a group each parent gets their own copy of their own items.
-  let copies: Array<{ parentUserId: string; items: QueuedItem[]; members: string[] }>;
-  if (target.channel === 'group') {
-    const seats = await deps.loadRecipients(database, familyId);
-    const members = [
-      ...new Set([
-        ...seats.map((seat) => seat.parentUserId),
-        ...perParent.map((copy) => copy.parentUserId),
-        ...(await chatMemberUserIds(database, target.chatId)),
-      ]),
-    ];
-    copies = householdCopies(target, perParent).map((copy) => ({
-      ...copy,
-      items: chosen,
-      members,
+  // item routed to it and reaches every member: each of them is gated, and one refusal
+  // holds the copy. Without a group each parent gets their own copy of their own items.
+  const copies: Array<{
+    parentUserId: string;
+    items: QueuedItem[];
+    members: string[];
+    target: FamilyOutboundTarget;
+  }> = [];
+  for (const { target, items: routed } of routes) {
+    const byParent = new Map<string, QueuedItem[]>();
+    for (const item of routed) {
+      byParent.set(item.parentUserId, [...(byParent.get(item.parentUserId) ?? []), item]);
+    }
+    const perParent = [...byParent.entries()].map(([parentUserId, items]) => ({
+      parentUserId,
+      items,
     }));
-  } else {
-    copies = perParent.map((copy) => ({ ...copy, members: [copy.parentUserId] }));
+    if (target.channel === 'group') {
+      const seats = await deps.loadRecipients(database, familyId);
+      const members = [
+        ...new Set([
+          ...seats.map((seat) => seat.parentUserId),
+          ...perParent.map((copy) => copy.parentUserId),
+          ...(await chatMemberUserIds(database, target.chatId)),
+        ]),
+      ];
+      for (const copy of householdCopies(target, perParent)) {
+        copies.push({ ...copy, items: routed, members, target });
+      }
+    } else {
+      for (const copy of perParent) {
+        copies.push({ ...copy, members: [copy.parentUserId], target });
+      }
+    }
   }
 
   const gate = onCheckbackClock(deps.buildGate(database), clocks);
@@ -1528,6 +1548,7 @@ async function sendChosen(
     parentUserId: string;
     items: QueuedItem[];
     members: string[];
+    target: FamilyOutboundTarget;
     optOutFull: boolean;
   }> = [];
   for (const copy of copies) {
@@ -1546,6 +1567,7 @@ async function sendChosen(
       parentUserId: copy.parentUserId,
       items: copy.items,
       members: copy.members,
+      target: copy.target,
       optOutFull: verdict.optOutFull,
     });
   }
@@ -1572,13 +1594,13 @@ async function sendChosen(
     // VIL-572 · a parent's own copy is written in that parent's proactive language. The
     // household's one group copy stays in the family's.
     const language =
-      target.channel === 'group'
+      copy.target.channel === 'group'
         ? (input.language ?? null)
         : await readParentLanguage(database, { familyId, parentUserId: copy.parentUserId });
     // A group copy is read by every member. The 1:1 thread is that parent's alone
     // (rule #5), so it is not material for a text the group will see.
     const recentTexts =
-      proactiveNoRepeatEnabled() && target.channel !== 'group'
+      proactiveNoRepeatEnabled() && copy.target.channel !== 'group'
         ? await recentAssistantTexts(database, {
             familyId,
             parentUserId: copy.parentUserId,
@@ -1641,7 +1663,7 @@ async function sendChosen(
       body: withOptOut(copy.message, copy.optOutFull ? 'full' : 'short'),
       to,
       legacy: deps.transport,
-      target,
+      target: copy.target,
       fetch: deps.fetch,
       now,
     });
@@ -1698,6 +1720,53 @@ async function sendChosen(
     });
   }
   await alertVolume(database, familyId, now);
+}
+
+/**
+ * VIL-776 · where each chosen line goes. A line goes to the claimed group only when the
+ * group-audience rule admits the class its sweep stored, asked against the chat as it is
+ * now; every other line, a line with no class among them, takes the family's target with
+ * no class, which is 1:1. Lines the group may hear share its one bubble.
+ */
+async function classRoutes(
+  database: Database,
+  deps: ProactiveReviewDeps,
+  familyId: string,
+  chosen: readonly QueuedItem[],
+): Promise<Array<{ target: FamilyOutboundTarget; items: QueuedItem[] }>> {
+  const listChatHandles: ListChatHandles = (input) =>
+    listLinqParticipantHandles({ ...input, fetch: deps.fetch });
+  const byClass = new Map<ContentClass, QueuedItem[]>();
+  const unclassed: QueuedItem[] = [];
+  for (const item of chosen) {
+    if (item.contentClass === null) unclassed.push(item);
+    else byClass.set(item.contentClass, [...(byClass.get(item.contentClass) ?? []), item]);
+  }
+  const routes: Array<{ target: FamilyOutboundTarget; items: QueuedItem[] }> = [];
+  for (const [contentClass, items] of byClass) {
+    const target = await deps.outboundTarget(database, familyId, {
+      contentClass,
+      listChatHandles,
+    });
+    if (target.channel !== 'group') {
+      unclassed.push(...items);
+      continue;
+    }
+    const [group] = routes;
+    if (group) group.items.push(...items);
+    else routes.push({ target, items: [...items] });
+  }
+  if (unclassed.length > 0) {
+    const ordered = chosen.filter((item) => unclassed.includes(item));
+    routes.push({ target: await deps.outboundTarget(database, familyId), items: ordered });
+  }
+  return routes;
+}
+
+/** A stored class this build knows, or null: an unknown value is never read as a class. */
+function storedContentClass(value: string | null): ContentClass | null {
+  if (value === null || !(CONTENT_CLASSES as readonly string[]).includes(value)) return null;
+  return value as ContentClass;
 }
 
 /**

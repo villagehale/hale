@@ -62,6 +62,12 @@ export const proactiveCandidates = pgTable(
      * send reads it; the model never does.
      */
     payload: jsonb('payload').$type<Record<string, unknown>>(),
+    /**
+     * VIL-776 · the role-scope content class the sweep asked the group-audience rule
+     * about, so the review asks it again before a group send. Null is a line with no
+     * class, which only ever goes 1:1.
+     */
+    contentClass: text('content_class'),
     status: text('status').notNull().default('queued').$type<ProactiveCandidateStatus>(),
     /** The decider's own action: send_now, hold, or drop. */
     decision: text('decision'),
