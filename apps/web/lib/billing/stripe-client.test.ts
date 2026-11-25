@@ -92,7 +92,7 @@ describe('stripeCheckoutClientFromEnv', () => {
       tier: 'plus',
       period: 'annual',
       successUrl: 'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
-      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      cancelUrl: 'https://app.example.com/join?checkout=cancelled',
       customerId: 'cus_existing',
       customerEmail: 'p@example.com',
       idempotencyKey: 'hale-checkout-fam-7',

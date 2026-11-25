@@ -97,7 +97,7 @@ describe('POST /api/promo/join/checkout', () => {
     expect(res.status).toBe(200);
     expect(createMock.mock.calls[0]?.[0]).toMatchObject({
       sku: 'promo_plus_annual',
-      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      cancelUrl: 'https://app.example.com/join?checkout=cancelled',
     });
     expect(String(createMock.mock.calls[0]?.[0].cancelUrl)).not.toContain('preview=');
   });
@@ -154,7 +154,7 @@ describe('POST /api/promo/join/checkout', () => {
     expect(createMock.mock.calls[0]?.[0]).toMatchObject({
       familyId: 'fam-9',
       externalAuthId: 'sms:abc',
-      cancelUrl: 'https://app.example.com/founding?checkout=cancelled',
+      cancelUrl: 'https://app.example.com/join?checkout=cancelled',
       sku: 'promo_plus_annual',
       attribution: { gclid: 'Click1', utm_source: 'google' },
     });

@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The app's Meta pixel loads only on the public /founding join page that ads land on.
+ * The app's Meta pixel loads only on the public /join page that ads land on.
  * A page whose URL carries a bearer token, or that shows a family's data, must load
  * nothing from Meta (hard rule #1). Each case mounts the real component at a URL and
  * reads what reached the page: the fbq queue and the fbevents.js script tag.
@@ -62,8 +62,8 @@ async function mountAt(url: string): Promise<{ queue: unknown[][]; scripts: stri
   };
 }
 
-describe('MetaPixel on the /founding join page', () => {
-  it.each(['/founding', '/founding?utm_source=meta&fbclid=abc', '/founding?checkout=cancelled'])(
+describe('MetaPixel on the /join page', () => {
+  it.each(['/join', '/join?utm_source=meta&fbclid=abc', '/join?checkout=cancelled'])(
     'inits both ids, tracks one PageView and loads fbevents.js on %s',
     async (url) => {
       const { queue, scripts } = await mountAt(url);
@@ -79,7 +79,7 @@ describe('MetaPixel on the /founding join page', () => {
   // fbevents.js otherwise sends a PageView with the new URL on every history change, so
   // a later client-side visit to a token or family page would reach Meta from here.
   it('turns off the pixel’s own history-change PageViews before fbevents.js loads', async () => {
-    await mountAt('/founding');
+    await mountAt('/join');
     expect((window as PixelWindow).fbq?.disablePushState).toBe(true);
   });
 });
@@ -89,7 +89,7 @@ describe('MetaPixel everywhere else in the app', () => {
     ['the provider-login vault (bearer code)', '/l/AbCdEf1234'],
     ['the texted connect link (bearer token)', '/connect?t=tok123'],
     ['the texted sign-in link', '/sign-in?s=tok123'],
-    ['the founding preview door (secret query)', '/founding?preview=tok123'],
+    ['the join preview door (secret query)', '/join?preview=tok123'],
     ['signed-in checkout', '/settings/founding'],
     ['settings', '/settings'],
     ['a child page', '/family/child-1'],
@@ -97,7 +97,8 @@ describe('MetaPixel everywhere else in the app', () => {
     ['messages', '/messages'],
     ['an rsvp link (bearer token)', '/rsvp/tok123'],
     ['an invite link (bearer token)', '/invite/tok123'],
-    ['a path that only starts with the same letters', '/foundingx'],
+    ['the old path, which only redirects', '/founding'],
+    ['a path that only starts with the same letters', '/joinx'],
   ])('loads nothing from Meta on %s', async (_label, url) => {
     const { queue, scripts } = await mountAt(url);
     expect(queue).toEqual([]);

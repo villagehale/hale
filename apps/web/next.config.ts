@@ -50,6 +50,17 @@ const config: NextConfig = {
       // rule; the explicit slash source is the same forward if that hop is skipped.
       { source: '/signin', destination: '/sign-in', permanent: true },
       { source: '/signin/', destination: '/sign-in', permanent: true },
+      // The public join page moved from /founding to /join. Permanent (308)
+      // and kept: ads and bookmarks still use the old path. The bare route
+      // and :path* are both listed — :path* does not match zero segments.
+      // skipTrailingSlashRedirect is on, so the slash spelling is listed too
+      // and folds onto /join, the page that actually renders. Destinations
+      // carry no query of their own, so Next keeps the request query
+      // (/founding?foo=bar lands on /join?foo=bar, and /founding/extra?foo=bar
+      // lands on /join/extra?foo=bar).
+      { source: '/founding', destination: '/join', permanent: true },
+      { source: '/founding/', destination: '/join', permanent: true },
+      { source: '/founding/:path*', destination: '/join/:path*', permanent: true },
       // Receipts-room stubs. The browser pages are gone; these forwards are
       // permanent (308) and kept for bookmarks. Bare and :path* are both
       // listed — :path* does not match zero segments. Sources are the page

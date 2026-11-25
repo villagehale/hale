@@ -1,6 +1,6 @@
 import stage from '~/components/hale/connect/connect.module.css';
 
-/** Text tier on /founding, shown next to the founding join form. */
+/** Text tier on /join, shown next to the paid join form. */
 export function FreeJoinCard() {
   return (
     <section className={`${stage.card} ${stage.door}`} aria-label="Text">

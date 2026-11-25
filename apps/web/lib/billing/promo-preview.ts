@@ -9,11 +9,11 @@ import { parseAllowlist } from '@hale/flags';
 
 export const PROMO_PREVIEW_FAMILY_IDS_ENV = 'PROMO_PREVIEW_FAMILY_IDS';
 export const PROMO_PREVIEW_TOKEN_ENV = 'PROMO_PREVIEW_TOKEN';
-/** Query key for `/founding?preview=<PROMO_PREVIEW_TOKEN>`. */
+/** Query key for `/join?preview=<PROMO_PREVIEW_TOKEN>`. */
 export const PROMO_PREVIEW_QUERY = 'preview';
 /**
  * HttpOnly cookie so a Stripe cancel URL without `?preview=` still opens
- * `/founding`. Signed with AUTH_SECRET plus the expected token — rotating the
+ * `/join`. Signed with AUTH_SECRET plus the expected token — rotating the
  * token invalidates outstanding cookies. Never put the raw token in the cookie
  * or on a Stripe success/cancel URL.
  */

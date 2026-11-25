@@ -12,6 +12,11 @@ import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
  * who lands there is sent on to the signed-in checkout. `/founding` does not
  * read a plan query — after the code the parent chooses Plus or Max — so the
  * chosen tier stays on the analytics event and is not put in the URL.
+ *
+ * The path stays `/founding`. The app 308s it to `/join`. A site deploy that
+ * landed first would otherwise point at a `/join` the app does not have yet.
+ * A later change switches this to `/join`, or drops the link when direct
+ * checkout lands.
  */
 export const FOUNDING_CHECKOUT_PATH = '/founding';
 

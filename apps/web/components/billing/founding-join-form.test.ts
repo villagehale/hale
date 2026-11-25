@@ -49,7 +49,7 @@ describe('FreeJoinCard', () => {
   });
 });
 
-describe('/founding three-option pair', () => {
+describe('/join three-option pair', () => {
   it('renders Text plus Plus and Max annual, with no paid monthly or list annual', () => {
     const html = renderToStaticMarkup(
       createElement('div', null, [

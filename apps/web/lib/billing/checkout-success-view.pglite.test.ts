@@ -856,7 +856,7 @@ describe('the check-in sentence', () => {
   });
 });
 
-describe('the /founding already-paid screen', () => {
+describe('the /join already-paid screen', () => {
   const ON = { CHECKOUT_SUCCESS_STATES_ENABLED: 'true' };
 
   it('counts the same threads as the success page, only with the flag on', async () => {

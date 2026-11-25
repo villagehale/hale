@@ -56,6 +56,7 @@ describe('isProtectedPath', () => {
       '/planner',
       '/savedish',
       '/founding',
+      '/join',
     ]) {
       expect(isProtectedPath(path)).toBe(false);
     }
