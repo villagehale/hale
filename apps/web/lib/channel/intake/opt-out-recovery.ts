@@ -1,6 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
-import { hasInviteAStopWouldClose } from '~/lib/channel/caregiver/invites';
+import { hasInviteAStopWouldClose, hasUnansweredInvite } from '~/lib/channel/caregiver/invites';
 import type { CrisisRegion, CrisisSituation, CrisisWho } from '~/lib/channel/crisis-resources';
 import type { ReplyLanguage } from '~/lib/channel/language';
 import { hasDrawAStopWouldHold } from '~/lib/channel/linq/secret-santa-send';
@@ -31,8 +31,11 @@ import { type Inbound, handleStop, writeChannelMessage } from './machine';
 import {
   MESSAGE_HOLD,
   STOP_PENDING_HOLD,
+  STOP_RAN_HOLD,
+  type Tx,
   markStopPending,
   placeHold,
+  recordStopRan,
   releaseHeldMessage,
   releaseStoppedMessage,
 } from './opt-out-hold';
@@ -92,6 +95,8 @@ export const HELD_READ_OUTCOMES = [
   'stop_superseded',
   /** The stop path threw before the number stopped being sendable: kept held, retried. */
   'stop_failed',
+  /** The stop already ran: the stop path found the number no longer sendable, or the row
+   * is the record of a stop that ran and only its release had failed. Released, nothing sent. */
   'already_stopped',
   'read_not_stop',
   'read_start',
@@ -286,6 +291,13 @@ async function recoverRow(
     )
     .returning({ id: schema.optOutHeldMessages.providerMessageId });
   if (claimed.length === 0) return 'claimed_elsewhere';
+  if (row.kind === STOP_RAN_HOLD) {
+    await releaseStoppedMessage(database, {
+      phoneHash: row.phoneHash,
+      providerMessageId: row.providerMessageId,
+    });
+    return 'already_stopped';
+  }
   const stopPending = row.kind === STOP_PENDING_HOLD;
   if (row.kind !== MESSAGE_HOLD && !stopPending) return 'held_for_operator';
   // A reply to this text was sent: nothing is read, and nothing is sent again. One still
@@ -348,10 +360,15 @@ async function recoverRow(
     outcome = await settleReading(database, deps, row, held, reading);
   }
   if (KEPT.has(outcome)) return outcome;
+  // A stop marked on the row since this tick read its kind keeps the text from the coach:
+  // the hand-off commits with the release, and only while the row is still a message.
+  const handOffWithRelease = outcome === 'read_not_stop' && optOutHoldUntilStopCommitsEnabled();
   // An ordinary read of a text this door held unread is no longer unread. The row
   // becomes a reply the unhanded reconciler can give to the coach. A stop stays out
   // of that queue. Only the held shape is touched, so an onboarding intake row is not.
-  if (outcome === 'read_not_stop') await releaseUnreadHoldToCoach(database, row.providerMessageId);
+  if (outcome === 'read_not_stop' && !handOffWithRelease) {
+    await releaseUnreadHoldToCoach(database, row.providerMessageId);
+  }
   if (held.familyId && held.authorUserId) {
     await database.insert(schema.auditLog).values({
       familyId: held.familyId,
@@ -367,6 +384,14 @@ async function recoverRow(
     // No family yet (audit_log.family_id is NOT NULL). On a stop the closed session row
     // is the record, as on the live path.
     console.info({ outcome }, 'opt-out recovery: held text read for a sender with no family');
+  }
+  if (handOffWithRelease) {
+    await database.transaction(async (tx) => {
+      if ((await releaseHeldMessage(tx, row.providerMessageId)) === 'released') {
+        await releaseUnreadHoldToCoach(tx, row.providerMessageId);
+      }
+    });
+    return outcome;
   }
   await releaseRow(database, row, stopMarked);
   return outcome;
@@ -394,7 +419,7 @@ function releaseRow(
  * Off unless the hold-turn flag is exactly `true`. A stop is never passed here.
  */
 async function releaseUnreadHoldToCoach(
-  database: Database,
+  database: Database | Tx,
   providerMessageId: string,
 ): Promise<void> {
   if (!optOutUnreadHoldTurnEnabled()) return;
@@ -489,6 +514,12 @@ async function lateStop(
       'opt-out recovery: stop read late but the stop path failed - kept held; the opt-out hold sweep pages it',
     );
     return 'stop_failed';
+  }
+  if (optOutHoldUntilStopCommitsEnabled()) {
+    await recordStopRan(database, {
+      phoneHash: row.phoneHash,
+      providerMessageId: row.providerMessageId,
+    });
   }
   if (!sendable) return 'already_stopped';
   console.info(
@@ -1034,11 +1065,12 @@ async function stopNotYetApplied(database: Database, row: HeldRow): Promise<bool
   const guestOptIn = timeline.some(
     (holding) => holding.kind === 'guest_reminders' && holding.end === null,
   );
-  return (
-    guestOptIn ||
-    (await hasInviteAStopWouldClose(database, row.phoneHash, row.heldAt)) ||
-    hasDrawAStopWouldHold(database, row.phoneHash)
-  );
+  // Lit, whether the stop ran is its record on the row (released above), never a decline
+  // that may have come from anyone: every unanswered invite still holds it.
+  const invite = optOutHoldUntilStopCommitsEnabled()
+    ? await hasUnansweredInvite(database, row.phoneHash)
+    : await hasInviteAStopWouldClose(database, row.phoneHash, row.heldAt);
+  return guestOptIn || invite || hasDrawAStopWouldHold(database, row.phoneHash);
 }
 
 /**

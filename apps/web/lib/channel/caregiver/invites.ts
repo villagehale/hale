@@ -1370,6 +1370,11 @@ export async function hasInviteAStopWouldClose(
   );
 }
 
+/** Whether this number has an invite nobody answered, which a stop has yet to close. */
+export async function hasUnansweredInvite(database: Database, phoneHash: string): Promise<boolean> {
+  return newestUnanswered(await invitesOnNumber(database, phoneHash), phoneHash) !== undefined;
+}
+
 /**
  * A STOP from a number that was asked something. The invite itself promises they can
  * opt out, so it has to close the invite too — otherwise the one thing we promised
