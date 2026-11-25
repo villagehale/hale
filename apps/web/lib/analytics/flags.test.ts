@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   POSTHOG_REPLAY_ENABLED_ENV,
@@ -60,5 +61,17 @@ describe('PostHog web/replay flags', () => {
         [POSTHOG_REPLAY_ENABLED_ENV]: undefined,
       }),
     ).toBe(false);
+  });
+});
+
+describe('the browser reads the web and replay flags', () => {
+  // Next.js inlines only a literal process.env.NEXT_PUBLIC_* into browser code; a lookup
+  // by a variable name is undefined there. Vitest runs in Node, where both forms read the
+  // same object, so only the source can show which form the browser gets.
+  it('names each NEXT_PUBLIC variable literally on the default path', () => {
+    const source = readFileSync(new URL('./flags.ts', import.meta.url), 'utf8');
+    expect(source).toContain('process.env.NEXT_PUBLIC_POSTHOG_WEB_ENABLED');
+    expect(source).toContain('process.env.NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED');
+    expect(source).not.toMatch(/(posthogWebEnabled|posthogReplayEnabled)\(env: Env = process\.env\)/);
   });
 });

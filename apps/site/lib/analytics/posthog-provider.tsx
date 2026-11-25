@@ -10,6 +10,7 @@ import { hasAnalyticsOptOut } from './opt-out';
 import { POSTHOG_PROXY_PATH, posthogUiHost } from './posthog-proxy';
 import { readFirstTouchAttribution } from './attribution';
 import { type SessionLike, readFirstTouchSourceCode } from './source-code';
+import { hasSecretQuery, redactSecretEvent } from './url-secrets';
 
 const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -75,6 +76,7 @@ export const POSTHOG_INIT_CONFIG = {
   respect_dnt: true,
   mask_all_text: false,
   mask_all_element_attributes: true,
+  before_send: redactSecretEvent,
 } satisfies Partial<Parameters<PostHog['init']>[1]>;
 
 interface Analytics {
@@ -122,7 +124,16 @@ export function PostHogProvider({
   const [analytics, setAnalytics] = useState<Analytics>({ client: null, base: {} });
 
   useEffect(() => {
-    if (!KEY || !posthogWebEnabled()) return;
+    // A page whose URL holds a secret (the checkout success page's session id) does not
+    // load PostHog: the first load would send that URL in the flags request.
+    if (
+      !KEY ||
+      !posthogWebEnabled() ||
+      hasSecretQuery(window.location.search) ||
+      hasSecretQuery(window.location.hash)
+    ) {
+      return;
+    }
     let active = true;
     const storage = sessionStorageOrNull();
     const sourceCode = readFirstTouchSourceCode(window.location.search, storage);

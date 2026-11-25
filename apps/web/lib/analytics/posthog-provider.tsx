@@ -43,23 +43,37 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
  * `/join?preview=` is the same class of secret (it unlocks founding checkout while
  * the live flags stay off). PostHog does not load when that query is present, and
  * `before_send` still strips `preview=` from any later event.
+ *
+ * Every other bearer link is handled the same way: RSVP and invite links carry their
+ * token in the path; texted connect and unsubscribe links, sign-in and OAuth returns
+ * carry it in the query or the hash. PostHog does not load on a first page that carries
+ * one, and `before_send` rewrites each value to a placeholder.
  */
 const LOGIN_LINK_CODE = /(\/|%2F)l(\/|%2F)[^/?#&\s"'\\]+/gi;
+const BEARER_PATH_TOKEN = /(\/|%2F)(rsvp|invite)(\/|%2F)[^/?#&\s"'\\]+/gi;
 const PREVIEW_QUERY = /([?&]|%3F|%26)preview(=|%3D)[^&#"'\\\s]*/gi;
+const SECRET_PARAMS = ['t', 'token', 'sig', 'u', 'code', 'state', 'session_id', 'email'];
+const SECRET_QUERY = new RegExp(
+  `([?&#]|%3F|%26|%23)(${SECRET_PARAMS.join('|')})(=|%3D)[^&#"'\\\\\\s]*`,
+  'gi',
+);
 
-export function isLoginLinkPath(pathname: string): boolean {
-  return pathname.startsWith('/l/');
+export function isBearerLinkPath(pathname: string): boolean {
+  return /^\/(l|rsvp|invite)\//.test(pathname);
 }
 
-export function hasPromoPreviewQuery(search: string): boolean {
-  const raw = search.startsWith('?') ? search.slice(1) : search;
-  return new URLSearchParams(raw).has('preview');
+/** True when a query string or hash (with or without its leading `?` or `#`) holds a secret. */
+export function hasSecretQuery(search: string): boolean {
+  const params = new URLSearchParams(search.replace(/^[?#]/, ''));
+  return params.has('preview') || SECRET_PARAMS.some((name) => params.has(name));
 }
 
 function redactSecrets(value: string): string {
   return value
     .replace(LOGIN_LINK_CODE, '$1l$2[code]')
-    .replace(PREVIEW_QUERY, '$1preview$2[preview]');
+    .replace(BEARER_PATH_TOKEN, '$1$2$3[token]')
+    .replace(PREVIEW_QUERY, '$1preview$2[preview]')
+    .replace(SECRET_QUERY, '$1$2$3[redacted]');
 }
 
 function redactCodes<T>(value: T): T {
@@ -141,8 +155,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     if (
       !KEY ||
       !posthogWebEnabled() ||
-      isLoginLinkPath(window.location.pathname) ||
-      hasPromoPreviewQuery(window.location.search)
+      isBearerLinkPath(window.location.pathname) ||
+      hasSecretQuery(window.location.search) ||
+      hasSecretQuery(window.location.hash)
     ) {
       return;
     }

@@ -1,5 +1,5 @@
 import { parseMetaPixelIds } from './meta-pixel';
-import { hasPromoPreviewQuery } from './posthog-provider';
+import { hasSecretQuery } from './posthog-provider';
 
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -16,18 +16,20 @@ interface PixelWindow extends Window {
   fbq?: Fbq;
   _fbq?: Fbq;
   __haleMetaPixel?: boolean;
+  __haleMetaPixelRevoked?: boolean;
 }
 
 /**
  * The only app paths the browser pixel loads on: the public pre-signup join page ads
  * land on. Every other app page carries a bearer token in its URL (/l/<code>, the
  * texted connect and sign-in links) or shows a family's data, and must load nothing
- * from Meta (hard rule #1). `/join?preview=` carries a secret, so it is out too.
+ * from Meta (hard rule #1). A join page whose query or hash carries a secret
+ * (`?preview=` or any bearer-token parameter PostHog also refuses) is out too.
  */
 export const META_PIXEL_PATH_PREFIXES = ['/join'] as const;
 
-export function metaPixelAllowedOn(pathname: string | null, search: string): boolean {
-  if (!pathname || hasPromoPreviewQuery(search)) return false;
+export function metaPixelAllowedOn(pathname: string | null, search: string, hash = ''): boolean {
+  if (!pathname || hasSecretQuery(search) || hasSecretQuery(hash)) return false;
   return META_PIXEL_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
@@ -67,12 +69,30 @@ export function installMetaPixel(pixelId: string | readonly string[]): void {
   fbq.disablePushState = true;
   w.fbq = fbq;
   w._fbq = fbq;
-  for (const id of ids) fbq('init', id);
+  for (const id of ids) {
+    // Automatic events (button clicks, page metadata) would carry whatever page the
+    // parent is on; only the PageView below is sent.
+    fbq('set', 'autoConfig', false, id);
+    fbq('init', id);
+  }
   fbq('track', 'PageView');
   const script = document.createElement('script');
   script.async = true;
   script.src = PIXEL_SRC;
   document.head.appendChild(script);
+}
+
+/**
+ * fbevents.js stays loaded for the rest of a single-page session. Leaving an allowed path
+ * revokes the pixel, which pauses every send, and coming back grants it again. Nothing
+ * happens before the pixel is installed, or when the state does not change.
+ */
+export function setMetaPixelAllowed(allowed: boolean): void {
+  const w = pixelWindow();
+  if (!w?.fbq || !w.__haleMetaPixel) return;
+  if (allowed === !w.__haleMetaPixelRevoked) return;
+  w.__haleMetaPixelRevoked = !allowed;
+  w.fbq('consent', allowed ? 'grant' : 'revoke');
 }
 
 export function metaClickCookieClears(hostname: string, name: string): string[] {

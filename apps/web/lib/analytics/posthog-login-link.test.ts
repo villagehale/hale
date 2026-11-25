@@ -212,6 +212,81 @@ describe('redactLoginLinkCodes', () => {
   });
 });
 
+describe('every other bearer token in an app URL never reaches PostHog', () => {
+  // RSVP and invite links carry the token in the path; texted connect and unsubscribe
+  // links carry it in the query; a magic link may carry it in the hash.
+  const TOKEN = 'Tok3nSecret987';
+
+  it.each([
+    `/rsvp/${TOKEN}`,
+    `/invite/${TOKEN}`,
+    `/connect?t=${TOKEN}&k=gcal`,
+    `/unsubscribe?u=${TOKEN}&t=${TOKEN}&sig=${TOKEN}`,
+    `/magic-link?token=${TOKEN}`,
+    `/magic-link#token=${TOKEN}`,
+  ])('PostHog does not load on %s: no request leaves at all', async (path) => {
+    await mountProvider(path);
+    expect(sent).toEqual([]);
+  });
+
+  it('client-side visits to token pages go out redacted, and nothing after them names the token', async () => {
+    window.history.replaceState(null, '', '/settings');
+    const posthog = await initDirect();
+    await settle();
+    window.history.pushState(null, '', `/rsvp/${TOKEN}`);
+    await settle();
+    window.history.pushState(null, '', `/connect?t=${TOKEN}&k=gcal`);
+    await settle();
+    window.history.pushState(null, '', '/settings');
+    posthog.capture('next_page_event');
+    await settle();
+
+    const events = sent.filter((r) => r.includes('/e/'));
+    expect(
+      events.some((r) => r.includes('"$current_url":"http://localhost:3000/rsvp/[token]"')),
+    ).toBe(true);
+    expect(
+      events.some((r) =>
+        r.includes('"$current_url":"http://localhost:3000/connect?t=[redacted]&k=gcal"'),
+      ),
+    ).toBe(true);
+    expect(events.some((r) => r.includes('"event":"next_page_event"'))).toBe(true);
+    expect(sent.join('\n')).not.toContain(TOKEN);
+  });
+
+  it('redacts path and query tokens in every string and key, raw, encoded and in the hash', async () => {
+    const { redactLoginLinkCodes } = await import('./posthog-provider');
+    const out = redactLoginLinkCodes({
+      uuid: 'u',
+      event: '$pageview',
+      properties: {
+        $current_url: `https://app.example.test/invite/${TOKEN}?x=1`,
+        $referrer: `https://app.example.test/unsubscribe?u=${TOKEN}&t=${TOKEN}&sig=${TOKEN}`,
+        hashed: `https://app.example.test/magic-link#token=${TOKEN}`,
+        next: `%2Frsvp%2F${TOKEN}`,
+        encodedQuery: `%3Ft%3D${TOKEN}%26k%3Dgcal`,
+        success: `https://villagehale.com/checkout/success?session_id=cs_live_${TOKEN}`,
+        oauth: `https://app.example.test/oauth/authorize?code=${TOKEN}&state=${TOKEN}`,
+        source: 'https://villagehale.com/?source_code=ig1&type=card',
+      },
+      $set_once: { $initial_current_url: `/connect?t=${TOKEN}` },
+    });
+    expect(JSON.stringify(out)).not.toContain(TOKEN);
+    expect(out?.properties).toEqual({
+      $current_url: 'https://app.example.test/invite/[token]?x=1',
+      $referrer: 'https://app.example.test/unsubscribe?u=[redacted]&t=[redacted]&sig=[redacted]',
+      hashed: 'https://app.example.test/magic-link#token=[redacted]',
+      next: '%2Frsvp%2F[token]',
+      // An encoded value runs to the end: over-redaction is the safe side.
+      encodedQuery: '%3Ft%3D[redacted]',
+      success: 'https://villagehale.com/checkout/success?session_id=[redacted]',
+      oauth: 'https://app.example.test/oauth/authorize?code=[redacted]&state=[redacted]',
+      source: 'https://villagehale.com/?source_code=ig1&type=card',
+    });
+    expect(out?.$set_once).toEqual({ $initial_current_url: '/connect?t=[redacted]' });
+  });
+});
+
 describe('the /join?preview= secret never reaches PostHog', () => {
   const SECRET = 'preview-secret-token';
 
