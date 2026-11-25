@@ -15,6 +15,8 @@ import {
 import { formatClaimPhone } from '~/lib/auth/claim-phone-format';
 import { PORTAL_INTAKE_PREFILL, messagesCapable, platformFromUa } from '~/lib/text-hale-target';
 import type { PaidTier } from '~/lib/webhooks/stripe-billing';
+import { NotesBar } from './founding-notes-bar';
+import notes from './founding-notes.module.css';
 
 /**
  * Ads new-visitor founding join. Phone → OTP (the one allowed fixed SMS) →
@@ -200,12 +202,15 @@ export function FoundingJoinForm({
       hasThread === false ||
       (smsNumber !== '' && messagesCapable(platformFromUa(navigator.userAgent)));
     return (
-      <section className={`${stage.card} ${stage.door}`}>
+      <section className={`${stage.card} ${stage.door} ${notes.paper}`}>
         <div className={stage.act}>
+          <NotesBar />
           <div className={styles.stack}>
-            <h1 className={stage.h1}>This number is already on a paid plan.</h1>
+            <h1 className={`${stage.h1} ${notes.head}`}>
+              <span className={notes.mark}>This number is already on a paid plan.</span>
+            </h1>
             {hasThread === null ? null : (
-              <p className={stage.lede}>
+              <p className={`${stage.lede} ${notes.lede}`}>
                 {hasThread ? 'Keep texting Hale like you do now.' : 'Text Hale to start.'}
               </p>
             )}
@@ -240,11 +245,14 @@ export function FoundingJoinForm({
         : `Plus ${plusLabel} or Max ${maxLabel}, locked in. We’ll text you a code, then Stripe takes the payment. Full refund anytime.`;
 
   return (
-    <section className={`${stage.card} ${stage.door}`}>
+    <section className={`${stage.card} ${stage.door} ${notes.paper}`}>
       <div className={stage.act}>
+        <NotesBar />
         <div className={styles.stack}>
-          <h1 className={stage.h1}>{heading}</h1>
-          <p className={stage.lede}>{lede}</p>
+          <h1 className={`${stage.h1} ${notes.head}`}>
+            <span className={notes.mark}>{heading}</span>
+          </h1>
+          <p className={`${stage.lede} ${notes.lede}`}>{lede}</p>
           {cancelled ? (
             <p className={styles.alert}>
               Checkout was cancelled. You can try again from this page.
@@ -262,7 +270,7 @@ export function FoundingJoinForm({
                   autoComplete="tel"
                   spellCheck={false}
                   required
-                  className={`${styles.input} ph-mask ph-no-capture`}
+                  className={`${styles.input} ${notes.field} ph-mask ph-no-capture`}
                   data-hale-mask-input=""
                   data-hale-pii=""
                   placeholder="(555) 555-1234"
@@ -277,7 +285,7 @@ export function FoundingJoinForm({
               ) : null}
               <button
                 type="submit"
-                className={`${stage.btn} ${styles.full}`}
+                className={`${stage.btn} ${styles.full} ${notes.btn}`}
                 disabled={busy || phone.trim().length === 0}
               >
                 Text me a code
@@ -294,7 +302,7 @@ export function FoundingJoinForm({
               ) : null}
               <button
                 type="button"
-                className={`${stage.btn} ${styles.full}`}
+                className={`${stage.btn} ${styles.full} ${notes.btn}`}
                 disabled={busy}
                 onClick={async () => {
                   if (busy) return;
@@ -310,7 +318,7 @@ export function FoundingJoinForm({
               </button>
               <button
                 type="button"
-                className={`${stage.btn} ${styles.full}`}
+                className={`${stage.btn} ${styles.full} ${notes.btn}`}
                 disabled={busy}
                 onClick={async () => {
                   if (busy) return;
@@ -329,7 +337,7 @@ export function FoundingJoinForm({
 
           {step === 'code' && !verified ? (
             <form onSubmit={submitCode}>
-              <p className={styles.sent}>
+              <p className={`${styles.sent} ${notes.fine}`}>
                 <span>
                   Sent to <span data-hale-pii>{phone.trim()}</span>
                 </span>
@@ -340,11 +348,11 @@ export function FoundingJoinForm({
               <div className={styles.field}>
                 <label htmlFor="founding-code">6-digit code</label>
                 <div className={`${styles.codeWrap} ${error ? styles.bad : ''}`}>
-                  <div className={styles.code} aria-hidden="true">
+                  <div className={`${styles.code} ${notes.boxes}`} aria-hidden="true">
                     {CODE_SLOTS.map((slot, index) => (
                       <span
                         key={slot}
-                        className={`${styles.box} ${index === code.length && code.length < 6 ? styles.on : ''}`}
+                        className={`${styles.box} ${index === code.length && code.length < 6 ? `${styles.on} ${notes.slotOn}` : ''}`}
                       >
                         {code[index] ?? ''}
                       </span>
@@ -375,12 +383,12 @@ export function FoundingJoinForm({
               </div>
               <button
                 type="submit"
-                className={`${stage.btn} ${styles.full}`}
+                className={`${stage.btn} ${styles.full} ${notes.btn}`}
                 disabled={busy || code.trim().length === 0}
               >
                 Continue to checkout
               </button>
-              <p className={styles.alt}>
+              <p className={`${styles.alt} ${notes.fine}`}>
                 <span className={styles.muted}>{error ? 'Still stuck?' : 'Didn’t get it?'}</span>
                 <button type="button" onClick={() => requestCode()} disabled={busy}>
                   Send a new code
@@ -393,13 +401,13 @@ export function FoundingJoinForm({
             <div>
               <button
                 type="button"
-                className={`${stage.btn} ${styles.full}`}
+                className={`${stage.btn} ${styles.full} ${notes.btn}`}
                 disabled={busy}
                 onClick={() => requestCode()}
               >
                 Send a new code
               </button>
-              <p className={styles.alt}>
+              <p className={`${styles.alt} ${notes.fine}`}>
                 <span className={styles.muted}>Wrong number?</span>
                 <button type="button" onClick={changeNumber}>
                   Use a different number

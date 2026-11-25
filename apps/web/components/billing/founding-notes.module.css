@@ -1,0 +1,190 @@
+/* /founding in the site's style D Notes look (apps/site/app/promo.css,
+   `.promo-sec.promo-notes`). Values are copied from there, not invented:
+   ruled cream paper, "‹ Notes" / "Done" chrome, Caveat Brush headline with
+   the #ffe066 marker, and Kalam body. Faces are SIL OFL, self-hosted here like
+   the site's components/promo/fonts (Caveat Brush © 2015 Google; Kalam © 2014
+   Indian Type Foundry), kept component-local so the app font ladder is untouched. */
+@font-face {
+  font-family: "Hale Notes Display";
+  src: url("./fonts/caveat-brush-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hale Notes Body";
+  src: url("./fonts/kalam-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hale Notes Body";
+  src: url("./fonts/kalam-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* The paper. Doubled class beats the connect card's glass at any load order. */
+.paper.paper {
+  border-radius: 4px;
+  color: #1c1c1e;
+  background-color: #fff8dc;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 34px, #e4d3a1 34px 36px);
+  border: 1px solid #e0d0a4;
+  box-shadow: 0 22px 48px -28px rgb(28 28 30 / 0.45);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.paper.paper::before,
+.paper.paper::after {
+  content: none;
+  display: none;
+}
+.paper.paper > div {
+  padding: 8px 24px 24px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  color: #8a6508;
+  pointer-events: none;
+  user-select: none;
+}
+.back::before {
+  content: "‹ Notes";
+}
+.done::before {
+  content: "Done";
+  font-weight: 600;
+}
+
+.paper .kicker {
+  margin: 0 0 2px;
+  color: #8a6508;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.paper .head {
+  margin-top: 0;
+  font-family: "Hale Notes Display", "Segoe Script", cursive;
+  font-weight: 400;
+  font-size: 56px;
+  line-height: 0.92;
+  letter-spacing: 0;
+  color: #1c1c1e;
+  text-wrap: balance;
+}
+.mark {
+  padding: 0 0.08em;
+  background-image: linear-gradient(#ffe066, #ffe066);
+  background-repeat: no-repeat;
+  background-size: 100% 0.42em;
+  background-position: 0 78%;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* The $0 numeral, like the site's .promo-price-num: one line, marker on the numeral itself. */
+.paper .num {
+  align-self: flex-start;
+  width: fit-content;
+  padding-right: 0.08em;
+  font-size: clamp(84px, 8.5vw, 112px);
+  line-height: 0.86;
+  background-image: linear-gradient(#ffe066, #ffe066);
+  background-repeat: no-repeat;
+  background-origin: content-box;
+  background-size: 100% 0.34em;
+  background-position: 0 84%;
+}
+
+.paper .lede {
+  max-width: 38ch;
+  margin-top: 10px;
+  font-family: "Hale Notes Body", "Segoe Print", cursive;
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.45;
+  color: #2c2c2e;
+  opacity: 1;
+}
+
+/* Fields and code boxes take the site's note-card frame (.promo-points li). */
+.paper label {
+  color: #1c1c1e;
+}
+.paper input.field,
+.paper .boxes > span {
+  background: rgb(255 253 245 / 0.94);
+  border: 2px solid #1c1c1e;
+  box-shadow: 3px 4px 0 #1c1c1e;
+  color: #1c1c1e;
+}
+.paper input.field::placeholder {
+  color: #5c5346;
+}
+.paper .boxes > span.slotOn {
+  background: rgb(255 224 102 / 0.55);
+}
+
+.paper button.btn {
+  background: #1c1c1e;
+  color: #fffdf5;
+  font-weight: 700;
+  box-shadow: none;
+}
+.paper button.btn:hover:not(:disabled) {
+  background: #ffe066;
+  color: #1c1c1e;
+}
+.paper :focus-visible,
+.paper input.field:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px #fff8dc, 0 0 0 5px #1c1c1e;
+}
+
+.paper .fine,
+.paper .fine button {
+  color: #5c5346;
+}
+.paper .fine button {
+  text-decoration-color: #8a6508;
+}
+
+:global(.dark) .paper.paper {
+  border-color: #cbbd8c;
+  box-shadow: 0 28px 60px -24px rgb(0 0 0 / 0.72);
+}
+
+@media (max-width: 860px) {
+  .paper.paper > div {
+    padding: 6px 12px 16px;
+  }
+  .bar {
+    font-size: 17px;
+  }
+  .paper .lede {
+    font-size: 18px;
+  }
+}
+@media (max-width: 640px) {
+  .paper .head {
+    font-size: clamp(46px, 13vw, 64px);
+  }
+  .paper .num {
+    font-size: 84px;
+  }
+}
