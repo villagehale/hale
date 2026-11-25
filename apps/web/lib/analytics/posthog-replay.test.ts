@@ -24,11 +24,11 @@ const WEB_ENV = 'NEXT_PUBLIC_POSTHOG_WEB_ENABLED';
 const REPLAY_ENV = 'NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED';
 const API_HOST = 'https://ph.test';
 
+// RSVP and invite links carry a bearer token in the path, so PostHog does not load on
+// them at all (posthog-login-link.test.ts); they are not portal pages for this check.
 const PORTAL_ROUTES = [
   '/connect',
   '/connected',
-  '/rsvp/tok_example',
-  '/invite/tok_example',
   '/settings/privacy',
   '/privacy',
   '/demo/passport',
