@@ -6,7 +6,6 @@ import {
   groupPrivateQuestionEnabled,
   linqPollsEnabled,
 } from '../config';
-import type { GroupPlanCopyStore } from '../group-plan-invites';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
@@ -14,12 +13,6 @@ import {
   createPostgresGroupPlanRsvpStore,
 } from '../group-plan-rsvp/store';
 import { type FamilyPrivateSlice, presentHouseholds } from '../multi-family';
-import {
-  placeYesFamilyCalendars,
-  planAsGroupPlan,
-  postgresYesCalendarCopies,
-  yesFamilyIdsForPlan,
-} from './calendar';
 import { GROUP_RSVP_POLL_KIND, GROUP_TIME_POLL_KIND } from './kinds';
 import { type ExperiencePollCardPort, postgresExperiencePollCard } from './poll-card';
 import { privateDenyTokens } from './privacy';
@@ -75,7 +68,6 @@ export interface GroupExperienceTurnPorts {
   reader?: GroupExperienceReader;
   composer?: GroupExperienceComposer;
   pollCard?: ExperiencePollCardPort;
-  copies?: GroupPlanCopyStore;
   send?: (input: { chatId: string; text: string }) => Promise<{ providerMessageId: string }>;
   sendOneToOne?: (input: {
     familyId: string;
@@ -420,15 +412,6 @@ async function tallyRsvp(
       notice: { skipped: 'not_sent' },
     };
   }
-  const groupPlan = await planAsGroupPlan(ports.database, plan.id, input.chatId);
-  if (groupPlan) {
-    const yesIds = await yesFamilyIdsForPlan(ports.database, plan.id);
-    await placeYesFamilyCalendars(
-      ports.copies ?? postgresYesCalendarCopies(ports.database),
-      groupPlan,
-      yesIds,
-    );
-  }
   if (store) {
     const live = await store.loadLive(input.chatId, 'rsvp_poll');
     if (live && tally.toGo === 0) await store.close(live.id, input.now);
@@ -597,15 +580,6 @@ async function lockTime(
         .update(schema.linqGroupPlans)
         .set({ startsAt: new Date(startsAt) })
         .where(eq(schema.linqGroupPlans.id, planId));
-      const groupPlan = await planAsGroupPlan(ports.database, planId, input.chatId);
-      if (groupPlan) {
-        const yesIds = await yesFamilyIdsForPlan(ports.database, planId);
-        await placeYesFamilyCalendars(
-          ports.copies ?? postgresYesCalendarCopies(ports.database),
-          groupPlan,
-          yesIds,
-        );
-      }
     }
   }
   await store.close(live.id, input.now);
