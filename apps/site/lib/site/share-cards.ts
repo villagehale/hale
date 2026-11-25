@@ -25,7 +25,12 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * (`?promo_phase=holiday` on Preview). The image route paints whatever the URL
  * says, so a crawler that saved the URL gets that card.
  */
-export const SHARE_CARD_VERSION = 'd3';
+/**
+ * Cache key for the painted PNG. d1 was the first Style D card. The bytes
+ * changed (CAD is C$, and the thread has the earlier class), and /og caches
+ * for a day, so this is d2.
+ */
+export const SHARE_CARD_VERSION = 'd2';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
