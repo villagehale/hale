@@ -159,11 +159,15 @@ describe('requestPhoneOtp', () => {
 });
 
 describe('verifyPhoneOtp', () => {
+  // These test main's read-then-write path, so they pin the flag the flags-on job turns on.
+  // The atomic path is tested in code-attempts.pglite.test.ts.
   beforeEach(() => {
     process.env.APP_ENCRYPTION_KEY = KEY;
+    vi.stubEnv('SIGNIN_CODE_ATOMIC_ATTEMPTS_ENABLED', '');
   });
   afterEach(() => {
     process.env.APP_ENCRYPTION_KEY = '';
+    vi.unstubAllEnvs();
   });
 
   function pending(overrides: Record<string, unknown> = {}) {
