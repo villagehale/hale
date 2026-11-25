@@ -111,6 +111,12 @@ export const RATE_LIMITS = {
   // runaway loop behind a legitimate number from running up spend. Over the limit the
   // parent is answered gently and the turn is dropped, NOT silently swallowed.
   'sms-agent-turn': { limit: 20, windowSec: 3600 },
+  // The checkout success page state, per Stripe Checkout Session id, for the signed-in
+  // parent of the family that paid. Each answer reads family rows and can make a Linq
+  // read of the payer's chat. The pending page polls every 4s for a minute, so a real
+  // payer sends about 16 in their busiest minute; 30 stays clear of that and a reload or
+  // two. Over it the route answers the Stripe facts alone, the same as a stranger gets.
+  'checkout-session-view': { limit: 30, windowSec: 60 },
 } as const satisfies Record<string, RateLimitOptions>;
 
 export type RateLimitRoute = keyof typeof RATE_LIMITS;

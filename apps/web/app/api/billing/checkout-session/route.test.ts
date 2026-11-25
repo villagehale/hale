@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const retrieveMock = vi.fn();
 const dbMock = vi.fn();
+const authMock = vi.fn();
+vi.mock('~/auth', () => ({ auth: () => authMock() }));
 vi.mock('~/lib/billing/stripe-client', () => ({
   stripeCheckoutClientFromEnv: () => ({
     createCheckoutSession: vi.fn(),
@@ -112,10 +114,15 @@ describe('GET /api/billing/checkout-session', () => {
   describe('with the flag on', () => {
     beforeEach(() => {
       vi.stubEnv('CHECKOUT_SUCCESS_STATES_ENABLED', 'true');
+      authMock.mockResolvedValue(null);
     });
 
-    it('asks Stripe for the subscription and answers with a view, uncached', async () => {
-      retrieveMock.mockResolvedValue(stripeSession({ status: 'open', payment_status: 'unpaid' }));
+    afterEach(() => {
+      authMock.mockReset();
+    });
+
+    it('answers a holder of the session id alone with the Stripe facts and no view, uncached', async () => {
+      retrieveMock.mockResolvedValue(stripeSession());
       const res = await get(STATE_URL);
       expect(retrieveMock.mock.calls[0]).toEqual(['cs_test_state', { expand: ['subscription'] }]);
       expect(res.status).toBe(200);
@@ -124,32 +131,24 @@ describe('GET /api/billing/checkout-session', () => {
         transactionId: 'cs_test_state',
         value: 59,
         currency: 'CAD',
-        paid: false,
+        paid: true,
         tier: 'plus',
-        view: { state: 'not_paid' },
       });
+      expect(authMock).toHaveBeenCalledTimes(1);
+      expect(dbMock).not.toHaveBeenCalled();
     });
 
     it('keeps family, customer, email and phone out of the body', async () => {
-      retrieveMock.mockResolvedValue(stripeSession({ status: 'open', payment_status: 'unpaid' }));
+      retrieveMock.mockResolvedValue(stripeSession());
       const body = await (await get(STATE_URL)).text();
-      expect(body).toContain('not_paid');
+      expect(body).toContain('cs_test_state');
       for (const secret of [FAMILY_ID, 'familyId', 'cus_secret', 'buyer@example.test', '+1555']) {
         expect(body).not.toContain(secret);
       }
     });
 
-    it('answers an expired session from Stripe with a database that throws', async () => {
-      retrieveMock.mockResolvedValue(
-        stripeSession({ status: 'expired', payment_status: 'unpaid' }),
-      );
-      const res = await get(STATE_URL);
-      expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ view: { state: 'not_paid' } });
-      expect(dbMock).not.toHaveBeenCalled();
-    });
-
-    it('keeps the Stripe facts and waits when a paid session cannot read the family', async () => {
+    it('gives a signed-in viewer the Stripe facts when their seat cannot be read', async () => {
+      authMock.mockResolvedValue({ user: { id: 'auth-viewer' } });
       retrieveMock.mockResolvedValue(stripeSession());
       const res = await get(STATE_URL);
       expect(res.status).toBe(200);
@@ -159,7 +158,6 @@ describe('GET /api/billing/checkout-session', () => {
         currency: 'CAD',
         paid: true,
         tier: 'plus',
-        view: { state: 'pending' },
       });
       expect(dbMock).toHaveBeenCalled();
     });
