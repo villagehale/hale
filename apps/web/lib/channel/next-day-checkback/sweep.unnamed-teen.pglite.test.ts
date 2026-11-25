@@ -54,7 +54,7 @@ const deps: NextDayCheckbackDeps = {
 
 async function household(
   children: ReadonlyArray<{ name: string | null; years: number }>,
-  titles: readonly string[],
+  titles: ReadonlyArray<string | { title: string; nextStep: string }>,
 ): Promise<string> {
   const [family] = await db.database
     .insert(schema.families)
@@ -78,7 +78,11 @@ async function household(
       dateOfBirth: born.toISOString().slice(0, 10),
     });
   }
-  for (const title of titles) {
+  for (const thread of titles) {
+    const { title, nextStep } =
+      typeof thread === 'string'
+        ? { title: thread, nextStep: 'Pick one of the three sessions' }
+        : thread;
     const [ask] = await db.database
       .insert(schema.channelMessages)
       .values({
@@ -96,7 +100,7 @@ async function household(
       familyId,
       title,
       status: 'waiting_on_parent',
-      nextStep: 'Pick one of the three sessions',
+      nextStep,
       checkBackAt: null,
       childIds: [],
       createdFrom: ask?.id as string,
@@ -150,6 +154,24 @@ describe('next-day check-back · a teenager with no name on file (rule #1)', () 
         { name: null, years: 15 },
       ],
       ['Driving lessons this winter', 'Robin swim registration'],
+    );
+    const result = await runNextDayCheckbackSweep(db.database, NOW, deps);
+    expect(result).toMatchObject({ teenScoped: 1, queued: 1 });
+    const text = await queuedText(familyId);
+    expect(text).toContain('Robin swim registration');
+    expect(text).not.toMatch(/driving/i);
+  });
+
+  it("an unnamed 15-year-old's thread stays scoped when its next step names the 8-year-old", async () => {
+    const familyId = await household(
+      [
+        { name: 'Robin', years: 8 },
+        { name: null, years: 15 },
+      ],
+      [
+        { title: 'Driving lessons this winter', nextStep: 'Then get Robin from school' },
+        { title: 'Robin swim registration', nextStep: 'Pick up the gear after' },
+      ],
     );
     const result = await runNextDayCheckbackSweep(db.database, NOW, deps);
     expect(result).toMatchObject({ teenScoped: 1, queued: 1 });

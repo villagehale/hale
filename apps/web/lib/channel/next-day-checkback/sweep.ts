@@ -3,7 +3,13 @@ import { and, asc, eq, gt, gte, inArray, isNull, notExists, sql } from 'drizzle-
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { TEXTABLE_ROLES } from '~/lib/channel/family-recipients';
 import { knownParentTimezone } from '~/lib/channel/household-timezone';
-import { type TeenRoster, teenRoster, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import {
+  type TeenRoster,
+  namesTeen,
+  splitKidEvent,
+  teenRoster,
+  withoutTeenTitles,
+} from '~/lib/channel/linq/kid-event';
 import {
   type OutboundGatePorts,
   assertProactiveSendAllowed,
@@ -156,18 +162,23 @@ async function familyFacts(database: Database, familyId: string, now: Date): Pro
 }
 
 /**
- * A 13+ child's thread, by id or by a title or step the age gate credits to a teen. The
- * title and step are read as one thread, so a step that names no child stays with the
- * child its title names.
+ * A 13+ child's thread, by id or by a title or step the age gate credits to a teen. A
+ * step stays with the child its title names, so it scopes that thread only by naming a
+ * teen itself.
  */
 function teenScoped(
   row: { title: string; nextStep: string | null; childIds: readonly string[] },
   facts: FamilyFacts,
 ): boolean {
   if (row.childIds.some((id) => facts.teenIds.has(id))) return true;
-  const thread = [row.title, row.nextStep].filter((line): line is string => line !== null);
-  const [kept] = withoutTeenTitles([{ title: thread.join('\n'), kidRelated: true }], facts.teens);
-  return kept?.title === null;
+  const teenLine = (line: string) =>
+    withoutTeenTitles([{ title: line, kidRelated: true }], facts.teens)[0]?.title === null;
+  if (teenLine(row.title)) return true;
+  if (row.nextStep === null) return false;
+  const titleKid = splitKidEvent(row.title, facts.teens.childNames, facts.teens.size)?.kid;
+  return titleKid === undefined
+    ? teenLine(row.nextStep)
+    : namesTeen(row.nextStep, facts.teens.teenNames);
 }
 
 /**
