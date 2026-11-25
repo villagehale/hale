@@ -277,4 +277,26 @@ describe('the footer says what the site is', () => {
     // Once, in the bar — not repeated anywhere else in the footer.
     expect([...footer.matchAll(/\/sign-in/g)]).toHaveLength(1);
   });
+
+  it('links Hale on X, Instagram, and LinkedIn from the brand row', () => {
+    const footer = renderToStaticMarkup(createElement(SiteFooter));
+    const brand = footer.slice(0, footer.indexOf('<hr'));
+    const profiles = [
+      ['https://x.com/villagehale_ai', 'Hale on X'],
+      ['https://www.instagram.com/villagehale_ai/', 'Hale on Instagram'],
+      ['https://www.linkedin.com/company/142982951/', 'Hale on LinkedIn'],
+    ] as const;
+    for (const [href, label] of profiles) {
+      expect(brand).toContain(`href="${href}"`);
+      expect(brand).toContain(`aria-label="${label}"`);
+      expect(brand).toContain('target="_blank"');
+      expect(brand).toContain('rel="noopener noreferrer"');
+    }
+    const fr = renderToStaticMarkup(createElement(SiteFooter, { locale: 'fr' }));
+    expect(fr).toContain('aria-label="Hale sur X"');
+    const zh = renderToStaticMarkup(createElement(SiteFooter, { locale: 'zh' }));
+    expect(zh).toContain('aria-label="Hale 在 X"');
+    expect(footer).not.toContain('tel:');
+    expect(footer).not.toMatch(/\+1[\d\s()-]{7,}/);
+  });
 });

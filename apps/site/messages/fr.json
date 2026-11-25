@@ -35,7 +35,10 @@
     "cookieSettings": "Paramètres des témoins",
     "copyright": "© {year} Hale. Tous droits réservés.",
     "company": "Village Hale Technologies Inc.",
-    "signIn": "Se connecter"
+    "signIn": "Se connecter",
+    "socialX": "Hale sur X",
+    "socialInstagram": "Hale sur Instagram",
+    "socialLinkedIn": "Hale sur LinkedIn"
   },
   "LanguageSwitcher": {
     "label": "Langue"

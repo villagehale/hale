@@ -35,7 +35,10 @@
     "cookieSettings": "Cookie 设置",
     "copyright": "© {year} Hale。保留所有权利。",
     "company": "Village Hale Technologies Inc.",
-    "signIn": "登录"
+    "signIn": "登录",
+    "socialX": "Hale 在 X",
+    "socialInstagram": "Hale 在 Instagram",
+    "socialLinkedIn": "Hale 在 LinkedIn"
   },
   "LanguageSwitcher": {
     "label": "语言"

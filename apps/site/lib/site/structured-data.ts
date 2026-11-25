@@ -3,6 +3,7 @@ import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { APP_URL, SITE_URL } from '~/lib/app-url';
+import { HALE_SAME_AS } from '~/lib/site/social';
 
 /** Sale offers stay valid through the Dec 31 join date. */
 export const SALE_PRICE_VALID_UNTIL = '2026-12-31';
@@ -50,6 +51,7 @@ export function siteJsonLd(locale: Locale = routing.defaultLocale): Record<strin
     url: SITE_URL,
     logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
     description: t('orgDescription'),
+    sameAs: HALE_SAME_AS,
   };
 
   const website = {
@@ -118,6 +120,7 @@ export function aboutJsonLd(locale: Locale = routing.defaultLocale): Record<stri
       logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon.png` },
       description: t('orgDescription'),
       email: 'aloha@villagehale.com',
+      sameAs: HALE_SAME_AS,
       foundingDate: '2026-06-24',
       address: {
         '@type': 'PostalAddress',
