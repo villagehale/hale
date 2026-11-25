@@ -4,13 +4,16 @@ import {
   groupLinkCardsEnabled,
   groupPollsEnabled,
   groupPrivateQuestionEnabled,
+  linqGroupPlanRsvpCalendarEnabled,
   linqPollsEnabled,
 } from '../config';
 import { senderMemberKey } from '../group-plan-rsvp/member-key';
 import { optionKeyAt } from '../group-plan-rsvp/poll-tally';
 import {
   type GroupPlanRsvpStore,
+  type LockedPlanStart,
   createPostgresGroupPlanRsvpStore,
+  lockPlanStart,
 } from '../group-plan-rsvp/store';
 import { type FamilyPrivateSlice, presentHouseholds } from '../multi-family';
 import { GROUP_RSVP_POLL_KIND, GROUP_TIME_POLL_KIND } from './kinds';
@@ -78,6 +81,11 @@ export interface GroupExperienceTurnPorts {
   privateSlices?: (familyIds: readonly string[]) => Promise<FamilyPrivateSlice[]>;
   recent?: () => Promise<{ from: 'hale' | 'member'; text: string }[]>;
   households?: (chatId: string) => Promise<string[]>;
+  /**
+   * With the plan calendar on: after a lock moved the plan and withdrew its open asks,
+   * re-ask those households and move the copies already written. Absent is logged.
+   */
+  calendarAfterLock?: (locked: LockedPlanStart) => Promise<void>;
 }
 
 async function liveView(
@@ -573,6 +581,26 @@ async function lockTime(
     };
   }
   const planId = typeof live.payload.planId === 'string' ? live.payload.planId : null;
+  const lockedStart = planId ? Date.parse(winner) : Number.NaN;
+  if (planId && !Number.isNaN(lockedStart) && linqGroupPlanRsvpCalendarEnabled()) {
+    const locked = await lockPlanStart(ports.database, {
+      planId,
+      pollId: live.id,
+      startsAt: new Date(lockedStart),
+      now: input.now,
+    });
+    if (!locked) {
+      return { handled: true, outcome: 'group_experience_recorded', count: 'ignored' };
+    }
+    if (ports.calendarAfterLock) await ports.calendarAfterLock(locked);
+    else {
+      console.warn(
+        { outcome: 'calendar_after_lock_not_configured' },
+        'group experience: lock withdrew open asks; no calendar follow-up wired',
+      );
+    }
+    return { handled: true, outcome: 'group_experience_spoken', count: 'intake', notice: 'sent' };
+  }
   if (planId) {
     const startsAt = Date.parse(winner);
     if (!Number.isNaN(startsAt)) {

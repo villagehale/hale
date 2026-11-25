@@ -7,7 +7,12 @@ import { type EventDate, textDestination } from '~/lib/loop/voice/calendar-desti
 import { voiceClient } from '~/lib/loop/voice/compose';
 import { HOT_SMS_CLIENT_OPTIONS, budgetedAnthropic } from '~/lib/pipeline/client';
 import { forceToolJson } from '~/lib/pipeline/structured';
-import { GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL, type GroupPlanCalendarLineInput } from './calendar';
+import {
+  GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL,
+  GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL,
+  type GroupPlanCalendarLineInput,
+  type GroupPlanCalendarMovedLineInput,
+} from './calendar';
 import type { GroupPlanRsvpLineInput } from './facts';
 import type { GroupPollLineInput } from './poll-facts';
 
@@ -30,7 +35,8 @@ export type GroupPlanRsvpVoiceSkip =
 export type GroupLineInput =
   | GroupPlanRsvpLineInput
   | GroupPollLineInput
-  | GroupPlanCalendarLineInput;
+  | GroupPlanCalendarLineInput
+  | GroupPlanCalendarMovedLineInput;
 
 export interface GroupPlanRsvpComposer {
   compose(
@@ -77,7 +83,8 @@ function lineUsable(line: string, input: GroupLineInput): boolean {
   // A 1:1 line goes to one parent's own phone: no number to dial or address to mail,
   // whatever the plan title or their own words held.
   if (
-    input.skill === GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL &&
+    (input.skill === GROUP_PLAN_RSVP_CALENDAR_VOICE_SKILL ||
+      input.skill === GROUP_PLAN_RSVP_CALENDAR_MOVED_SKILL) &&
     textDestination(line, NO_HANDED_DATE) !== null
   ) {
     return false;
