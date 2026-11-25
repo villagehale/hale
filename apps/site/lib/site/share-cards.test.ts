@@ -1,0 +1,203 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import { describe, expect, it, vi } from 'vitest';
+import { tx } from '~/components/redesign/tx';
+import type { Locale } from '~/i18n/routing';
+import { allAnswers } from '~/lib/answers/index';
+import { buildHolidayPromo } from '~/lib/promo/holiday';
+import { generateMetadata as pricingMetadata } from '../../app/[locale]/pricing/page';
+import {
+  HOME_SLOGAN,
+  SHARE_CARD_IDS,
+  type ShareCardQuery,
+  paintAnswerCard,
+  paintShareCard,
+  shareCardQueryFrom,
+  shareCardQueryString,
+  shareCardVisibleText,
+} from './share-cards';
+
+const LOCALES: Locale[] = ['en', 'fr', 'zh'];
+const PHASES = ['black_friday', 'holiday'] as const;
+const CURRENCIES = ['CAD', 'USD'] as const;
+
+/** Phrases that must not appear on a card. The page descriptions are a different surface. */
+const BANNED =
+  /biggest sale of the year|your kids[’'] year,\s*handled|lowest price of the year|\bfree\b|founding|first\s*100|gratuit|fondat|免费|创始|前\s*100/i;
+
+function query(partial: Partial<ShareCardQuery> & Pick<ShareCardQuery, 'locale'>): ShareCardQuery {
+  return {
+    phase: 'black_friday',
+    currency: 'CAD',
+    offer: false,
+    paid: false,
+    ...partial,
+  };
+}
+
+describe('share card query', () => {
+  const on = { HOLIDAY_PROMO_ENABLED: 'true', VERCEL_ENV: 'production' };
+
+  it('is Black Friday through Nov 30 and Holiday from Dec 1, Toronto', () => {
+    const before = shareCardQueryFrom({
+      locale: 'en',
+      now: new Date('2026-11-30T23:59:59-05:00'),
+      env: on,
+    });
+    const after = shareCardQueryFrom({
+      locale: 'en',
+      now: new Date('2026-12-01T00:00:00-05:00'),
+      env: on,
+    });
+    expect(before.phase).toBe('black_friday');
+    expect(before.offer).toBe(true);
+    expect(after.phase).toBe('holiday');
+    expect(after.offer).toBe(true);
+  });
+
+  it('stays off in production when the flag is off, and ignores a review query there', () => {
+    const card = shareCardQueryFrom({
+      locale: 'en',
+      now: new Date('2026-11-20T12:00:00-05:00'),
+      search: { promo_phase: 'holiday' },
+      env: { VERCEL_ENV: 'production' },
+    });
+    expect(card.offer).toBe(false);
+    expect(card.phase).toBe('black_friday');
+  });
+
+  it('lets a preview review query force the holiday card', () => {
+    const card = shareCardQueryFrom({
+      locale: 'fr',
+      now: new Date('2026-11-20T12:00:00-05:00'),
+      search: { promo_phase: 'holiday', promo_cc: 'US' },
+      env: { VERCEL_ENV: 'preview' },
+    });
+    expect(card).toMatchObject({ locale: 'fr', phase: 'holiday', currency: 'USD', offer: true });
+  });
+
+  it('puts the phase and the version on the image URL', () => {
+    const card = query({ locale: 'zh', phase: 'holiday', currency: 'USD', offer: true });
+    expect(shareCardQueryString(card)).toBe('v=d1&locale=zh&phase=holiday&cc=USD&offer=1&paid=0');
+  });
+});
+
+describe('share card copy', () => {
+  it('paints the shared promo prices, in both currencies', () => {
+    for (const currency of CURRENCIES) {
+      const promo = buildHolidayPromo('holiday', currency);
+      const card = paintShareCard(
+        'home',
+        query({ locale: 'en', currency, offer: true, phase: 'holiday' }),
+      );
+      expect(card.prices).toBe(`Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}`);
+      expect(card.prices).toBe(
+        `Max $${PROMO_PRICE_DISPLAY.family[currency].amount}/yr · Plus $${PROMO_PRICE_DISPLAY.plus[currency].amount}/yr`,
+      );
+      expect(card.flag).toBe('Holiday Sale');
+    }
+  });
+
+  it('uses the pricing page H1 when the offer is on in English, and the yearly line otherwise', () => {
+    const promo = buildHolidayPromo('black_friday', 'CAD');
+    const on = paintShareCard('pricing', query({ locale: 'en', offer: true }));
+    expect(on.headline).toBe(`${promo.saleName}: Max for ${promo.max.saleLabel}.`);
+    expect(paintShareCard('pricing', query({ locale: 'en', offer: false })).headline).toBe(
+      'Plus, by the year or the month.',
+    );
+    expect(paintShareCard('pricing', query({ locale: 'fr', offer: true })).headline).toBe(
+      tx('fr', 'Plus, by the year or the month.'),
+    );
+  });
+
+  it('localizes subpage headlines with the page strings', () => {
+    expect(paintShareCard('faq', query({ locale: 'fr' })).headline).toBe(
+      tx('fr', 'Is Hale right for your family?'),
+    );
+    expect(paintShareCard('faq', query({ locale: 'zh' })).headline).toBe(
+      tx('zh', 'Is Hale right for your family?'),
+    );
+    expect(paintShareCard('about', query({ locale: 'zh' })).headline).toBe(
+      tx('zh', 'A planner for your kids’ year.'),
+    );
+    expect(paintShareCard('activities', query({ locale: 'fr' })).headline).toBe(
+      tx('fr', 'Things to do with your kids, near you.'),
+    );
+  });
+
+  it('takes the home card’s second clause from the existing “we’re in” line', () => {
+    for (const locale of LOCALES) {
+      const full = tx(locale, 'We’re in, I can drive').toLocaleLowerCase();
+      const marked = HOME_SLOGAN[locale].marked.match(/[“«「]([^”»」]+)[”»」]/)?.[1] ?? '';
+      const inner = marked.replace(/[.。]\s*$/, '').trim().toLocaleLowerCase();
+      expect(full.startsWith(inner)).toBe(true);
+    }
+  });
+
+  it('paints no banned phrase on any page, locale, phase, or article', () => {
+    const blobs: string[] = [];
+    for (const locale of LOCALES) {
+      for (const phase of PHASES) {
+        for (const currency of CURRENCIES) {
+          for (const offer of [false, true]) {
+            for (const id of SHARE_CARD_IDS) {
+              blobs.push(
+                shareCardVisibleText(
+                  paintShareCard(
+                    id,
+                    query({ locale, phase, currency, offer, paid: id === 'checkout' }),
+                  ),
+                ),
+              );
+            }
+            for (const page of allAnswers) {
+              blobs.push(
+                shareCardVisibleText(
+                  paintAnswerCard(page.question, query({ locale, phase, currency, offer })),
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+    const hit = blobs.find((blob) => BANNED.test(blob));
+    expect(hit?.match(BANNED)?.[0] ?? '').toBe('');
+  });
+
+  it('does not write a banned phrase into the generator source', () => {
+    const source = [
+      readFileSync(fileURLToPath(new URL('./share-cards.ts', import.meta.url)), 'utf8'),
+      readFileSync(fileURLToPath(new URL('./share-card.tsx', import.meta.url)), 'utf8'),
+    ].join('\n');
+    expect(source).not.toMatch(BANNED);
+  });
+});
+
+describe('pricing metadata image', () => {
+  it('follows a preview holiday query into the image URL', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-20T15:00:00-05:00'));
+    const previous = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      const meta = await pricingMetadata({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ promo_phase: 'holiday' }),
+      });
+      const images = meta.openGraph?.images;
+      const first = Array.isArray(images) ? images[0] : images;
+      const url = first && typeof first === 'object' && 'url' in first ? String(first.url) : '';
+      expect(url).toContain('phase=holiday');
+      expect(url).toContain('offer=1');
+      expect(url).toContain('v=d1');
+      expect(meta.twitter && 'card' in meta.twitter ? meta.twitter.card : '').toBe(
+        'summary_large_image',
+      );
+    } finally {
+      process.env.VERCEL_ENV = previous;
+      vi.useRealTimers();
+    }
+  });
+});

@@ -5,6 +5,7 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -12,16 +13,17 @@ interface PageProps {
   searchParams?: Promise<{ s?: string | string[] }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Contact');
   const title = t('metaTitle');
   const description = t('metaDescription');
+  const query = await shareQueryForRequest(locale, await searchParams);
   return {
     title,
     description,
     alternates: buildAlternates(locale, '/contact'),
-    ...socialMetadata(locale, '/contact', title, description, 'contact'),
+    ...socialMetadata(locale, '/contact', title, description, 'contact', query),
   };
 }
 

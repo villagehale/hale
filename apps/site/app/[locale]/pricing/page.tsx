@@ -9,7 +9,7 @@ import { visitorCheckoutCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { requestHolidayPromo } from '~/lib/promo/server';
-import { shareCardImage } from '~/lib/site/share-cards';
+import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { pricingJsonLd } from '~/lib/site/structured-data';
 import { readSmsNumber } from '~/lib/text-entry';
 
@@ -21,12 +21,12 @@ interface PageProps {
 /** Request-time promo flag + cutoff; see the homepage note. */
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Pricing');
   const title = t('metaTitle');
   const description = t('metaDescription');
-  const image = shareCardImage('pricing');
+  const image = shareCardImage('pricing', await shareQueryForRequest(locale, await searchParams));
   return {
     title,
     description,

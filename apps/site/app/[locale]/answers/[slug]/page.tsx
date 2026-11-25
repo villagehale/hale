@@ -8,7 +8,7 @@ import { answerJsonLd } from '~/lib/answers/structured-data';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
-import { answerShareImage } from '~/lib/site/share-cards';
+import { answerShareImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -20,16 +20,17 @@ export function generateStaticParams(): { slug: string }[] {
   return allAnswers.map((a) => ({ slug: a.slug }));
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale, slug } = await params;
   const page = getAnswer(slug);
+  const query = await shareQueryForRequest(locale, await searchParams);
   // An unknown slug is a 404. Returning {} would leave the homepage title on
   // the tab; the not-found title is the same string the 404 page emits.
-  if (!page) return notFoundMetadata(locale);
+  if (!page) return notFoundMetadata(locale, query);
 
   const canonical = `/answers/${page.slug}`;
   const title = `${page.title} · Hale`;
-  const image = answerShareImage(page.slug, page.title);
+  const image = answerShareImage(page.slug, page.question, query);
   return {
     title,
     description: page.description,

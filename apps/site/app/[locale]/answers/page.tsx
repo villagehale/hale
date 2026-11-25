@@ -6,6 +6,7 @@ import { getTranslator } from '~/i18n/server';
 import { publishedAnswers } from '~/lib/answers/index';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -13,16 +14,17 @@ interface PageProps {
   searchParams?: Promise<{ s?: string | string[] }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Answers');
   const title = t('metaTitle');
   const description = t('metaDescription');
+  const query = await shareQueryForRequest(locale, await searchParams);
   return {
     title,
     description,
     alternates: buildAlternates(locale, '/answers'),
-    ...socialMetadata(locale, '/answers', title, description, 'answers'),
+    ...socialMetadata(locale, '/answers', title, description, 'answers', query),
     robots: publishedAnswers.length > 0 ? undefined : { index: false, follow: true },
   };
 }

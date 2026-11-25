@@ -4,7 +4,7 @@ import { absolutePageUrl, buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { pageSource } from '~/lib/page-source';
-import { shareCardImage } from '~/lib/site/share-cards';
+import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 
 /**
  * villagehale.com/privacy — the canonical home for the Privacy Policy
@@ -76,10 +76,13 @@ const DESCRIPTION = "How Hale collects, uses, and protects your family's data, i
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const image = shareCardImage('privacy', await shareQueryForRequest(locale, await searchParams));
   return {
     title: TITLE,
     description: DESCRIPTION,
@@ -90,13 +93,13 @@ export async function generateMetadata({
       title: TITLE,
       description: DESCRIPTION,
       url: absolutePageUrl(locale, '/privacy'),
-      images: [shareCardImage('privacy')],
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
-      images: [shareCardImage('privacy')],
+      images: [image],
     },
     robots: { index: false, follow: false },
   };

@@ -1,4 +1,4 @@
-import { SHARE_CARDS } from '~/lib/site/share-cards';
+import { HOME_SLOGAN, defaultShareQuery, paintShareCard } from '~/lib/site/share-cards';
 
 /**
  * Homepage share-card words. The painted card and its alt live in share-cards.ts
@@ -11,10 +11,10 @@ export interface SocialCardCopy {
 }
 
 export function socialCardCopy(): SocialCardCopy {
-  const home = SHARE_CARDS.home;
+  const home = paintShareCard('home', defaultShareQuery('en'));
   return {
     alt: home.alt,
-    headline: home.headline,
-    subline: home.subline ?? '',
+    headline: HOME_SLOGAN.en.plain,
+    subline: '',
   };
 }

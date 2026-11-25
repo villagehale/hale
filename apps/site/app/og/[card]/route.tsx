@@ -1,14 +1,16 @@
-import { shareCardImage } from '~/lib/site/share-card';
-import { SHARE_CARDS, isShareCardId } from '~/lib/site/share-cards';
+import { renderShareCard } from '~/lib/site/share-card';
+import { isShareCardId, paintShareCard, shareCardQueryFromUrl } from '~/lib/site/share-cards';
 
 export const runtime = 'nodejs';
 
-/** Absolute share images: https://www.villagehale.com/og/<card> */
+/** Absolute share images: https://www.villagehale.com/og/<card>?v=d1&… */
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ card: string }> },
 ): Promise<Response> {
   const { card } = await context.params;
   if (!isShareCardId(card)) return new Response('Not found', { status: 404 });
-  return shareCardImage(SHARE_CARDS[card]);
+  const image = renderShareCard(paintShareCard(card, shareCardQueryFromUrl(new URL(request.url))));
+  image.headers.set('Cache-Control', 'public, max-age=86400');
+  return image;
 }

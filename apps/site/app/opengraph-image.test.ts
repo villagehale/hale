@@ -1,47 +1,35 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { SHARE_CARDS } from '~/lib/site/share-cards';
 
 const CARD_SOURCE = readFileSync(
   fileURLToPath(new URL('../lib/site/share-card.tsx', import.meta.url)),
   'utf8',
 );
-const BRAND_SOURCE = readFileSync(
-  fileURLToPath(new URL('../components/social-card-brand.tsx', import.meta.url)),
+const COPY_SOURCE = readFileSync(
+  fileURLToPath(new URL('../lib/site/share-cards.ts', import.meta.url)),
   'utf8',
 );
 
 describe('marketing share-card design system', () => {
-  it('paints the light homepage: page canvas, navy type, amber rule, site iMessage colors', () => {
-    expect(BRAND_SOURCE).toContain('#17294A');
-    expect(BRAND_SOURCE).toContain('#B26B1F');
-    expect(CARD_SOURCE).toContain('#fdfcfa');
-    expect(CARD_SOURCE).toContain('#17294a');
-    expect(CARD_SOURCE).toContain('#b26b1f');
-    expect(CARD_SOURCE).toContain('#0088ff');
-    expect(CARD_SOURCE).toContain('#e9e9eb');
-    expect(CARD_SOURCE).toContain('hale-shore-og.png');
-    expect(CARD_SOURCE).toContain('SocialCardBrand');
-    expect(CARD_SOURCE).toContain('villagehale.com');
-    expect(CARD_SOURCE).not.toContain('backgroundColor: SOCIAL_CARD_PALETTE.navy');
-    expect(CARD_SOURCE).not.toContain('borderRadius: 9999');
+  it('paints Style D: notes paper, yellow marker, iMessage blue, the turtle', () => {
+    expect(CARD_SOURCE).toContain('#FFF8DC');
+    expect(CARD_SOURCE).toContain('#FFE066');
+    expect(CARD_SOURCE).toContain('#0A84FF');
+    expect(CARD_SOURCE).toContain('#E9E9EB');
+    expect(CARD_SOURCE).toContain('#1C1C1E');
+    expect(CARD_SOURCE).toContain('Caveat Brush');
+    expect(CARD_SOURCE).toContain("readSiteFile('app', 'icon.png')");
+    expect(CARD_SOURCE).not.toContain('hale-shore-og.png');
+    expect(CARD_SOURCE).not.toContain('SocialCardBrand');
+    expect(CARD_SOURCE).not.toContain('villagehale.com');
   });
 
-  it('uses the real Hale logo rather than a placeholder circle', () => {
-    expect(BRAND_SOURCE).toContain("new URL('/icon.png', SITE_URL)");
-    expect(BRAND_SOURCE).not.toContain('borderRadius: 9999');
-  });
-
-  it('puts the chat mock only on home and pricing, and never a price', () => {
-    expect(SHARE_CARDS.home.chat).toBe(true);
-    expect(SHARE_CARDS.pricing.chat).toBe(true);
-    expect('chat' in SHARE_CARDS.faq).toBe(false);
-    const painted = Object.values(SHARE_CARDS)
-      .flatMap((card) => [card.alt, card.headline, 'subline' in card ? card.subline : ''])
-      .join('\n');
-    expect(painted).not.toMatch(/\$\d|C\$|US\$|\bfree\b|planner|helper that plans/i);
-    expect(painted).not.toContain('Find what’s on');
-    expect(painted).not.toContain('sign-up morning');
+  it('takes prices from the holiday promo helper, not a second set of numbers', () => {
+    expect(COPY_SOURCE).toContain('buildHolidayPromo');
+    expect(COPY_SOURCE).not.toContain('$59');
+    expect(COPY_SOURCE).not.toContain('$39');
+    expect(COPY_SOURCE).not.toContain('$99');
+    expect(COPY_SOURCE).not.toContain('$79');
   });
 });

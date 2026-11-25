@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
-import { shareCardImage } from '~/lib/site/share-cards';
+import { type ShareCardQuery, defaultShareQuery, shareCardImage } from '~/lib/site/share-cards';
 
 const HALE_SUFFIX = ' · Hale';
 
@@ -25,11 +25,11 @@ export function notFoundHeading(locale: Locale): string {
   return title.endsWith(HALE_SUFFIX) ? title.slice(0, -HALE_SUFFIX.length) : title;
 }
 
-export function notFoundMetadata(locale: Locale): Metadata {
+export function notFoundMetadata(locale: Locale, query?: ShareCardQuery): Metadata {
   const title = notFoundTitle(locale);
   // openGraph and twitter replace the parent objects; they are not deep-merged.
   // A title-only export would leave the homepage preview on the 404.
-  const image = shareCardImage('not-found');
+  const image = shareCardImage('not-found', query ?? defaultShareQuery(locale));
   return {
     title,
     openGraph: { title, url: SITE_URL, images: [image] },

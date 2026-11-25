@@ -1,130 +1,347 @@
+import { type BillingCurrency, type PromoPhase, currencyFromIpCountry } from '@hale/types';
+import { headers } from 'next/headers';
+import { connection } from 'next/server';
+import { tx } from '~/components/redesign/tx';
+import type { Locale } from '~/i18n/routing';
+import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
-import { ONE_LINER, PAGE_TITLE } from '~/lib/site/narrative';
+import {
+  type HolidayPromo,
+  type PromoOverrides,
+  buildHolidayPromo,
+  promoOverrides,
+  promoPhase,
+  resolveHolidayPromo,
+} from '~/lib/promo/holiday';
 
 /**
- * Words painted on the 1200×630 share cards. English on every locale: the
- * image is one file, and CA and US prices are never drawn on it.
+ * Style D share cards. The image URL is the cache key: version, locale, sale
+ * phase, currency, and whether the offer is on. Twitter refetches when any of
+ * those change, including the Dec 1 phase switch, without a new deploy.
+ *
+ * The phase, the offer, and the prices come from the same helpers the holiday
+ * banner uses. A page passes the request clock and the review query
+ * (`?promo_phase=holiday` on Preview). The image route paints whatever the URL
+ * says, so a crawler that saved the URL gets that card.
  */
-export interface ShareCardSpec {
-  id: string;
-  alt: string;
-  eyebrow?: string;
-  headline: string;
-  subline?: string;
-  /** Home and pricing only: the iMessage group-chat mock on the right third. */
-  chat?: boolean;
-}
-
+export const SHARE_CARD_VERSION = 'd1';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
-export const SHARE_CARDS = {
-  home: {
-    id: 'home',
-    alt: PAGE_TITLE,
-    headline: PAGE_TITLE,
-    subline: ONE_LINER,
-    chat: true,
-  },
-  pricing: {
-    id: 'pricing',
-    alt: `Hale pricing. ${ONE_LINER}`,
-    eyebrow: 'PRICING',
-    headline: PAGE_TITLE,
-    subline: ONE_LINER,
-    chat: true,
-  },
-  faq: {
-    id: 'faq',
-    alt: 'FAQ. Straight answers about Hale.',
-    eyebrow: 'FAQ',
-    headline: 'Straight answers about Hale.',
-    subline: 'What it does, what it reads, and why it never acts without your ok.',
-  },
-  about: {
-    id: 'about',
-    alt: 'About Hale. Built by a dad with an invisible list.',
-    eyebrow: 'ABOUT',
-    headline: 'Built by a dad with an invisible list.',
-    subline: ONE_LINER,
-  },
-  activities: {
-    id: 'activities',
-    alt: 'Things to do with kids, near you. Text Hale.',
-    eyebrow: 'THINGS TO DO',
-    headline: 'Things to do with kids, near you.',
-    subline: 'Text Hale and it finds 2–3 that fit your kid this week.',
-  },
-  answers: {
-    id: 'answers',
-    alt: 'Hale parenting guides.',
-    eyebrow: 'PARENTING GUIDES',
-    headline: 'Parenting guides',
-  },
-  contact: {
-    id: 'contact',
-    alt: `Contact Hale. ${PAGE_TITLE}`,
-    eyebrow: 'CONTACT',
-    headline: PAGE_TITLE,
-  },
-  privacy: {
-    id: 'privacy',
-    alt: `Hale privacy policy. ${PAGE_TITLE}`,
-    eyebrow: 'PRIVACY',
-    headline: PAGE_TITLE,
-  },
-  terms: {
-    id: 'terms',
-    alt: `Hale terms of service. ${PAGE_TITLE}`,
-    eyebrow: 'TERMS',
-    headline: PAGE_TITLE,
-  },
-  'not-found': {
-    id: 'not-found',
-    alt: `Page not found. ${PAGE_TITLE}`,
-    eyebrow: 'NOT FOUND',
-    headline: PAGE_TITLE,
-  },
-  text: {
-    id: 'text',
-    alt: `Text Hale. ${PAGE_TITLE}`,
-    eyebrow: 'TEXT',
-    headline: PAGE_TITLE,
-  },
-} as const satisfies Record<string, ShareCardSpec>;
+export const SHARE_CARD_IDS = [
+  'home',
+  'pricing',
+  'faq',
+  'about',
+  'activities',
+  'answers',
+  'contact',
+  'privacy',
+  'terms',
+  'not-found',
+  'text',
+  'checkout',
+] as const;
 
-export type ShareCardId = keyof typeof SHARE_CARDS;
+export type ShareCardId = (typeof SHARE_CARD_IDS)[number];
 
 export function isShareCardId(value: string): value is ShareCardId {
-  return Object.hasOwn(SHARE_CARDS, value);
+  return (SHARE_CARD_IDS as readonly string[]).includes(value);
 }
 
-export function shareCardUrl(id: string): string {
-  return `${SITE_URL}/og/${id}`;
+export interface ShareCardQuery {
+  locale: Locale;
+  phase: PromoPhase;
+  currency: BillingCurrency;
+  /** The holiday offer is on, so the card paints the sale name and both yearly prices. */
+  offer: boolean;
+  /** Checkout only. The paid confirmation heading, otherwise the unpaid one. */
+  paid: boolean;
 }
 
-export function shareCardImage(id: ShareCardId) {
-  const card = SHARE_CARDS[id];
+export type ShareSearch = { [key: string]: string | string[] | undefined } | undefined;
+
+type Env = Record<string, string | undefined>;
+
+export function shareCardQueryFrom(input: {
+  locale: Locale;
+  now?: Date;
+  search?: ShareSearch;
+  country?: string | null;
+  env?: Env;
+  paid?: boolean;
+}): ShareCardQuery {
+  const now = input.now ?? new Date();
+  const env = input.env ?? process.env;
+  const overrides: PromoOverrides = promoOverrides(input.search, env);
+  const country = overrides.country ?? input.country;
+  const promo = resolveHolidayPromo({ now, country, overrides, env });
+  const currency = promo?.currency ?? currencyFromIpCountry(country);
   return {
-    url: shareCardUrl(id),
+    locale: input.locale,
+    phase: promo?.phase ?? overrides.phase ?? promoPhase(now),
+    currency,
+    offer: promo !== null,
+    paid: input.paid === true,
+  };
+}
+
+/** Clock, flag, and country, with no review query. Tests and the bare image URL use this. */
+export function defaultShareQuery(
+  locale: Locale,
+  now = new Date(),
+  env: Env = process.env,
+): ShareCardQuery {
+  return shareCardQueryFrom({ locale, now, env });
+}
+
+/**
+ * Request-time query. `connection()` keeps the phase off the build clock, so
+ * the Dec 1 switch happens on the next request. Outside a request (unit tests,
+ * the local render script) the clock and the process env still decide.
+ */
+export async function shareQueryForRequest(
+  locale: Locale,
+  search?: ShareSearch,
+  paid = false,
+): Promise<ShareCardQuery> {
+  try {
+    await connection();
+  } catch {
+    // No request store.
+  }
+  let country: string | null = null;
+  try {
+    country = (await headers()).get('x-vercel-ip-country');
+  } catch {
+    country = null;
+  }
+  return shareCardQueryFrom({ locale, search, country, paid });
+}
+
+export function shareCardQueryFromUrl(url: URL): ShareCardQuery {
+  const localeRaw = url.searchParams.get('locale');
+  const locale: Locale = localeRaw === 'fr' || localeRaw === 'zh' ? localeRaw : 'en';
+  const fallback = defaultShareQuery(locale);
+  const phaseRaw = url.searchParams.get('phase');
+  const ccRaw = url.searchParams.get('cc');
+  const offerRaw = url.searchParams.get('offer');
+  const paidRaw = url.searchParams.get('paid');
+  return {
+    locale,
+    phase: phaseRaw === 'holiday' || phaseRaw === 'black_friday' ? phaseRaw : fallback.phase,
+    currency: ccRaw === 'USD' || ccRaw === 'CAD' ? ccRaw : fallback.currency,
+    offer: offerRaw === '1' ? true : offerRaw === '0' ? false : fallback.offer,
+    paid: paidRaw === '1' ? true : paidRaw === '0' ? false : fallback.paid,
+  };
+}
+
+export function shareCardQueryString(query: ShareCardQuery): string {
+  return [
+    `v=${SHARE_CARD_VERSION}`,
+    `locale=${query.locale}`,
+    `phase=${query.phase}`,
+    `cc=${query.currency}`,
+    `offer=${query.offer ? '1' : '0'}`,
+    `paid=${query.paid ? '1' : '0'}`,
+  ].join('&');
+}
+
+export function shareCardUrl(id: string, query: ShareCardQuery = defaultShareQuery('en')): string {
+  return `${SITE_URL}/og/${id}?${shareCardQueryString(query)}`;
+}
+
+export function answerShareUrl(
+  slug: string,
+  query: ShareCardQuery = defaultShareQuery('en'),
+): string {
+  return `${SITE_URL}/og/answers/${slug}?${shareCardQueryString(query)}`;
+}
+
+/**
+ * The home line. The second clause is the opening of the existing
+ * "We're in, I can drive" string in each locale file. The frame is that
+ * headline in the same voice the page already uses (tu / on, 我们).
+ */
+export const HOME_SLOGAN: Record<
+  Locale,
+  { lead: string; quote: string; bridge: string; marked: string; plain: string }
+> = {
+  en: {
+    lead: 'From',
+    quote: '“we should”',
+    bridge: 'to',
+    marked: '“we’re in.”',
+    plain: 'From “we should” to “we’re in.”',
+  },
+  fr: {
+    lead: 'De',
+    quote: '« on devrait »',
+    bridge: 'à',
+    marked: '« on est partants. »',
+    plain: 'De « on devrait » à « on est partants. »',
+  },
+  zh: {
+    lead: '从「我们应该」',
+    quote: '',
+    bridge: '',
+    marked: '到「我们去。」',
+    plain: '从「我们应该」到「我们去。」',
+  },
+};
+
+export interface PaintedShareCard {
+  id: ShareCardId | 'answer';
+  alt: string;
+  locale: Locale;
+  /** Handwriting face for the headline. Chinese uses the handwriting CJK face. */
+  headlineFont: 'Caveat Brush' | 'Ma Shan Zheng';
+  slogan: (typeof HOME_SLOGAN)[Locale] | null;
+  headline: string;
+  flag: string | null;
+  prices: string | null;
+  footer: Array<{ text: string; font: 'DM Mono' | 'Ma Shan Zheng' }>;
+  chat: {
+    group: string;
+    incomingName: string;
+    incoming: string;
+    outgoing: string;
+    delivered: string;
+  };
+}
+
+function hasHan(text: string): boolean {
+  return /[\u3400-\u9fff]/.test(text);
+}
+
+function footerLine(locale: Locale): PaintedShareCard['footer'] {
+  const t = getTranslator(locale, 'Footer');
+  const prefix = `${t('pronunciationPrefix')} ${t('pronunciation')} `;
+  const suffix = t('pronunciationSuffix');
+  // The Chinese suffix is the only run that needs the handwriting CJK face.
+  // The name and the pronunciation stay in the mono face every other card uses.
+  if (locale === 'zh') {
+    return [
+      { text: prefix, font: 'DM Mono' },
+      { text: suffix, font: 'Ma Shan Zheng' },
+    ];
+  }
+  return [{ text: `${prefix}${suffix}`, font: 'DM Mono' }];
+}
+
+function pageHeadline(
+  id: ShareCardId,
+  locale: Locale,
+  promo: HolidayPromo | null,
+  paid: boolean,
+): string {
+  switch (id) {
+    case 'home':
+      return HOME_SLOGAN[locale].plain;
+    case 'pricing':
+      if (promo && locale === 'en') return `${promo.saleName}: Max for ${promo.max.saleLabel}.`;
+      return tx(locale, 'Plus, by the year or the month.');
+    case 'faq':
+      return tx(locale, 'Is Hale right for your family?');
+    case 'about':
+      return tx(locale, 'A planner for your kids’ year.');
+    case 'activities':
+      return tx(locale, 'Things to do with your kids, near you.');
+    case 'answers':
+      return tx(locale, 'Calm, cited guidance for every stage.');
+    case 'contact':
+      return tx(locale, 'Say hello.');
+    case 'text':
+      return tx(locale, 'Text Hale like you’d text a friend.');
+    case 'privacy':
+      return 'Privacy Policy';
+    case 'terms':
+      return 'Terms of Service';
+    case 'not-found': {
+      const title = getTranslator(locale, 'Common')('notFoundTitle');
+      const suffix = ' · Hale';
+      return title.endsWith(suffix) ? title.slice(0, -suffix.length) : title;
+    }
+    case 'checkout':
+      return getTranslator(locale, 'CheckoutSuccess')(paid ? 'heading' : 'unpaidHeading');
+    default: {
+      const exhaustive: never = id;
+      return exhaustive;
+    }
+  }
+}
+
+function paint(
+  id: ShareCardId | 'answer',
+  headline: string,
+  query: ShareCardQuery,
+  slogan: PaintedShareCard['slogan'],
+): PaintedShareCard {
+  const promo = query.offer ? buildHolidayPromo(query.phase, query.currency) : null;
+  const prices = promo ? `Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}` : null;
+  return {
+    id,
+    alt: `Hale. ${headline}`,
+    locale: query.locale,
+    headlineFont: hasHan(headline) ? 'Ma Shan Zheng' : 'Caveat Brush',
+    slogan,
+    headline,
+    flag: promo?.saleName ?? null,
+    prices,
+    footer: footerLine(query.locale),
+    chat: {
+      group: tx(query.locale, 'Saturday crew'),
+      incomingName: 'Priya',
+      incoming: 'we should do something saturday',
+      outgoing: 'we’re in',
+      delivered: tx(query.locale, 'Delivered'),
+    },
+  };
+}
+
+export function paintShareCard(id: ShareCardId, query: ShareCardQuery): PaintedShareCard {
+  const promo = query.offer ? buildHolidayPromo(query.phase, query.currency) : null;
+  const headline = pageHeadline(id, query.locale, promo, query.paid);
+  const slogan = id === 'home' ? HOME_SLOGAN[query.locale] : null;
+  return paint(id, headline, query, slogan);
+}
+
+/** Article cards use the guide's H1, which is the question, in every locale. */
+export function paintAnswerCard(question: string, query: ShareCardQuery): PaintedShareCard {
+  return paint('answer', question, query, null);
+}
+
+export function shareCardVisibleText(card: PaintedShareCard): string {
+  return [
+    card.alt,
+    card.headline,
+    card.flag ?? '',
+    card.prices ?? '',
+    card.footer.map((part) => part.text).join(''),
+    card.chat.group,
+    card.chat.incomingName,
+    card.chat.incoming,
+    card.chat.outgoing,
+    card.chat.delivered,
+  ].join('\n');
+}
+
+export function shareCardImage(id: ShareCardId, query: ShareCardQuery = defaultShareQuery('en')) {
+  const card = paintShareCard(id, query);
+  return {
+    url: shareCardUrl(id, query),
     ...SHARE_CARD_SIZE,
     alt: card.alt,
   };
 }
 
-/** Article cards reuse the parenting-guides template. The title is the headline. */
-export function answerShareCard(title: string): ShareCardSpec {
+export function answerShareImage(
+  slug: string,
+  question: string,
+  query: ShareCardQuery = defaultShareQuery('en'),
+) {
   return {
-    id: 'answer',
-    alt: `Hale parenting guide: ${title}`,
-    eyebrow: 'PARENTING GUIDES',
-    headline: title,
-  };
-}
-
-export function answerShareImage(slug: string, title: string) {
-  return {
-    url: `${SITE_URL}/og/answers/${slug}`,
+    url: answerShareUrl(slug, query),
     ...SHARE_CARD_SIZE,
-    alt: answerShareCard(title).alt,
+    alt: paintAnswerCard(question, query).alt,
   };
 }

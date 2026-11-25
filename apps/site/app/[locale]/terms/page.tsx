@@ -4,7 +4,7 @@ import { absolutePageUrl, buildAlternates } from '~/i18n/metadata';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import { pageSource } from '~/lib/page-source';
-import { shareCardImage } from '~/lib/site/share-cards';
+import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 
 /**
  * villagehale.com/terms — the canonical home for the Terms of Service
@@ -56,10 +56,13 @@ const DESCRIPTION =
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const image = shareCardImage('terms', await shareQueryForRequest(locale, await searchParams));
   return {
     title: TITLE,
     description: DESCRIPTION,
@@ -70,13 +73,13 @@ export async function generateMetadata({
       title: TITLE,
       description: DESCRIPTION,
       url: absolutePageUrl(locale, '/terms'),
-      images: [shareCardImage('terms')],
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title: TITLE,
       description: DESCRIPTION,
-      images: [shareCardImage('terms')],
+      images: [image],
     },
     robots: { index: false, follow: false },
   };

@@ -62,7 +62,7 @@ describe('homepage tab titles', () => {
       'utf8',
     );
     expect(layout).not.toContain('template:');
-    expect(layout).toContain('homeMetadata(locale)');
+    expect(layout).toContain('homeMetadata(locale,');
   });
 });
 

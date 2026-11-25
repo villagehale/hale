@@ -16,12 +16,12 @@ const config: NextConfig = {
   // delete them (scripts/posthog-sourcemaps.mjs --delete-after). Without the key —
   // every build today — this is false and nothing changes.
   productionBrowserSourceMaps: Boolean(process.env.POSTHOG_PERSONAL_API_KEY),
-  // Share cards read fonts, the shore crop, and the turtle from disk. Webpack
-  // must not rewrite those reads (see share-card.tsx), and the files have to
-  // be in the serverless function or /og 500s after a green build.
+  // Share cards read the handwriting fonts, the turtle, and the bubble emoji
+  // from disk. Webpack must not rewrite those reads (see share-card.tsx), and
+  // the files have to be in the serverless function or /og 500s after a green build.
   outputFileTracingIncludes: {
-    '/og/[card]': ['./assets/og-fonts/**', './assets/hale-shore-og.png', './app/icon.png'],
-    '/og/answers/[slug]': ['./assets/og-fonts/**', './assets/hale-shore-og.png', './app/icon.png'],
+    '/og/[card]': ['./assets/og-fonts/**', './assets/og/**', './app/icon.png'],
+    '/og/answers/[slug]': ['./assets/og-fonts/**', './assets/og/**', './app/icon.png'],
   },
   // The four dated city registration guides are retired. Each old URL — bare,
   // trailing-slash, and under /fr and /zh — 308s to that locale's /activities.

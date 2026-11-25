@@ -4,6 +4,7 @@ import { buildAlternates, socialMetadata } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { intakePrefill } from '~/lib/intake-prefill';
+import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { parseSourceCode, readSmsNumber } from '~/lib/text-entry';
 
 /**
@@ -20,18 +21,21 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = getTranslator(locale, 'Text');
   const title = t('metaTitle');
   const description = t('metaDescription');
+  const query = await shareQueryForRequest(locale, await searchParams);
   return {
     title,
     description,
     alternates: buildAlternates(locale, '/text'),
-    ...socialMetadata(locale, '/text', title, description, 'text'),
+    ...socialMetadata(locale, '/text', title, description, 'text', query),
     robots: { index: false, follow: false },
   };
 }

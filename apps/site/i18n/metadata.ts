@@ -1,6 +1,11 @@
 import type { Metadata } from 'next';
 import { SITE_URL } from '~/lib/app-url';
-import { type ShareCardId, shareCardImage } from '~/lib/site/share-cards';
+import {
+  type ShareCardId,
+  type ShareCardQuery,
+  defaultShareQuery,
+  shareCardImage,
+} from '~/lib/site/share-cards';
 import { localeHref } from './navigation';
 import { type Locale, routing } from './routing';
 
@@ -39,8 +44,9 @@ export function socialMetadata(
   title: string,
   description: string,
   card: ShareCardId,
+  query?: ShareCardQuery,
 ): Pick<Metadata, 'openGraph' | 'twitter'> {
-  const image = shareCardImage(card);
+  const image = shareCardImage(card, query ?? defaultShareQuery(locale));
   return {
     openGraph: {
       type: 'website',
