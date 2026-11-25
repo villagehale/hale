@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+import {
+  attributionCookie,
+  clearAttributionCookie,
+  readFirstTouchAttribution,
+} from '~/lib/analytics/attribution';
+import { funnelAttributionForCookie } from '~/lib/analytics/funnel-views';
+import { readFirstTouchSourceCode } from '~/lib/analytics/source-code';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
-import { attributionCookie, readFirstTouchAttribution } from '~/lib/analytics/attribution';
 
 /**
  * Persists first-touch UTMs / gclid / fbclid into sessionStorage (every visit)
@@ -19,8 +25,15 @@ export function AttributionCapture(): null {
         storage = null;
       }
       const attribution = readFirstTouchAttribution(window.location.search, storage);
-      if (readConsent() !== 'granted') return;
-      const cookie = attributionCookie(attribution, window.location.hostname);
+      if (readConsent() !== 'granted') {
+        // Withdrawing Accept must remove the cookie checkout would still read.
+        document.cookie = clearAttributionCookie(window.location.hostname);
+        return;
+      }
+      const withCode = funnelAttributionForCookie(attribution, () =>
+        readFirstTouchSourceCode(window.location.search, storage),
+      );
+      const cookie = attributionCookie(withCode, window.location.hostname);
       if (cookie) document.cookie = cookie;
     };
     persist();

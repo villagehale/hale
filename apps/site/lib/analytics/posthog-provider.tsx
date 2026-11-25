@@ -1,14 +1,17 @@
 'use client';
 
+import { parseAttribution } from '@hale/types';
+import { usePathname } from 'next/navigation';
 import type { PostHog } from 'posthog-js';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
+import { readFirstTouchAttribution } from './attribution';
 import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from './events';
 import { posthogReplayEnabled, posthogWebEnabled } from './flags';
+import { createFunnelViewTracker } from './funnel-views';
 import { hasAnalyticsOptOut } from './opt-out';
 import { POSTHOG_PROXY_PATH, posthogUiHost } from './posthog-proxy';
-import { readFirstTouchAttribution } from './attribution';
 import { type SessionLike, readFirstTouchSourceCode } from './source-code';
 import { hasSecretQuery, redactSecretEvent } from './url-secrets';
 
@@ -136,7 +139,11 @@ export function PostHogProvider({
     }
     let active = true;
     const storage = sessionStorageOrNull();
-    const sourceCode = readFirstTouchSourceCode(window.location.search, storage);
+    // A join tag matches the card grammar and must not become a super property.
+    // The text door still reads the raw code; only analytics goes through the gate.
+    const sourceCode = parseAttribution({
+      source_code: readFirstTouchSourceCode(window.location.search, storage) ?? undefined,
+    }).source_code;
     const attribution = readFirstTouchAttribution(window.location.search, storage);
     // An untagged visit has no source, and that stays ABSENT rather than becoming a
     // string like 'direct' — a bucket that means "no card" must not look like a card.
@@ -182,7 +189,12 @@ export function PostHogProvider({
     };
   }, [locale]);
 
-  return <PostHogContext.Provider value={analytics}>{children}</PostHogContext.Provider>;
+  return (
+    <PostHogContext.Provider value={analytics}>
+      <FunnelPageViews />
+      {children}
+    </PostHogContext.Provider>
+  );
 }
 
 /**
@@ -218,4 +230,19 @@ export function useAnalytics(): (
  */
 export function useAnalyticsReady(): boolean {
   return useContext(PostHogContext).client !== null;
+}
+
+/** The site's funnel page views (lib/analytics/funnel-views.ts). Renders nothing. */
+function FunnelPageViews(): null {
+  const pathname = usePathname();
+  const capture = useAnalytics();
+  const ready = useAnalyticsReady();
+  const tracker = useRef(createFunnelViewTracker());
+
+  useEffect(() => {
+    const view = tracker.current.observe(pathname, ready);
+    if (view) capture(view);
+  }, [capture, pathname, ready]);
+
+  return null;
 }

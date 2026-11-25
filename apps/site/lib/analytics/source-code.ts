@@ -21,6 +21,10 @@ import { parseSourceCode } from '~/lib/text-entry';
  *     not how a visit is credited to a card.
  *   · Not localStorage. Attribution is a fact about ONE visit. A value that outlived the
  *     tab would credit a card seen in March for a text sent in August.
+ *   · One exception, for checkout only: with web analytics on and the visitor's consent,
+ *     funnel-views.ts copies the code into the hale_attr cookie (90 days) so a paid
+ *     checkout in the app can be credited to the card. The text door still reads only
+ *     this tab's value.
  *
  * Nothing unvalidated is stored or sent: the value is a `<channel>-<place>` kebab code
  * or it does not exist (hard rule #1 — this string reaches an analytics property).

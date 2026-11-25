@@ -64,6 +64,13 @@ describe('readFirstTouchSourceCode', () => {
     expect(readFirstTouchSourceCode('?s=swim-loyalfitness', storage)).toBe('swim-loyalfitness');
   });
 
+  it('keeps a co-parent join tag for the text door', () => {
+    const join = `join-${'ab'.repeat(16)}`;
+    const storage = fakeStorage();
+    expect(readFirstTouchSourceCode(`?s=${join}`, storage)).toBe(join);
+    expect(storage.store[SOURCE_CODE_STORAGE_KEY]).toBe(join);
+  });
+
   it('still attributes the tagged page when sessionStorage is unavailable', () => {
     // Safari private mode: reading `sessionStorage` throws, so the provider hands null.
     expect(readFirstTouchSourceCode('?s=earlyon-richmondhill', null)).toBe('earlyon-richmondhill');

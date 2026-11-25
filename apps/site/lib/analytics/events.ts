@@ -75,7 +75,10 @@ export type AnalyticsEvent =
   // link, which opens the app's founding checkout page. Properties: cta_placement,
   // promo_phase (black_friday / holiday), currency (CAD / USD). The promo's
   // Text Hale doors stay cta_text_click / cta_message_click with promo_* placements.
-  | 'promo_cta_click';
+  | 'promo_cta_click'
+  // The web funnel's first step after the landing: one per arrival on /pricing in any
+  // locale (lib/analytics/funnel-views.ts). Carries the provider's attribution keys.
+  | 'pricing_viewed';
 
 /**
  * PostHog's own pageview. Not ours to name, but it goes through the same gate as

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookieHeaderHasAnalyticsOptOut } from '~/lib/analytics/opt-out';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { attributionFromRequest } from '~/lib/billing/attribution';
 import { billingWebhookReady } from '~/lib/billing/billing-live';
@@ -116,6 +117,7 @@ export async function POST(req: Request): Promise<Response> {
       origin,
       marketingOrigin: checkoutMarketingOrigin(MARKETING_SITE_URL, process.env),
       cancelUrl: `${origin}/join?checkout=cancelled`,
+      analyticsOptOut: cookieHeaderHasAnalyticsOptOut(cookieHeader),
     });
     if (result.status === 'not_found') {
       return NextResponse.json({ error: 'no_family' }, { status: 404 });

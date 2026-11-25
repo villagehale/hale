@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ATTRIBUTION_STORAGE_KEY,
   attributionCookie,
+  clearAttributionCookie,
   readFirstTouchAttribution,
 } from './attribution.js';
 
@@ -44,5 +45,13 @@ describe('attributionCookie', () => {
 
   it('returns null when there is nothing to persist', () => {
     expect(attributionCookie({}, 'www.villagehale.com')).toBeNull();
+  });
+
+  it('clears with the same Domain the write used, so a withdrawn Accept removes it', () => {
+    const cleared = clearAttributionCookie('www.villagehale.com');
+    expect(cleared).toContain('hale_attr=');
+    expect(cleared).toContain('Max-Age=0');
+    expect(cleared).toContain('Domain=.villagehale.com');
+    expect(clearAttributionCookie('preview.example.com')).not.toContain('Domain=');
   });
 });

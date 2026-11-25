@@ -6,6 +6,7 @@ import {
   parseAttribution,
   serializeAttribution,
 } from '@hale/types';
+import { funnelAttributionEnabled } from '~/lib/analytics/funnel-flag';
 
 export const ATTRIBUTION_COOKIE = 'hale_attr';
 
@@ -36,10 +37,18 @@ function cookieValue(header: string | null | undefined, name: string): string | 
   return undefined;
 }
 
-/** Stripe metadata keys for the session and the subscription (string values only). */
-export function attributionToStripeMetadata(attribution: Attribution): Record<string, string> {
+/**
+ * Stripe metadata keys for the session and the subscription (string values only).
+ * The card code rides only with FUNNEL_ATTRIBUTION_ENABLED.
+ */
+export function attributionToStripeMetadata(
+  attribution: Attribution,
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> {
   const out: Record<string, string> = {};
+  const withCode = funnelAttributionEnabled(env);
   for (const key of ATTRIBUTION_KEYS) {
+    if (key === 'source_code' && !withCode) continue;
     const value = attribution[key];
     if (value) out[key] = value;
   }

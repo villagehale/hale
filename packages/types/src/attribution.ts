@@ -1,8 +1,15 @@
 /**
  * First-touch acquisition params that survive landing → signup → checkout.
  *
- * These are advertising click and campaign identifiers, not parent or child
- * data. Values are truncated so they fit Stripe metadata (500 chars).
+ * These are advertising click and campaign identifiers plus Hale's own card code,
+ * not parent or child data. Values are truncated so they fit Stripe metadata (500
+ * chars). A value that carries an email's `@`, a URL's `://`, markup or a double quote
+ * is dropped whole rather than carried, because these values reach Stripe and
+ * analytics. Anything else a campaign name holds (accents, `'`, CJK, `|`, `/`, `:`)
+ * passes.
+ *
+ * `source_code` is Hale's card code. The site reads it from its own `s` / `src` tag
+ * with its own validator, never from a landing URL under this name.
  */
 
 export const ATTRIBUTION_KEYS = [
@@ -13,6 +20,7 @@ export const ATTRIBUTION_KEYS = [
   'utm_content',
   'gclid',
   'fbclid',
+  'source_code',
 ] as const;
 
 export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
@@ -20,14 +28,31 @@ export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
 export type Attribution = Partial<Record<AttributionKey, string>>;
 
 const MAX_VALUE_LENGTH = 200;
+const UNSAFE_VALUE = /@|:\/\/|[<>"]/;
+/** The site's card-code grammar (apps/site/lib/text-entry.ts SOURCE_CODE_PATTERN). */
+const SOURCE_CODE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SOURCE_CODE_MAX_LENGTH = 48;
+/**
+ * A co-parent join tag (`join-` + 32 hex, apps/web/lib/channel/join/code.ts). It
+ * travels `?s=` so the text door can pre-fill the invite, and that grammar also
+ * matches a card code. It is a capability: whoever redeems it is seated on the
+ * family. It must not be stored as attribution or sent to Stripe or PostHog.
+ */
+const JOIN_CAPABILITY = /^join-[0-9a-f]{32}$/;
 
-function readParam(
-  params: { get(name: string): string | null },
-  key: AttributionKey,
-): string | undefined {
-  const raw = params.get(key)?.trim();
-  if (!raw) return undefined;
-  return raw.slice(0, MAX_VALUE_LENGTH);
+function cleanValue(key: AttributionKey, raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (key === 'source_code') {
+    if (trimmed.length > SOURCE_CODE_MAX_LENGTH || !SOURCE_CODE_VALUE.test(trimmed)) {
+      return undefined;
+    }
+    if (JOIN_CAPABILITY.test(trimmed)) return undefined;
+    return trimmed;
+  }
+  const bounded = trimmed.slice(0, MAX_VALUE_LENGTH);
+  return UNSAFE_VALUE.test(bounded) ? undefined : bounded;
 }
 
 /** Pull the known keys out of a query string, URLSearchParams, or a loose map. */
@@ -44,17 +69,15 @@ export function parseAttribution(
   const out: Attribution = {};
   if (params) {
     for (const key of ATTRIBUTION_KEYS) {
-      const value = readParam(params, key);
+      const value = cleanValue(key, params.get(key));
       if (value) out[key] = value;
     }
     return out;
   }
   const record = source as Record<string, unknown>;
   for (const key of ATTRIBUTION_KEYS) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) {
-      out[key] = value.trim().slice(0, MAX_VALUE_LENGTH);
-    }
+    const value = cleanValue(key, record[key]);
+    if (value) out[key] = value;
   }
   return out;
 }

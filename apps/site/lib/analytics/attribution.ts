@@ -1,6 +1,6 @@
 import {
-  type Attribution,
   ATTRIBUTION_KEYS,
+  type Attribution,
   attributionIsEmpty,
   mergeFirstTouch,
   parseAttribution,
@@ -13,12 +13,16 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 90;
 
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
-/** First-touch attribution from this URL plus whatever the tab already stored. */
+/**
+ * First-touch attribution from this URL plus whatever the tab already stored. The card
+ * code is never taken from the URL under its attribution name: source-code.ts reads the
+ * site's own `s` / `src` tag.
+ */
 export function readFirstTouchAttribution(
   search: string,
   storage: StorageLike | null,
 ): Attribution {
-  const fromUrl = parseAttribution(search);
+  const { source_code: _ignored, ...fromUrl } = parseAttribution(search);
   const remembered = storage
     ? parseAttribution(storage.getItem(ATTRIBUTION_STORAGE_KEY) ?? undefined)
     : {};
@@ -38,6 +42,16 @@ export function attributionCookie(attribution: Attribution, hostname: string): s
     `Max-Age=${MAX_AGE_SECONDS}`,
     'SameSite=Lax',
   ];
+  const host = hostname.replace(/\.$/, '').toLowerCase();
+  if (host === 'villagehale.com' || host.endsWith('.villagehale.com')) {
+    parts.push('Domain=.villagehale.com');
+  }
+  return parts.join('; ');
+}
+
+/** Drops the checkout cookie. Same Domain as {@link attributionCookie}, or the browser keeps it. */
+export function clearAttributionCookie(hostname: string): string {
+  const parts = [`${ATTRIBUTION_COOKIE}=`, 'Path=/', 'Max-Age=0', 'SameSite=Lax'];
   const host = hostname.replace(/\.$/, '').toLowerCase();
   if (host === 'villagehale.com' || host.endsWith('.villagehale.com')) {
     parts.push('Domain=.villagehale.com');
