@@ -81,7 +81,9 @@ describe('share card query', () => {
 
   it('puts the phase and the version on the image URL', () => {
     const card = query({ locale: 'zh', phase: 'holiday', currency: 'USD', offer: true });
-    expect(shareCardQueryString(card)).toBe('v=d2&locale=zh&phase=holiday&cc=USD&offer=1&paid=0');
+    expect(shareCardQueryString(card)).toBe(
+      `v=${SHARE_CARD_VERSION}&locale=zh&phase=holiday&cc=USD&offer=1&paid=0`,
+    );
   });
 
   it('uses CAD when no country is known, the same default as the site', () => {
@@ -150,6 +152,23 @@ describe('share card copy', () => {
     expect(paintShareCard('activities', query({ locale: 'fr' })).headline).toBe(
       tx('fr', 'Things to do with your kids, near you.'),
     );
+  });
+
+  it('puts a class above the saturday yes, in each locale', () => {
+    const en = paintShareCard('home', query({ locale: 'en' })).chat.lines.map((line) => line.text);
+    expect(en).toEqual([
+      'tot gym, sat 9:30am',
+      'at the community centre',
+      'saturday morning, if you want it',
+      'we should do something saturday',
+      'we’re in',
+    ]);
+    for (const locale of ['fr', 'zh'] as const) {
+      const lines = paintShareCard('home', query({ locale })).chat.lines.map((line) => line.text);
+      expect(lines).toHaveLength(en.length);
+      expect(lines).not.toEqual(en);
+      expect(lines.join('\n')).not.toMatch(BANNED);
+    }
   });
 
   it('takes the home card’s second clause from the existing “we’re in” line', () => {

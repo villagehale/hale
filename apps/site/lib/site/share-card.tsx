@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
 import type { Locale } from '~/i18n/routing';
-import { type PaintedShareCard, SHARE_CARD_SIZE } from '~/lib/site/share-cards';
+import {
+  type PaintedShareCard,
+  SHARE_CARD_SIZE,
+  type ShareThreadLine,
+} from '~/lib/site/share-cards';
 
 /**
  * Style D, fitted to 1200×630: lined notes paper, the flat navy turtle, a
@@ -134,9 +138,164 @@ function Avatar({
   );
 }
 
+function bubbleFont(text: string): 'Figtree' | 'Ma Shan Zheng' {
+  return /[\u3400-\u9fff]/.test(text) ? 'Ma Shan Zheng' : 'Figtree';
+}
+
+function BubbleCopy({ text, color }: { text: string; color: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', color }}>
+      {text.split('\n').map((line) => (
+        <div key={line} style={{ display: 'flex', fontFamily: bubbleFont(line) }}>
+          {line}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ThreadAvatar({ from }: { from: ShareThreadLine['from'] }) {
+  if (from === 'hale') {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          width: 26,
+          height: 26,
+          borderRadius: 13,
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}
+      >
+        <img src={LOGO} alt="" width={26} height={26} />
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffff',
+        fontFamily: 'Figtree',
+        fontWeight: 600,
+        fontSize: 12,
+        backgroundImage: 'linear-gradient(180deg, #E88AB4 0%, #C4588B 100%)',
+      }}
+    >
+      P
+    </div>
+  );
+}
+
+function Thread({ card }: { card: PaintedShareCard }) {
+  const runs: Array<{ from: ShareThreadLine['from']; name: string; texts: string[] }> = [];
+  for (const line of card.chat.lines) {
+    const last = runs[runs.length - 1];
+    if (last && last.from === line.from && line.from !== 'me') {
+      last.texts.push(line.text);
+    } else {
+      runs.push({ from: line.from, name: line.name, texts: [line.text] });
+    }
+  }
+  const incoming = runs.filter((run) => run.from !== 'me');
+  const outgoing = runs.find((run) => run.from === 'me');
+  const deliveredFont = /[\u3400-\u9fff]/.test(card.chat.delivered) ? 'Ma Shan Zheng' : 'Figtree';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        flexGrow: 1,
+        justifyContent: 'space-between',
+        padding: '8px 12px 2px 12px',
+      }}
+    >
+      {incoming.map((run) => (
+        <div key={run.from} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div
+            style={{
+              display: 'flex',
+              marginLeft: 32,
+              fontFamily: 'Figtree',
+              fontSize: 12,
+              lineHeight: 1,
+              color: IM_META,
+            }}
+          >
+            {run.name}
+          </div>
+          {run.texts.map((text) => (
+            <div key={text} style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+              {text === run.texts[run.texts.length - 1] ? (
+                <ThreadAvatar from={run.from} />
+              ) : (
+                <div style={{ display: 'flex', width: 26, flexShrink: 0 }} />
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  maxWidth: 286,
+                  backgroundColor: IM_IN,
+                  color: '#000000',
+                  borderRadius: 16,
+                  padding: '6px 10px',
+                  fontFamily: 'Figtree',
+                  fontSize: 18,
+                  lineHeight: 1.15,
+                }}
+              >
+                <BubbleCopy text={text} color="#000000" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              maxWidth: 286,
+              backgroundColor: IM_OUT,
+              color: '#ffffff',
+              borderRadius: 16,
+              padding: '6px 10px',
+              fontFamily: 'Figtree',
+              fontSize: 18,
+              lineHeight: 1.15,
+            }}
+          >
+            <BubbleCopy text={outgoing?.text ?? ''} color="#ffffff" />
+            <img src={RAISE_HANDS} alt="" width={20} height={20} />
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            fontFamily: deliveredFont,
+            fontSize: 12,
+            lineHeight: 1,
+            color: IM_META,
+          }}
+        >
+          {card.chat.delivered}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Phone({ card }: { card: PaintedShareCard }) {
   const groupFont = /[\u3400-\u9fff]/.test(card.chat.group) ? 'Ma Shan Zheng' : 'Figtree';
-  const deliveredFont = /[\u3400-\u9fff]/.test(card.chat.delivered) ? 'Ma Shan Zheng' : 'Figtree';
   return (
     <div
       style={{
@@ -248,92 +407,7 @@ function Phone({ card }: { card: PaintedShareCard }) {
               {`${card.chat.group} ›`}
             </div>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              flexGrow: 1,
-              justifyContent: 'flex-end',
-              padding: '12px 14px 8px 14px',
-              gap: 6,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                marginLeft: 40,
-                fontFamily: 'Figtree',
-                fontSize: 13,
-                color: IM_META,
-              }}
-            >
-              {card.chat.incomingName}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#ffffff',
-                  fontFamily: 'Figtree',
-                  fontWeight: 600,
-                  fontSize: 13,
-                  backgroundImage: 'linear-gradient(180deg, #E88AB4 0%, #C4588B 100%)',
-                }}
-              >
-                P
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  maxWidth: 280,
-                  backgroundColor: IM_IN,
-                  color: '#000000',
-                  borderRadius: 18,
-                  padding: '8px 12px',
-                  fontFamily: 'Figtree',
-                  fontSize: 20,
-                  lineHeight: 1.25,
-                }}
-              >
-                {card.chat.incoming}
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  backgroundColor: IM_OUT,
-                  color: '#ffffff',
-                  borderRadius: 18,
-                  padding: '8px 12px',
-                  fontFamily: 'Figtree',
-                  fontSize: 20,
-                  lineHeight: 1.25,
-                }}
-              >
-                <div style={{ display: 'flex' }}>{card.chat.outgoing}</div>
-                <img src={RAISE_HANDS} alt="" width={22} height={22} />
-              </div>
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                fontFamily: deliveredFont,
-                fontSize: 13,
-                color: IM_META,
-              }}
-            >
-              {card.chat.delivered}
-            </div>
-          </div>
+          <Thread card={card} />
           <div
             style={{
               display: 'flex',

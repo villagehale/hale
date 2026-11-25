@@ -25,7 +25,7 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * (`?promo_phase=holiday` on Preview). The image route paints whatever the URL
  * says, so a crawler that saved the URL gets that card.
  */
-export const SHARE_CARD_VERSION = 'd2';
+export const SHARE_CARD_VERSION = 'd3';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -218,6 +218,13 @@ export const HOME_SLOGAN: Record<
   },
 };
 
+export interface ShareThreadLine {
+  from: 'hale' | 'priya' | 'me';
+  /** Shown above the first bubble in a run. The outgoing reply has none. */
+  name: string;
+  text: string;
+}
+
 export interface PaintedShareCard {
   id: ShareCardId | 'answer';
   alt: string;
@@ -231,10 +238,8 @@ export interface PaintedShareCard {
   footer: Array<{ text: string; font: 'DM Mono' | 'Ma Shan Zheng' }>;
   chat: {
     group: string;
-    incomingName: string;
-    incoming: string;
-    outgoing: string;
     delivered: string;
+    lines: ShareThreadLine[];
   };
 }
 
@@ -302,6 +307,17 @@ function pageHeadline(
   }
 }
 
+/** Three earlier Hale bubbles, then the saturday yes already on the card. */
+function thread(locale: Locale): ShareThreadLine[] {
+  return [
+    { from: 'hale', name: 'Hale', text: tx(locale, 'tot gym, sat 9:30am') },
+    { from: 'hale', name: 'Hale', text: tx(locale, 'at the community centre') },
+    { from: 'hale', name: 'Hale', text: tx(locale, 'saturday morning, if you want it') },
+    { from: 'priya', name: 'Priya', text: tx(locale, 'we should do something saturday') },
+    { from: 'me', name: '', text: tx(locale, 'we’re in') },
+  ];
+}
+
 function paint(
   id: ShareCardId | 'answer',
   headline: string,
@@ -324,10 +340,8 @@ function paint(
     footer: footerLine(query.locale),
     chat: {
       group: tx(query.locale, 'Saturday crew'),
-      incomingName: 'Priya',
-      incoming: 'we should do something saturday',
-      outgoing: 'we’re in',
       delivered: tx(query.locale, 'Delivered'),
+      lines: thread(query.locale),
     },
   };
 }
@@ -352,9 +366,7 @@ export function shareCardVisibleText(card: PaintedShareCard): string {
     card.prices ?? '',
     card.footer.map((part) => part.text).join(''),
     card.chat.group,
-    card.chat.incomingName,
-    card.chat.incoming,
-    card.chat.outgoing,
+    ...card.chat.lines.flatMap((line) => [line.name, line.text]),
     card.chat.delivered,
   ].join('\n');
 }
