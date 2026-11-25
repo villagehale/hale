@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { GOOGLE_REVOKE_PENDING_RETENTION_MS } from '~/lib/integrations/google-disconnect';
 import { type FailurePageDeps, type OpsPagerOutcome, pageOps } from '~/lib/monitoring/failure-page';
 import { CUSTOMER_MEMORY_VERBS } from '~/lib/webhooks/settle-family-plan';
 import { ENDED_SUBSCRIPTION } from '~/lib/webhooks/stripe-billing';
@@ -12,7 +13,9 @@ import { StripeLookupError, stripePlanReaderFromEnv } from './stripe-charge-cont
  * goes, through the same cancel the refund path uses: at once, no proration, nothing
  * invoiced. A subscription set to end at period end could still be resumed and charge a
  * family that no longer exists. When Stripe will not end one, the family is kept for the
- * next sweep and #ops is paged, so it is never erased while still billed.
+ * next sweep and #ops is paged, but only for the erasure wait the sweep also gives Google:
+ * past it the family is erased anyway and #ops is paged with its id, the id each of its
+ * subscriptions carries as metadata.familyId, so the deletion window still has an end.
  */
 
 type NotEndedReason = 'no_key' | 'stripe_refused' | 'stripe_unavailable' | 'truncated';
@@ -20,10 +23,12 @@ type NotEndedReason = 'no_key' | 'stripe_refused' | 'stripe_unavailable' | 'trun
 export type ErasureBillingOutcome =
   | { status: 'off' }
   | { status: 'ended'; cancelled: number }
-  | { status: 'not_ended'; reason: NotEndedReason; opsAlert: OpsPagerOutcome };
+  | { status: 'not_ended'; reason: NotEndedReason; opsAlert: OpsPagerOutcome }
+  | { status: 'erased_not_ended'; reason: NotEndedReason; opsAlert: OpsPagerOutcome };
 
 export interface ErasureBillingDeps {
   env?: Record<string, string | undefined>;
+  now?: Date;
   stripeFetch?: typeof fetch;
   pageDeps?: FailurePageDeps;
 }
@@ -37,23 +42,38 @@ export async function endBillingForFamilyErasure(
   if (!stripeBillingRevokeEnabled(env) || !stripeRefundEndsSubscriptionEnabled(env)) {
     return { status: 'off' };
   }
-  const notEnded = async (reason: NotEndedReason): Promise<ErasureBillingOutcome> => ({
-    status: 'not_ended',
-    reason,
-    opsAlert: await pageOps(
-      database,
-      { site: 'erasure_billing_not_ended', facts: { reason } },
-      deps.pageDeps,
-    ),
-  });
-
   const [family] = await database
     .select({
       customerId: schema.families.stripeCustomerId,
       subscriptionId: schema.families.stripeSubscriptionId,
+      scheduledDeletionAt: schema.families.scheduledDeletionAt,
     })
     .from(schema.families)
     .where(eq(schema.families.id, familyId));
+  const now = deps.now ?? new Date();
+  const pastWait =
+    family?.scheduledDeletionAt != null &&
+    now.getTime() - family.scheduledDeletionAt.getTime() >= GOOGLE_REVOKE_PENDING_RETENTION_MS;
+  const notEnded = async (reason: NotEndedReason): Promise<ErasureBillingOutcome> =>
+    pastWait
+      ? {
+          status: 'erased_not_ended',
+          reason,
+          opsAlert: await pageOps(
+            database,
+            { site: 'erasure_billing_erased_not_ended', facts: { reason }, ref: familyId },
+            deps.pageDeps,
+          ),
+        }
+      : {
+          status: 'not_ended',
+          reason,
+          opsAlert: await pageOps(
+            database,
+            { site: 'erasure_billing_not_ended', facts: { reason } },
+            deps.pageDeps,
+          ),
+        };
   const remembered = await database
     .select({
       customerId: sql<string | null>`${schema.auditLog.after}->>'stripeCustomerId'`,

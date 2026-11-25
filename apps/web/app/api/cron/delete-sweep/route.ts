@@ -123,7 +123,12 @@ export const GET = cronRoute('delete-sweep', async () => {
       'cron/delete-sweep: erased families past grace',
     );
   }
-  if (summary && (summary.erasureBilling.cancelled > 0 || summary.erasureBilling.notEnded > 0)) {
+  if (
+    summary &&
+    (summary.erasureBilling.cancelled > 0 ||
+      summary.erasureBilling.notEnded > 0 ||
+      summary.erasureBilling.erasedNotEnded > 0)
+  ) {
     // Counts only (rule #1). The erased family's own audit rows cascade away with it, so
     // this line is the run's record of the subscriptions it ended and the families it kept.
     console.info(

@@ -2,6 +2,7 @@ import { schema } from '@hale/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ErasureBillingDeps, endBillingForFamilyErasure } from '~/lib/billing/erasure-billing';
+import { GOOGLE_REVOKE_PENDING_RETENTION_MS } from '~/lib/integrations/google-disconnect';
 import { type FakeStripe, createFakeStripe, stripeError } from '~/lib/testing/fake-stripe';
 import { type TestDb, createTestDb, seedFamily } from '~/lib/testing/pglite';
 import { runDeletionSweep } from './delete';
@@ -49,7 +50,7 @@ afterEach(async () => {
   await db.exec('truncate table families, users, rate_limits cascade');
 });
 
-async function dueFamily(suffix: string | null): Promise<string> {
+async function dueFamily(suffix: string | null, scheduledDeletionAt = PAST): Promise<string> {
   const { familyId } = await seedFamily(db.database, 'Erased family');
   await db.database
     .update(schema.families)
@@ -57,7 +58,7 @@ async function dueFamily(suffix: string | null): Promise<string> {
       planTier: suffix ? 'plus' : 'free',
       stripeCustomerId: suffix ? `cus_${suffix}` : null,
       stripeSubscriptionId: suffix ? `sub_${suffix}` : null,
-      scheduledDeletionAt: PAST,
+      scheduledDeletionAt,
     })
     .where(eq(schema.families.id, familyId));
   return familyId;
@@ -120,7 +121,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(fake.subscriptions.get(`sub_${suffix}`)?.status).toBe('canceled');
     expect(await familyStands(familyId)).toBe(false);
     expect(summary.erased).toBe(1);
-    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0, erasedNotEnded: 0 });
   });
 
   it('a subscription on the same customer that names another family is left alone', async () => {
@@ -142,7 +143,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(fake.deletes()).toEqual([`sub_${suffix}`]);
     expect(fake.subscriptions.get(`sub_other_${suffix}`)?.status).toBe('active');
     expect(await familyStands(familyId)).toBe(false);
-    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0, erasedNotEnded: 0 });
     expect(pages).toEqual([]);
   });
 
@@ -171,7 +172,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(await familyStands(familyId)).toBe(true);
     expect(fake.subscriptions.get(`sub_${suffix}`)?.status).toBe('active');
     expect(first.erased).toBe(0);
-    expect(first.erasureBilling).toEqual({ cancelled: 0, notEnded: 1 });
+    expect(first.erasureBilling).toEqual({ cancelled: 0, notEnded: 1, erasedNotEnded: 0 });
     expect(pages).toHaveLength(1);
     expect(pages[0]).toContain('erasure_billing_not_ended');
     expect(pages[0]).toContain('stripe_refused');
@@ -180,7 +181,39 @@ describe('erasing a family Stripe still bills', () => {
 
     expect(fake.subscriptions.get(`sub_${suffix}`)?.status).toBe('canceled');
     expect(await familyStands(familyId)).toBe(false);
-    expect(second.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(second.erasureBilling).toEqual({ cancelled: 1, notEnded: 0, erasedNotEnded: 0 });
+  });
+
+  it('past the erasure wait, a cancel Stripe still refuses no longer holds the erasure, and #ops is paged with the family', async () => {
+    const fake = createFakeStripe();
+    const pages: string[] = [];
+    const suffix = `overdue${serial}`;
+    const familyId = await dueFamily(
+      suffix,
+      new Date(NOW.getTime() - GOOGLE_REVOKE_PENDING_RETENTION_MS - 60_000),
+    );
+    live(fake, `sub_${suffix}`, `cus_${suffix}`, familyId);
+    fake.intercept(
+      (call) => call.method === 'DELETE',
+      () => stripeError(403),
+      1,
+    );
+
+    const summary = await runDeletionSweep(
+      db.database,
+      NOW,
+      async () => {},
+      noPager,
+      (id) => endBillingForFamilyErasure(db.database, id, billingDeps(fake, pages)),
+    );
+
+    expect(await familyStands(familyId)).toBe(false);
+    expect(summary.erased).toBe(1);
+    expect(fake.subscriptions.get(`sub_${suffix}`)?.status).toBe('active');
+    expect(summary.erasureBilling).toEqual({ cancelled: 0, notEnded: 0, erasedNotEnded: 1 });
+    expect(pages).toEqual([
+      `Hale: ops page. site erasure_billing_erased_not_ended. reason stripe_refused. ref ${familyId}.`,
+    ]);
   });
 
   it('a family whose row holds no Stripe id is still found by its metadata and cancelled', async () => {
@@ -200,7 +233,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(fake.deletes()).toEqual([`sub_meta${serial}`]);
     expect(fake.subscriptions.get(`sub_meta${serial}`)?.status).toBe('canceled');
     expect(await familyStands(familyId)).toBe(false);
-    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0, erasedNotEnded: 0 });
     expect(pages).toEqual([]);
   });
 
@@ -231,7 +264,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(fake.deletes()).toEqual([subscriptionId]);
     expect(fake.subscriptions.get(subscriptionId)?.status).toBe('canceled');
     expect(await familyStands(familyId)).toBe(false);
-    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0 });
+    expect(summary.erasureBilling).toEqual({ cancelled: 1, notEnded: 0, erasedNotEnded: 0 });
     expect(pages).toEqual([]);
   });
 
@@ -281,7 +314,7 @@ describe('erasing a family Stripe still bills', () => {
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       'GET /v1/subscriptions/search',
     ]);
-    expect(summary.erasureBilling).toEqual({ cancelled: 0, notEnded: 0 });
+    expect(summary.erasureBilling).toEqual({ cancelled: 0, notEnded: 0, erasedNotEnded: 0 });
     expect(pages).toEqual([]);
   });
 
