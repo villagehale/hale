@@ -7,7 +7,7 @@ import { PILLARS } from '~/lib/site/narrative';
 
 /**
  * The hero loop is Prod's four icons with the four pillar names.
- * The first price card is Text at $0/mo, and the price-word is not on it.
+ * The first price card is Text at $0/mo in English, or $0 in French and Chinese, and the price-word is not on it.
  */
 
 const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], string>> = {
@@ -33,8 +33,8 @@ const PILLAR_TITLE: Record<Locale, Record<(typeof PILLARS)[number]['title'], str
 
 const TEXT_CARD: Record<Locale, { name: string; price: string; meta: string }> = {
   en: { name: 'Text', price: '$0/mo', meta: 'No card needed at all' },
-  fr: { name: 'Texto', price: '0 $/mois', meta: 'Aucune carte, vraiment.' },
-  zh: { name: 'iMessage', price: '每月 $0', meta: '完全不需要银行卡。' },
+  fr: { name: 'Texto', price: '$0', meta: 'Aucune carte, vraiment.' },
+  zh: { name: 'iMessage', price: '$0', meta: '完全不需要银行卡。' },
 };
 
 const locales = ['en', 'fr', 'zh'] as const;

@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { RedesignHome } from '~/components/redesign/home';
+import { RedesignPricing } from '~/components/redesign/pricing';
 
 /**
  * VIL-769: the 11-23 narrative's banned marketing lines must not appear in
@@ -122,6 +126,38 @@ describe('banned 11-23 marketing lines', () => {
       const text = readFileSync(path, 'utf8');
       for (const phrase of promoSpotPhrases) {
         if (text.toLowerCase().includes(phrase.toLowerCase())) hits.push(`${rel}: ${phrase}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+const YEARLY_BANNED = [/\/mois/, /每月/, /au mois/, /按月/, /Bientôt disponible/, /即将推出/];
+
+describe('fr and zh pages stay yearly-only', () => {
+  const base = {
+    smsNumber: '+16462352164',
+    prefill: "Hey Hale, what's going on?",
+    source: null,
+    promo: null,
+  } as const;
+
+  it('does not render monthly prices or coming-soon on home or pricing', () => {
+    const pages: string[] = [];
+    for (const locale of ['fr', 'zh'] as const) {
+      for (const priceSurface of ['legacy', 'list'] as const) {
+        for (const currency of ['CAD', 'USD'] as const) {
+          const props = { ...base, locale, priceSurface, currency };
+          pages.push(renderToStaticMarkup(createElement(RedesignHome, props)));
+          pages.push(renderToStaticMarkup(createElement(RedesignPricing, props)));
+        }
+      }
+    }
+    expect(pages.length).toBe(16);
+    const hits: string[] = [];
+    for (const html of pages) {
+      for (const pattern of YEARLY_BANNED) {
+        if (pattern.test(html)) hits.push(html.match(pattern)?.[0] ?? pattern.source);
       }
     }
     expect(hits).toEqual([]);

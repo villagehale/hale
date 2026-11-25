@@ -3,6 +3,8 @@ import {
   PAID_PLANS_LINE,
   maxAnnualLabel,
   orAnnualLabel,
+  paidPlansYearlyAnswer,
+  plusAnnualLabel,
   plusCloseSentence,
   plusMonthlyLabel,
   plusPriceSentence,
@@ -53,6 +55,7 @@ export function RedesignHome({
   const t = (s: string) => tx(locale, s);
   const mode = 'chooser' as const;
   const list = priceSurface === 'list';
+  const yearlyOnly = locale === 'fr' || locale === 'zh';
   
   return (
     <>
@@ -354,13 +357,13 @@ export function RedesignHome({
  <div className="hs-wrap">
   <div className="hs-head">
    <p className="hs-eyebrow">{t("Pricing")}</p>
-   <h2 className="hs-h2">{list ? t("Plus, by the year or the month.") : t("What you pay.")}</h2>
-   <p className="hs-lede">{list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+   <h2 className="hs-h2">{list || yearlyOnly ? t("Plus, by the year.") : t("What you pay.")}</h2>
+   <p className="hs-lede">{yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
   </div>
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
     <div className="hs-tier-head"><span className="hs-tier-name">{t("Text")}</span><span className="hs-tier-num">01</span></div>
-    <h3>{t("$0/mo")}</h3>
+    <h3>{yearlyOnly ? "$0" : t("$0/mo")}</h3>
     <p className="hs-tier-meta">{t("No card needed at all")}</p>
     <p className="hs-tier-body">{t("Unlimited chat, on your own or in your group chats. Hale finds what's on near you, and from Dec 1 signs them up with your ok.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Unlimited chat")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Live find")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Finds what fits")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Group chats and your co-parent")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("A nudge when a weekend’s empty")}</span></li></ul>
@@ -368,21 +371,25 @@ export function RedesignHome({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
+    {yearlyOnly ? (
+    <h3>{t(plusAnnualLabel(currency))}</h3>
+    ) : (<>
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
+    </>)}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Signs them up Dec 1.")}</span></li></ul>
-    <div className="hs-tier-cta">{list ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
+    <div className="hs-tier-cta">{list || yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
     <h3>{t(maxAnnualLabel(currency))}</h3>
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches, all year long.")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
-    <div className="hs-tier-cta"><button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button></div>
+    <div className="hs-tier-cta">{yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
   </ol>
-  <p className="hs-meta hs-foot-note">{list ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
+  <p className="hs-meta hs-foot-note">{list || yearlyOnly ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
  </div>
 </section>
 )}
@@ -396,7 +403,7 @@ export function RedesignHome({
   <div className="hs-faq-r">
    {promo ? <PromoFaqItems promo={promo} /> : (<>
    <FaqItem id="does-hale-book-or-register-for-me" question={t("Does Hale book or register for me?")}>{t(SIGNUP_ANSWER)}</FaqItem>
-   <FaqItem id="is-it-free" question={list ? t("What does Plus cost?") : t("What's the cost?")}>{list ? t(plusPriceStartSentence(currency)) : t(PAID_PLANS_LINE)}</FaqItem>
+   <FaqItem id="is-it-free" question={list || yearlyOnly ? t("What does Plus cost?") : t("What's the cost?")}>{yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusPriceStartSentence(currency)) : t(PAID_PLANS_LINE)}</FaqItem>
    </>)}
    <FaqItem id="do-i-need-an-app" question={t("Do I need an app?")}>{t("No. Hale works in iMessage and regular texts. Add it to a group chat, or text it on its own.")}</FaqItem>
    <FaqItem id="what-about-our-privacy" question={t("What about our privacy?")}><Phrase locale={locale} sentence="Your family’s data is never sold or used for ads. Nothing from your inbox or personal calendar shows up in a group chat, and STOP ends it any time. Our privacy policy has the details." phrase="privacy policy" href={localeHref(locale, "/privacy")} /></FaqItem>
@@ -416,7 +423,7 @@ export function RedesignHome({
     <p className="hs-close-sub">{promo.saleName}. Plus is {promo.plus.saleLabel}. Join by Dec 31. Refund anytime.</p>
     </>) : (<>
     <h2>{t("Start with a text.")}</h2>
-    <p className="hs-close-sub">{list ? t(plusCloseSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+    <p className="hs-close-sub">{yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusCloseSentence(currency)) : t(PAID_PLANS_LINE)}</p>
     </>)}
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="closing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
     <p className="hs-close-terms">{t("You text first.")}</p>
