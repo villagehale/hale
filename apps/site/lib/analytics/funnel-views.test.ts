@@ -81,7 +81,7 @@ describe('pricing_viewed privacy gate', () => {
       gclid: 'Cj0Click',
       source_code: 'poster-oakville',
       email: 'parent@example.com',
-      phone: '+15550100100',
+      phone: 'a-phone-number',
       name: 'Sam',
       child: 'Ava',
     });
