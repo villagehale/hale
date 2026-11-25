@@ -17,14 +17,14 @@ import {
 import { readParentLanguage } from '~/lib/channel/parent-language';
 import { replyProse } from '~/lib/channel/reply-copy/apply';
 import { resolveReplyClient } from '~/lib/channel/reply-copy/client';
-import { type ContentClass, teenChildIds } from '~/lib/channel/role-scope';
+import type { ContentClass } from '~/lib/channel/role-scope';
 import { isWithinQuietHours } from '~/lib/loop/prefs';
 import { scopeFamilies } from '~/lib/preview/family-scope';
 import { linqGroupCoparentEnabled } from './config';
 import { LINQ_GROUP_TRIGGER_PHRASE } from './group';
 import { type GroupHoldReason, groupAudienceAllows } from './group-audience';
 import { groupPassedSyncLine, groupPickedSyncLine } from './group-coparent-copy';
-import { namesTeen } from './kid-event';
+import { type TeenRoster, namesTeen, teenRoster, unnamedTeenMayOwn } from './kid-event';
 import type { ListChatHandles } from './roster';
 import { LinqSendError, listLinqParticipantHandles } from './transport';
 
@@ -363,8 +363,8 @@ export async function familySpeechLanguage(
   return acceptReplyLanguage(family?.primaryLanguage);
 }
 
-/** The names of this family's 13+ children as of `now`: never said in a group line (rule #1). */
-async function familyTeenNames(database: Database, familyId: string, now: Date): Promise<string[]> {
+/** This family's children as the teen guard reads them as of `now` (rule #1). */
+async function familyTeens(database: Database, familyId: string, now: Date): Promise<TeenRoster> {
   const children = await database
     .select({
       id: schema.children.id,
@@ -373,10 +373,12 @@ async function familyTeenNames(database: Database, familyId: string, now: Date):
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  const teens = teenChildIds(children, now);
-  return children
-    .filter((child) => teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  return teenRoster(children, now);
+}
+
+/** A group line about a 13+ child: it names one, or a teen with no name could own it. */
+function aboutTeen(text: string, teens: TeenRoster): boolean {
+  return namesTeen(text, teens.teenNames) || unnamedTeenMayOwn(text, teens);
 }
 
 /**
@@ -424,8 +426,8 @@ export async function queueGroupActivityDecision(
   if (decision.decision === 'duty' && !dutyTitleMayBeSpoken(decision.activity)) return 'skipped';
   const activity = decision.activity.trim();
   const kid = decision.kid.trim();
-  const teens = await familyTeenNames(database, input.familyId, input.now);
-  if (namesTeen(`${activity} ${kid}`, teens)) return 'skipped';
+  const teens = await familyTeens(database, input.familyId, input.now);
+  if (aboutTeen(`${activity} ${kid}`, teens)) return 'skipped';
   const day = timed ? (decision.day?.trim() ?? null) : null;
   const time = timed ? (decision.time?.trim() ?? null) : null;
   const flushAfter = new Date(input.now.getTime() + SETTLE_MS);
@@ -608,9 +610,9 @@ export async function flushGroupDecisionSyncs(
       );
       continue;
     }
-    const teens = await familyTeenNames(database, familyId, input.now);
+    const teens = await familyTeens(database, familyId, input.now);
     const withheld = queued
-      .filter((row) => namesTeen(`${row.activity} ${row.kid}`, teens))
+      .filter((row) => aboutTeen(`${row.activity} ${row.kid}`, teens))
       .map((row) => row.id);
     if (withheld.length > 0) {
       await closeSyncsUnsent(database, {

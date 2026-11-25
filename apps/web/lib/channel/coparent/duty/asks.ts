@@ -11,7 +11,13 @@ import {
   familyOutboundTarget,
 } from '~/lib/channel/linq/family-outbound';
 import { dutyAssigneeIds } from '~/lib/channel/linq/group-members';
-import { splitKidEvent, spokenBlockTitle, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import {
+  type TeenRoster,
+  splitKidEvent,
+  spokenBlockTitle,
+  teenRoster,
+  withoutTeenTitles,
+} from '~/lib/channel/linq/kid-event';
 import { LinqSendError } from '~/lib/channel/linq/transport';
 import { withOptOut } from '~/lib/channel/opt-out';
 import {
@@ -349,7 +355,7 @@ interface Household {
   childNames: string[];
   /** The first names a group line may say: never a 13+ child's (rule #1). */
   childFirstNames: string[];
-  teenNames: string[];
+  teens: TeenRoster;
   timeZone: string;
   language: 'en' | 'fr';
   chatId: string | null;
@@ -396,12 +402,9 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
       })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId))
-  ).filter((row) => row.familyId === familyId && row.name);
+  ).filter((row) => row.familyId === familyId);
   const teens = teenChildIds(children, now);
-  const childNames = children.flatMap((row) => (row.name ? [row.name] : []));
-  const teenNames = children
-    .filter((row) => teens.has(row.id))
-    .flatMap((row) => (row.name ? [row.name] : []));
+  const roster = teenRoster(children, now);
   const named =
     parentIds.length === 0
       ? []
@@ -418,12 +421,12 @@ async function loadHousehold(database: Database, familyId: string, now: Date): P
     parentIds,
     parentNames,
     primaryUserId: primary,
-    childNames,
+    childNames: roster.childNames,
     childFirstNames: children
       .filter((row) => !teens.has(row.id))
       .map((row) => spokenFirstName(row.name))
       .filter((name): name is string => name !== null),
-    teenNames,
+    teens: roster,
     timeZone,
     language: primary
       ? await readParentCopyLanguage(database, { familyId, parentUserId: primary })
@@ -644,7 +647,7 @@ async function buildOccasions(
   familyId: string,
   home: Pick<
     Household,
-    'childNames' | 'childFirstNames' | 'teenNames' | 'parentNames' | 'language' | 'chatId'
+    'childNames' | 'childFirstNames' | 'teens' | 'parentNames' | 'language' | 'chatId'
   >,
   now: Date,
 ): Promise<{
@@ -688,10 +691,9 @@ async function buildOccasions(
       (row) =>
         row.familyId === familyId &&
         row.standing !== 'invited' &&
-        !(row.childName !== null && teenNameIn(row.childName, home.teenNames)),
+        !(row.childName !== null && teenNameIn(row.childName, home.teens.teenNames)),
     ),
-    home.childNames,
-    home.teenNames,
+    home.teens,
   )
     .filter((row) => row.kidRelated)
     .map((row) => ({ ...row, title: spokenBlockTitle(row.standing, row.title) }));

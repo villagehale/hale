@@ -13,9 +13,8 @@ import {
 } from '~/lib/channel/activity/calendar-check';
 import { familyLocalNow } from '~/lib/channel/coach/local-now';
 import { knownHouseholdTimezone, knownParentTimezone } from '~/lib/channel/household-timezone';
-import { withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import { teenRoster, withoutTeenTitles } from '~/lib/channel/linq/kid-event';
 import { boundedLine } from '~/lib/channel/proactive/tools';
-import { teenChildIds } from '~/lib/channel/role-scope';
 import { pipelineClient } from '~/lib/pipeline/client';
 import { nextDayCheckbackEnabled } from './flag';
 import { type NextDayCheckbackPayload, askerReturned } from './sweep';
@@ -186,13 +185,9 @@ export async function loadCheckbackCalendar(
       .from(schema.children)
       .where(eq(schema.children.familyId, input.familyId)),
   ]);
-  const teens = teenChildIds(children, input.now);
   const titled = withoutTeenTitles(
     bookings.map((row) => ({ ...row, kidRelated: true })),
-    children.flatMap((child) => (child.name ? [child.name] : [])),
-    children
-      .filter((child) => teens.has(child.id))
-      .flatMap((child) => (child.name ? [child.name] : [])),
+    teenRoster(children, input.now),
   );
   const booked: WatchCalendarEntry[] = [];
   for (const row of titled) {

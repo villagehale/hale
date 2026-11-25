@@ -7,6 +7,7 @@ import type { ActivityPromise } from '~/lib/channel/activity/commitment';
 import type { ActivityFinder } from '~/lib/channel/activity/lane';
 import type { BoundActivityReader } from '~/lib/channel/activity/reader';
 import { findActivitiesTool, promiseActivityFollowUpTool } from '~/lib/channel/activity/tools';
+import { type TeenRoster, teenRoster, unnamedTeenMayOwn } from '~/lib/channel/linq/kid-event';
 import { type GroupListToolPorts, groupListTools } from '~/lib/channel/lists/tools';
 import {
   type SaidSignupToolPorts,
@@ -976,22 +977,29 @@ export interface CalendarBlockRow {
   title: string | null;
 }
 
+function isTeenRoster(teens: TeenRoster | readonly string[]): teens is TeenRoster {
+  return !Array.isArray(teens);
+}
+
 /**
  * The block the model may see.
  *
  * A non-kid row is busy/free only: the title is dropped even when a row somehow
  * still holds one (the table CHECK is the other half of that rule). A title that
  * names a teenager is replaced with the same private label family events use, so
- * the name never reaches the tool result.
+ * the name never reaches the tool result. So is one a teen with no name on file could own.
  */
 export function calendarBlockForCoach(
   row: CalendarBlockRow,
-  teenNames: readonly string[],
+  teens: TeenRoster | readonly string[],
 ): CalendarBlockView | null {
   if (row.startAt === null) return null;
   let title: string | null = null;
   if (row.kidRelated && row.title !== null && row.title.trim().length > 0) {
-    title = teenNameIn(row.title, teenNames) ? PRIVATE_EVENT_WHAT : row.title;
+    const teen = isTeenRoster(teens)
+      ? teenNameIn(row.title, teens.teenNames) || unnamedTeenMayOwn(row.title, teens)
+      : teenNameIn(row.title, teens);
+    title = teen ? PRIVATE_EVENT_WHAT : row.title;
   }
   return { startsAt: row.startAt, endsAt: row.endAt, allDay: row.allDay, title };
 }
@@ -1178,7 +1186,11 @@ async function readConnectedWeek(
       .from(schema.integrations)
       .where(eq(schema.integrations.familyId, familyId)),
     database
-      .select({ name: schema.children.name, dateOfBirth: schema.children.dateOfBirth })
+      .select({
+        id: schema.children.id,
+        name: schema.children.name,
+        dateOfBirth: schema.children.dateOfBirth,
+      })
       .from(schema.children)
       .where(eq(schema.children.familyId, familyId)),
     database
@@ -1260,13 +1272,11 @@ async function readConnectedWeek(
       : Promise.resolve([]),
   ]);
 
-  const teenNames = children
-    .filter((child) => isTeenChild({ dateOfBirth: child.dateOfBirth }, now))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  const teens = teenRoster(children, now);
 
   const blocks: CalendarBlockView[] = [];
   for (const row of blockRows) {
-    const view = calendarBlockForCoach(row, teenNames);
+    const view = calendarBlockForCoach(row, teens);
     if (view) blocks.push(view);
   }
 
@@ -1277,7 +1287,9 @@ async function readConnectedWeek(
     mailSync: connectorSync(connections.filter((row) => row.provider === 'gmail')),
     processedCount: Number(countRow?.n ?? 0),
     since: isoOf(countRow?.since),
-    activities: activityRows.filter((row) => !teenNameIn(row.title, teenNames)),
+    activities: activityRows.filter(
+      (row) => !teenNameIn(row.title, teens.teenNames) && !unnamedTeenMayOwn(row.title, teens),
+    ),
     trips: tripRows,
   };
 }

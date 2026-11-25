@@ -3,7 +3,13 @@ import { and, asc, eq, gt, gte, inArray, isNull, notExists, sql } from 'drizzle-
 import { f14EnabledFor } from '~/lib/channel/f14';
 import { TEXTABLE_ROLES } from '~/lib/channel/family-recipients';
 import { knownParentTimezone } from '~/lib/channel/household-timezone';
-import { withoutTeenTitles } from '~/lib/channel/linq/kid-event';
+import {
+  type TeenRoster,
+  namesTeen,
+  splitKidEvent,
+  teenRoster,
+  withoutTeenTitles,
+} from '~/lib/channel/linq/kid-event';
 import {
   type OutboundGatePorts,
   assertProactiveSendAllowed,
@@ -140,8 +146,7 @@ export function nextDayCheckbackDraft(input: {
 
 interface FamilyFacts {
   teenIds: Set<string>;
-  childNames: string[];
-  teenNames: string[];
+  teens: TeenRoster;
 }
 
 async function familyFacts(database: Database, familyId: string, now: Date): Promise<FamilyFacts> {
@@ -153,29 +158,27 @@ async function familyFacts(database: Database, familyId: string, now: Date): Pro
     })
     .from(schema.children)
     .where(eq(schema.children.familyId, familyId));
-  const teenIds = teenChildIds(children, now);
-  return {
-    teenIds,
-    childNames: children.flatMap((child) => (child.name ? [child.name] : [])),
-    teenNames: children
-      .filter((child) => teenIds.has(child.id))
-      .flatMap((child) => (child.name ? [child.name] : [])),
-  };
+  return { teenIds: teenChildIds(children, now), teens: teenRoster(children, now) };
 }
 
-/** A 13+ child's thread, by id or by a title or step the age gate credits to a teen. */
+/**
+ * A 13+ child's thread, by id or by a title or step the age gate credits to a teen. A
+ * step stays with the child its title names, so it scopes that thread only by naming a
+ * teen itself.
+ */
 function teenScoped(
   row: { title: string; nextStep: string | null; childIds: readonly string[] },
   facts: FamilyFacts,
 ): boolean {
   if (row.childIds.some((id) => facts.teenIds.has(id))) return true;
-  const lines = [row.title, row.nextStep].filter((line): line is string => line !== null);
-  const kept = withoutTeenTitles(
-    lines.map((title) => ({ title, kidRelated: true })),
-    facts.childNames,
-    facts.teenNames,
-  );
-  return kept.some((line) => line.title === null);
+  const teenLine = (line: string) =>
+    withoutTeenTitles([{ title: line, kidRelated: true }], facts.teens)[0]?.title === null;
+  if (teenLine(row.title)) return true;
+  if (row.nextStep === null) return false;
+  const titleKid = splitKidEvent(row.title, facts.teens.childNames, facts.teens.size)?.kid;
+  return titleKid === undefined
+    ? teenLine(row.nextStep)
+    : namesTeen(row.nextStep, facts.teens.teenNames);
 }
 
 /**

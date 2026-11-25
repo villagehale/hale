@@ -51,6 +51,7 @@ import {
   classifyKidCalendarItem,
   splitKidEvent,
   spokenBlockTitle,
+  teenRoster,
   titleForStorage,
   withoutTeenTitles,
 } from './kid-event';
@@ -607,11 +608,6 @@ function childIdForKidTitle(
   return children.find((child) => (child.name?.trim() ?? '') === kid)?.id ?? null;
 }
 
-function soleChildIsTeen(children: readonly { id: string }[], teens: ReadonlySet<string>): boolean {
-  const only = children.length === 1 ? children[0] : undefined;
-  return only !== undefined && teens.has(only.id);
-}
-
 function blockParts(
   block: BusyBlock,
   childNames: readonly string[],
@@ -877,10 +873,7 @@ export async function rememberCalendarChanges(
   },
 ): Promise<void> {
   const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
-  const teens = teenChildIds(input.children, input.now);
-  const teenNames = input.children
-    .filter((child) => teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  const teens = teenRoster(input.children, input.now);
   for (const change of input.changes) {
     const stamp = changeStamp(change);
     // The teen check reads the arriving title, because someone else's title is dropped below
@@ -892,9 +885,7 @@ export async function rememberCalendarChanges(
           kidRelated: classifyKidCalendarItem({ title: change.title, childNames }),
         },
       ],
-      childNames,
-      teenNames,
-      soleChildIsTeen(input.children, teens),
+      teens,
     );
     const kidRelated = screened?.kidRelated === true;
     // The arriving title is read here to find the kid and is stored only when it is the
@@ -1348,7 +1339,7 @@ interface ClashPlanningInput {
   calendarUserIds: readonly string[];
   blocks: readonly BusyBlock[];
   remembered: readonly RememberedLogistics[];
-  children: readonly { id: string; name: string | null }[];
+  children: readonly { id: string; name: string | null; dateOfBirth: string }[];
   teens: ReadonlySet<string>;
 }
 
@@ -1427,17 +1418,9 @@ async function planClashes(
           : ahead,
       ),
     );
-  const childNames = input.children.flatMap((child) => (child.name ? [child.name] : []));
-  const teenNames = input.children
-    .filter((child) => input.teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  const roster = teenRoster(input.children, input.now);
   const aboutTeen = (title: string) =>
-    withoutTeenTitles(
-      [{ title, kidRelated: true }],
-      childNames,
-      teenNames,
-      soleChildIsTeen(input.children, input.teens),
-    )[0]?.title === null;
+    withoutTeenTitles([{ title, kidRelated: true }], roster)[0]?.title === null;
   // A private plan's calendar copy is busy time wherever either of them sits, so a copy
   // the parent dragged to another day still never carries the plan's title.
   const events = rows
@@ -1487,7 +1470,7 @@ async function planClashes(
   for (const person of calendar.named) {
     if (!people.some((known) => known.id === person.id)) people.push(person);
   }
-  const kids = childNames.filter((name) => !teenNames.includes(name));
+  const kids = roster.childNames.filter((name) => !roster.teenNames.includes(name));
   return { parents, people, plans: calendar.plans, busy: calendar.busy, kids };
 }
 
@@ -1510,19 +1493,12 @@ async function loadSweepBlocks(
     .where(eq(schema.parentCalendarBlocks.familyId, familyId));
   const teens = teenChildIds(context.children, now);
   const childNames = context.children.flatMap((child) => (child.name ? [child.name] : []));
-  const teenNames = context.children
-    .filter((child) => teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  const roster = teenRoster(context.children, now);
   const blocks = rows.map((row): BusyBlock => {
     const teen =
       (row.childId !== null && teens.has(row.childId)) ||
       (row.title !== null &&
-        withoutTeenTitles(
-          [{ title: row.title, kidRelated: true }],
-          childNames,
-          teenNames,
-          soleChildIsTeen(context.children, teens),
-        )[0]?.title === null);
+        withoutTeenTitles([{ title: row.title, kidRelated: true }], roster)[0]?.title === null);
     const kidRelated = row.kidRelated && !teen;
     const recorded = context.children.find((child) => child.id === row.childId)?.name;
     const named = row.title ? splitKidEvent(row.title, childNames)?.kid : undefined;
@@ -2613,17 +2589,9 @@ export async function familyFreeBusy(
         ),
       ),
   ]);
-  const childNames = children.flatMap((child) => (child.name ? [child.name] : []));
-  const teenNames = children
-    .filter((child) => teens.has(child.id))
-    .flatMap((child) => (child.name ? [child.name] : []));
+  const roster = teenRoster(children, now);
   const aboutTeen = (title: string) =>
-    withoutTeenTitles(
-      [{ title, kidRelated: true }],
-      childNames,
-      teenNames,
-      soleChildIsTeen(children, teens),
-    )[0]?.title === null;
+    withoutTeenTitles([{ title, kidRelated: true }], roster)[0]?.title === null;
   const privateCopies = new Set(
     placed
       .filter(
