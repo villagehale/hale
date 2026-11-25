@@ -320,7 +320,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 <Check />
               </span>
               <div>
-                <h3>Locked in for life</h3>
+                <h3>Locked in</h3>
                 <p>
                   Join by Dec 31 and your price ({promo.max.saleLabel} for Max,{' '}
                   {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. It
