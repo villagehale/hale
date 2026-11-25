@@ -53,7 +53,13 @@ function sourceFiles(): string[] {
   return walk(root).filter((path) => {
     const rel = relative(root, path);
     if (rel.startsWith(`lib${'/'}answers${'/'}`)) return false;
-    if (rel.startsWith('app/fonts/') && rel.endsWith('-OFL.txt')) return false;
+    // SIL OFL ships beside the self-hosted faces. The license text is not a price pitch.
+    if (
+      rel.endsWith('-OFL.txt') &&
+      (rel.startsWith('app/fonts/') || rel.startsWith('components/promo/fonts/'))
+    ) {
+      return false;
+    }
     return true;
   });
 }
