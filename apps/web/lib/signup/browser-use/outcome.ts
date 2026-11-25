@@ -43,6 +43,25 @@ export const BROWSER_USE_SIGNUP_DETAILS = [
 
 export type BrowserUseSignupDetail = (typeof BROWSER_USE_SIGNUP_DETAILS)[number];
 
+/**
+ * VIL-718 · the plan and assisted lanes can also say the site wants a passkey (Face ID, a
+ * security key). The one-shot lane's schema stays as it was: it has no takeover to offer.
+ */
+export const BROWSER_USE_PLAN_DETAILS = [...BROWSER_USE_SIGNUP_DETAILS, 'passkey'] as const;
+
+export type BrowserUsePlanDetail = (typeof BROWSER_USE_PLAN_DETAILS)[number];
+
+/**
+ * VIL-718 · a run without the takeover link reads a passkey as the sign-in wall it was
+ * reported as before the detail existed, so what happens after the stop is unchanged.
+ */
+export function detailForLane(
+  detail: BrowserUsePlanDetail,
+  takeover: boolean,
+): BrowserUsePlanDetail {
+  return detail === 'passkey' && !takeover ? 'login_wall' : detail;
+}
+
 const signupOutput = z.object({
   outcome: z.enum(BROWSER_USE_SIGNUP_OUTCOMES),
   detail: z.enum(BROWSER_USE_SIGNUP_DETAILS),
@@ -139,7 +158,7 @@ export const BROWSER_USE_PLAN_OUTCOMES = [
 
 const planOutput = z.object({
   outcome: z.enum(BROWSER_USE_PLAN_OUTCOMES),
-  detail: z.enum(BROWSER_USE_SIGNUP_DETAILS),
+  detail: z.enum(BROWSER_USE_PLAN_DETAILS),
   choice_index: z.number().int().nonnegative().nullable(),
   checkout_url: z.string().nullable(),
   cart_total_cents: z.number().int().nonnegative().nullable(),
@@ -193,7 +212,7 @@ export const BROWSER_USE_PLAN_OUTPUT_SCHEMA: Record<string, unknown> = {
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_PLAN_OUTCOMES] },
-    detail: { type: 'string', enum: [...BROWSER_USE_SIGNUP_DETAILS] },
+    detail: { type: 'string', enum: [...BROWSER_USE_PLAN_DETAILS] },
     choice_index: { type: ['integer', 'null'], minimum: 0 },
     checkout_url: { type: ['string', 'null'] },
     cart_total_cents: { type: ['integer', 'null'], minimum: 0 },

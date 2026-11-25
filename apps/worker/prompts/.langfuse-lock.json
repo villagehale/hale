@@ -409,6 +409,11 @@
     "version": null,
     "sha256": "9d928ce20aec7ec5ee2b9380f64d0fb16778017bede7239550d921242f7ccb58"
   },
+  "judges/signup-takeover-notice": {
+    "name": "judges/signup-takeover-notice",
+    "version": null,
+    "sha256": "e8c19e37d93608922416f992b92995331de2ddc4c522c159819c4433a17cd6bd"
+  },
   "judges/spot-open-voice": {
     "name": "judges/spot-open-voice",
     "version": null,

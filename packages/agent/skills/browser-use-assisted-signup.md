@@ -14,7 +14,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
 ## Steps
 
 1. Open `registration_url`. The saved browser profile carries the parent's sign-in. Do not sign out.
-2. If the site asks you to sign in, stop with `needs_login`. Do not press a sign-in button and do not fill a sign-in form: the parent signs in themselves.
+2. If the site asks you to sign in, stop with `needs_login`. Do not press a sign-in button and do not fill a sign-in form: the parent signs in themselves. When the sign-in it asks for is a passkey (Face ID, Touch ID, a security key, or "use your passkey"), use detail `passkey`.
 3. If registration has not opened yet, wait on the page the way a parent would. Reload at most once a minute, and only when the page does not update itself. If a waiting room or queue appears, stay in it and wait for your turn. Use this one tab only.
 4. When registration is open, go through `choices` in rank order. For each, find the session whose dates and times match `starts_at` and `ends_at`; match the dates and times, not just the name. Take the first one that has a spot and whose fee is not above `max_price_cents`. If a choice is full, move to the next. If more than one session matches a choice, skip that choice.
 5. Press the session's own button that opens its registration form (often "Enroll" or "Register"), once.
@@ -44,7 +44,7 @@ The facts for this plan are in the JSON block at the end, under "This registrati
   - `needs_login` — the site asked for a sign-in.
   - `needs_human` — a captcha, a verification code, a child the account does not list, no session matching any choice, every open choice above `max_price_cents`, or anything else that only the parent can do.
   - `error` — the site failed or you could not continue for another reason.
-- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
+- `detail`: the closest of `none`, `captcha`, `verification_code`, `login_wall`, `passkey`, `waiting_room`, `timed_open`, `waiver`, `medical`, `unexpected_field`, `session_not_found`, `price_change`, `page_error`.
 - `choice_index`: for `ready_for_parent`, the position in `choices` of the session you filled, counting from 0 (rank 1 is 0). Otherwise null.
 - `page_url`: the address of the page you stopped on, or null.
 - `fee_cents`: the session's fee as shown, in cents, or null when none is shown.

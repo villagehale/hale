@@ -7,6 +7,7 @@ import {
   BrowserUseEngineThrew,
   PAYMENT_RUN_MAX_COST_USD,
   SIGNUP_RUN_MAX_COST_USD,
+  parentTakesOverLiveView,
 } from '../browser-use/engine';
 import { browserUseSignupPaymentEnabled } from '../browser-use/flag';
 import { type ReceiptResult, captureMaskedReceipt } from '../browser-use/receipt';
@@ -23,6 +24,7 @@ import {
   PlanEngineThrew,
   type PlanPaymentInput,
   type PlanResumeToken,
+  TAKEOVER_RESUME_RUN_MAX_COST_USD,
 } from '../browser-use/plan-engine';
 import { browserUseProxyFor } from '../browser-use/proxy';
 import { loadProviderSession, recordBrowserUseProfile } from '../browser-use/vault';
@@ -36,6 +38,9 @@ import { markCredentialsStale, readCredentialsForRun } from '../credentials/stor
 import { loginLinkExpiresAt } from '../login-link/code';
 import { mintFreshLoginLink } from '../login-link/store';
 import { BROWSER_USE_REGISTRATION_RESERVE_USD, signupSpendingCap } from '../run';
+import { takeoverLinkEnabled } from '../takeover/flag';
+import { TAKEOVER_MAX_ROUNDS, type TakeoverPurpose, takeoverPurpose } from '../takeover/purpose';
+import { lapseTakeover, letGoOfTakeover } from '../takeover/store';
 import {
   loadSignupIdentity,
   markOffer,
@@ -66,6 +71,7 @@ import {
   type ClaimedPlan,
   claimDuePlan,
   claimResumablePlan,
+  freeLapsedParkedPlans,
   loadPlanConsent,
   parkUnlessOpsStopped,
   planFieldsToType,
@@ -76,6 +82,14 @@ import {
   savePlanResume,
   writePlanAudit,
 } from './store';
+import {
+  type TakeoverDeps,
+  type TakeoverStop,
+  isTakeoverStop,
+  offerTakeover,
+  takeoverDepsFromEnv,
+  tellTakeoverUnfinished,
+} from './takeover';
 import { planModeFor } from './towns';
 import { planOpensAtLocal } from './writer';
 
@@ -110,6 +124,16 @@ export const PLAN_SWEEP_MAX = 10;
  */
 export const PLAN_RUN_ALLOWANCE_USD =
   SIGNUP_RUN_MAX_COST_USD + CHECKOUT_REVIEW_RUN_MAX_COST_USD + PAYMENT_RUN_MAX_COST_USD + 1;
+
+/**
+ * VIL-718 · with the takeover link on, a plan may run one more turn after each step the parent
+ * takes, so its hold covers the cap of every turn it can ask for. Off, the hold is what it was.
+ */
+export function planRunAllowanceUsd(takeover: boolean): number {
+  return (
+    PLAN_RUN_ALLOWANCE_USD + (takeover ? TAKEOVER_MAX_ROUNDS * TAKEOVER_RESUME_RUN_MAX_COST_USD : 0)
+  );
+}
 
 export interface PlanSignupRunner {
   run(input: BrowserUsePlanInput): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>;
@@ -160,6 +184,13 @@ export type PlanRunDetail =
   | 'open_window_passed'
   /** Registration is still ahead. The plan was not started and the parent is not texted. */
   | 'before_open'
+  /**
+   * VIL-718 · a takeover ended without the step done: its link ran out, the site still asked
+   * for the step after the parent's done, or it asked for one more than the plan may ask.
+   */
+  | 'takeover_unfinished'
+  /** VIL-718 · the model wrote no takeover text: nothing was sent and #ops was paged. */
+  | 'takeover_unwritten'
   /** VIL-715 · no approval Hale can read stands behind this plan. Nothing was charged. */
   | 'terms_unreadable';
 
@@ -183,6 +214,8 @@ export interface PlanRunDeps {
   autoHosts?: readonly string[];
   /** Event notices (rejected password, mismatched options). Undefined uses env wiring. */
   prep?: PlanPrepDeps;
+  /** VIL-718 · the takeover texts, their 1:1 door and clock. Undefined uses env wiring. */
+  takeover?: TakeoverDeps;
 }
 
 export type PlanRunSummary =
@@ -222,6 +255,9 @@ export async function runDueSignupPlans(
     console.warn({ skipped: 'not_configured' }, 'signup plans: browser use engine not configured');
     return { skipped: 'not_configured', plans: [] };
   }
+  // Not gated on the takeover flag: a card already out when the flag goes off still closes.
+  const freed = await freeLapsedParkedPlans(database);
+  if (freed > 0) console.info({ freed }, 'signup plans: freed parked plans whose yes lapsed');
   if (registrationPlanAtOpenEnabled()) {
     const released = await releaseUnstartedPlansBeforeOpen(database, { now: input.now });
     for (const row of released) {
@@ -307,6 +343,7 @@ const LEFT_NOTHING_DETAILS: ReadonlySet<PlanRunDetail> = new Set<PlanRunDetail>(
   'captcha',
   'verification_code',
   'login_wall',
+  'passkey',
   'password_rejected',
   'waiting_room',
   'timed_open',
@@ -337,9 +374,15 @@ function leftNothingAtProvider(ending: {
   );
 }
 
-/** A run exists remotely: the family holds a place in line, or a payment may be under way. */
+/**
+ * A run exists remotely: the family holds a place in line, a payment may be under way, or a
+ * browser is open for the parent's takeover.
+ */
 function holdsRun(resume: PlanResumeToken | null): resume is PlanResumeToken {
-  return resume !== null && (resume.phase === 'paying' || resume.runId !== null);
+  return (
+    resume !== null &&
+    (resume.phase === 'paying' || resume.phase === 'takeover' || resume.runId !== null)
+  );
 }
 
 /** The other children's names, read for the cart's kid check. Never sent to Browser Use. */
@@ -363,6 +406,16 @@ async function runOnePlan(
 ): Promise<PlanRunSummary> {
   const now = sweep.now;
   const held = holdsRun(plan.resume) ? plan.resume : null;
+  // VIL-718 · a plan parked on a takeover link, and the last takeover this plan asked for.
+  // With the flag off a parked plan still ends: a done already stamped resumes, and a card
+  // still open (its page and routes now answer gone) closes honestly when it runs out.
+  const takeoverOn = takeoverLinkEnabled();
+  const parked = plan.resume?.phase === 'takeover' ? plan.resume : null;
+  const lastTakeover: { purpose: TakeoverPurpose; round: number } | null = parked
+    ? { purpose: parked.purpose, round: parked.round }
+    : plan.resume?.phase === 'signup'
+      ? (plan.resume.takeover ?? null)
+      : null;
   if (
     registrationPlanAtOpenEnabled() &&
     !plan.alreadyOpen &&
@@ -450,6 +503,8 @@ async function runOnePlan(
       /** The browser this ending leaves open for the parent. */
       openBrowser?: PlanResumeToken | null;
     },
+    /** VIL-718 · the parent was already told (or deliberately not): no second notice. */
+    told?: { notice: PlanNotice },
   ): Promise<PlanRunSummary> => {
     // Ending before this sweep reached the engine: let go of the run an earlier one left going.
     const released = held && !engineRan ? await runner.release(held) : null;
@@ -465,9 +520,13 @@ async function runOnePlan(
     // that ran is always reported.
     const opsStopped =
       ending.charged === 'nothing' && !paymentMayExist && (await planOpsStopped(database, plan));
-    // A run let go here was cancelled before anyone read what it did.
-    const letGoUnread = held !== null && !engineRan;
-    const silenced = opsStopped && !letGoUnread && leftNothingAtProvider(ending);
+    // A run let go here was cancelled before anyone read what it did. A browser the parent has
+    // had can hold what they did in it, whatever the last answer says, unless that answer is a
+    // real result the parent should hear as it is.
+    const unprovable =
+      (held !== null && !engineRan) ||
+      (lastTakeover !== null && ending.outcome !== 'completed' && ending.outcome !== 'waitlist');
+    const silenced = opsStopped && !unprovable && leftNothingAtProvider(ending);
     const result = silenced
       ? {
           ...ending,
@@ -483,9 +542,18 @@ async function runOnePlan(
         ? // It cannot prove nothing was left, so it never reads as "nothing charged" later.
           {
             ...ending,
-            outcome: letGoUnread ? ('needs_human' as const) : ending.outcome,
-            detail: letGoUnread ? ('unconfirmed' as const) : ending.detail,
+            outcome: unprovable ? ('needs_human' as const) : ending.outcome,
+            detail: unprovable ? ('unconfirmed' as const) : ending.detail,
             charged: 'unknown' as const,
+            ...(unprovable
+              ? {
+                  liveViewUrl: null,
+                  holdExpiresAt: null,
+                  sessionCostUsd: ending.openBrowser
+                    ? await runner.release(ending.openBrowser)
+                    : ending.sessionCostUsd,
+                }
+              : {}),
           }
         : ending;
     if (opsStopped && !silenced) {
@@ -524,8 +592,11 @@ async function runOnePlan(
       ...(bound ? { terms: bound } : {}),
       ...(receipt ? { receipt } : {}),
     };
-    const notice: PlanNotice =
-      result.detail === 'authorization_lapsed'
+    // A close withheld because the stop landed first leaves the parent unheard: they are told.
+    const toldStands = told && !(opsStopped && !silenced && told.notice === 'withheld');
+    const notice: PlanNotice = toldStands
+      ? told.notice
+      : result.detail === 'authorization_lapsed'
         ? 'withheld'
         : await deps.notifyParent(noticeFacts).catch(() => 'failed' as const);
     if (notice === 'failed') {
@@ -592,7 +663,129 @@ async function runOnePlan(
       holdExpiresAt: null,
     });
 
+  // VIL-718 · the takeover's facts, its door, and the honest close.
+  // Read only by a takeover, which follows a run on an allowed URL; never throws here, so a
+  // malformed URL still ends as `url_refused` below.
+  const factsHost = host ?? hostnameOr(plan.registrationUrl);
+  const takeoverMode: 'auto' | 'assisted' = mode === 'assisted' ? 'assisted' : 'auto';
+  const takeoverDeps = () => deps.takeover ?? takeoverDepsFromEnv(database);
+  /** Stops a browser the engine kept for the parent. Its session's cost, when read. */
+  const letBrowserGo = (stop: BrowserUsePlanResult) =>
+    runner
+      .release({
+        phase: 'signup',
+        runId: stop.runId,
+        sessionId: stop.sessionId,
+        browserId: stop.browserId,
+      })
+      .catch(() => null);
+  const endUnfinished = async (
+    purpose: TakeoverPurpose,
+    ended: 'ran_out' | 'still_there' | 'again',
+    run: { sessionCostUsd: string | null; charged: PlanCharged; costUsd?: string | null },
+  ): Promise<PlanRunSummary> => {
+    const notice = await tellTakeoverUnfinished(
+      database,
+      {
+        plan,
+        purpose,
+        ended,
+        mode: takeoverMode,
+        host: factsHost,
+        registrationUrl: allowed.ok ? allowed.href : null,
+        now,
+      },
+      takeoverDeps(),
+    );
+    return end(
+      {
+        outcome: 'needs_human',
+        detail: 'takeover_unfinished',
+        choiceIndex: null,
+        cartTotalCents: null,
+        amountChargedCents: null,
+        charged: run.charged,
+        confirmationNumber: null,
+        liveViewUrl: null,
+        holdExpiresAt: null,
+        costUsd: run.costUsd ?? null,
+        sessionCostUsd: run.sessionCostUsd,
+      },
+      { notice },
+    );
+  };
+  /**
+   * A run stopped at a step only the parent can do, with its browser kept. The plan asks the
+   * parent at most once per step it just finished, and never more than TAKEOVER_MAX_ROUNDS.
+   * Null: no takeover was offered, and the run ends the way it always has.
+   */
+  const handTakeover = async (
+    stop: TakeoverStop,
+    purpose: TakeoverPurpose,
+  ): Promise<PlanRunSummary | null> => {
+    if (
+      lastTakeover &&
+      (lastTakeover.purpose === purpose || lastTakeover.round >= TAKEOVER_MAX_ROUNDS)
+    ) {
+      const ended = lastTakeover.purpose === purpose ? 'still_there' : 'again';
+      await audit({
+        step: 'plan_takeover_not_asked',
+        purpose,
+        ended,
+        round: lastTakeover.round,
+        host,
+      });
+      return endUnfinished(purpose, ended, {
+        sessionCostUsd: await letBrowserGo(stop),
+        charged: stop.charged,
+        costUsd: stop.costUsd,
+      });
+    }
+    const offered = await offerTakeover(
+      database,
+      {
+        plan,
+        stop,
+        purpose,
+        round: (lastTakeover?.round ?? 0) + 1,
+        mode: takeoverMode,
+        host: factsHost,
+      },
+      takeoverDeps(),
+    );
+    if (offered.status === 'parked') {
+      return { offerId: plan.offerId, outcome: 'checkpointed', phase: 'takeover' };
+    }
+    if (offered.status === 'not_offered') return null;
+    const stopped = {
+      outcome: stop.outcome,
+      detail: stop.detail,
+      choiceIndex: stop.choiceIndex,
+      cartTotalCents: stop.cartTotalCents,
+      amountChargedCents: stop.amountChargedCents,
+      charged: stop.charged,
+      confirmationNumber: stop.confirmationNumber,
+      liveViewUrl: null,
+      holdExpiresAt: null,
+      costUsd: stop.costUsd,
+      sessionCostUsd: await letBrowserGo(stop),
+      started: true,
+    };
+    if (offered.status === 'withdrawn') {
+      // An ops stop's ending reads where the run really stopped. Otherwise nobody is texted.
+      return (await planOpsStopped(database, plan))
+        ? end(stopped)
+        : end({ ...stopped, outcome: 'cancelled', detail: 'authorization_lapsed' });
+    }
+    if (offered.status === 'unwritten') {
+      // Nothing the model wrote, so nothing goes: #ops was paged.
+      return end({ ...stopped, detail: 'takeover_unwritten' }, { notice: 'failed' });
+    }
+    return end(stopped, offered.delivery === 'withheld' ? { notice: 'withheld' } : undefined);
+  };
+
   const carry = async (
+    takeoverBarred: boolean,
     go: () => Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint>,
   ): Promise<PlanRunSummary> => {
     let result: BrowserUsePlanResult | BrowserUsePlanCheckpoint;
@@ -627,17 +820,40 @@ async function runOnePlan(
       await savePlanResume(database, {
         offerId: plan.offerId,
         familyId: plan.familyId,
-        resume: result.resume,
+        resume: markTakeoverBarred(result.resume, takeoverBarred),
         letGo: true,
       });
       await audit({ step: 'plan_checkpointed', phase: result.resume.phase, host });
       return { offerId: plan.offerId, outcome: 'checkpointed', phase: result.resume.phase };
+    }
+    const step = takeoverOn ? takeoverPurpose(result.outcome, result.detail) : null;
+    // A stop where a charge may exist is reported as it is. A card would replace the `paying`
+    // checkpoint that keeps a later sweep from creating a second payment run.
+    const mayHandOver = !takeoverBarred && !paymentMayExist && result.charged === 'nothing';
+    if (step && mayHandOver && isTakeoverStop(result)) {
+      const handed = await handTakeover(result, step);
+      if (handed) return handed;
     }
     if (result.outcome === 'options_mismatch' || result.detail === 'password_rejected') {
       const parked = await parkAndTell(database, plan, result, now, host, deps);
       if (parked) return parked;
     }
     await pageIfReviewMayHavePlaced(result.charged, result.detail);
+    // The engine kept this browser only for a link that did not go, and a captcha's live view
+    // never goes in a text whatever the outcome reads. Scoped to takeover steps: a checkout
+    // hand-off such as `payment_off` also reads false here and keeps its live view.
+    const keptOnlyForLink =
+      step !== null &&
+      result.liveViewUrl !== null &&
+      (step === 'captcha' || !parentTakesOverLiveView(result.outcome, result.detail));
+    const ending = keptOnlyForLink
+      ? {
+          ...result,
+          liveViewUrl: null,
+          holdExpiresAt: null,
+          sessionCostUsd: (await letBrowserGo(result)) ?? result.sessionCostUsd,
+        }
+      : result;
     const completed = result.outcome === 'completed' && result.confirmationNumber !== null;
     return end({
       outcome: result.outcome === 'completed' && !completed ? 'needs_human' : result.outcome,
@@ -647,14 +863,14 @@ async function runOnePlan(
       amountChargedCents: result.amountChargedCents,
       charged: result.charged,
       confirmationNumber: result.confirmationNumber,
-      liveViewUrl: result.liveViewUrl,
-      holdExpiresAt: result.holdExpiresAt,
+      liveViewUrl: ending.liveViewUrl,
+      holdExpiresAt: ending.holdExpiresAt,
       ...(result.cartDifferences ? { cartDifferences: result.cartDifferences } : {}),
       costUsd: result.costUsd,
-      sessionCostUsd: result.sessionCostUsd,
+      sessionCostUsd: ending.sessionCostUsd,
       started: result.sessionId !== null || result.runId !== null,
       openBrowser:
-        result.liveViewUrl === null
+        ending.liveViewUrl === null
           ? null
           : {
               phase: 'signup',
@@ -713,9 +929,36 @@ async function runOnePlan(
         }
       : undefined;
 
+  // VIL-718 · the takeover's link ran out before the parent tapped done, or the parent took the
+  // plan back: let the browser go. Nothing retries it. A done that landed while this sweep
+  // claimed the plan wins. A lapse already stamped is a sweep that died before its close.
+  if (parked && !parked.doneAt) {
+    const lapsed =
+      parked.lapsedAt !== null ||
+      (await lapseTakeover(database, {
+        offerId: plan.offerId,
+        familyId: plan.familyId,
+        loginLinkId: parked.loginLinkId,
+        actor: plan.parentUserId,
+        after: {
+          step: 'plan_takeover_lapsed',
+          purpose: parked.purpose,
+          round: parked.round,
+          host,
+        },
+        now,
+      }));
+    if (!lapsed) {
+      await letGoOfTakeover(database, { offerId: plan.offerId, familyId: plan.familyId });
+      return { offerId: plan.offerId, outcome: 'checkpointed', phase: 'takeover' };
+    }
+    if (plan.takenBack) return handBack('authorization_lapsed', 'cancelled');
+    return endUnfinished(parked.purpose, 'ran_out', { sessionCostUsd: null, charged: 'nothing' });
+  }
   // The card may already be charged: read the payment before any check may end the plan.
   if (held?.phase === 'paying') {
-    return carry(() =>
+    // A payment under way is read and reported; it is never handed to the parent mid-charge.
+    return carry(true, () =>
       runner.settlePayment({ resume: held, waitUntil: sweep.waitUntil, onStep, onConfirmed }),
     );
   }
@@ -815,12 +1058,33 @@ async function runOnePlan(
       'signup plans: city login belongs to the other parent',
     );
   }
-  if (!stored && !credentials) return handBack('no_provider_session', 'needs_login');
+  // After a takeover the parent is signed in on the browser itself: no saved login is needed,
+  // on the sweep that picks the session up or on any sweep that waits on that turn after it.
+  if (!stored && !credentials && !lastTakeover) {
+    return handBack('no_provider_session', 'needs_login');
+  }
+  // A saved password is bound into the browser when its run is created, and only a skill
+  // sentence clears it from the page, so that browser is never handed over by link, whoever
+  // owns the login. While the owner check is off nothing proves a saved session is this
+  // parent's either. A later sweep cannot see what the run was given, so the first sweep's
+  // answer travels on the resume token.
+  const loginIsTheirs =
+    !credentials && (ownerGate || !stored || stored.parentUserId === plan.parentUserId);
+  const takeoverBarred =
+    lastTakeover === null &&
+    (held?.phase === 'signup' ? held.takeoverBarred === true : !loginIsTheirs);
+  const mayOfferTakeover = takeoverOn && !takeoverBarred;
+  if (takeoverOn && takeoverBarred) {
+    console.info(
+      { offerId: plan.offerId },
+      'signup plans: no takeover link, this browser may hold a login its parent may not see',
+    );
+  }
   if (!held) {
     const reserved = await reserveBrowserUseAllowance(database, {
       offerId: plan.offerId,
       familyId: plan.familyId,
-      allowanceUsd: PLAN_RUN_ALLOWANCE_USD,
+      allowanceUsd: planRunAllowanceUsd(mayOfferTakeover),
       reserveUsd: BROWSER_USE_REGISTRATION_RESERVE_USD,
       now,
     });
@@ -847,7 +1111,7 @@ async function runOnePlan(
           }),
       }
     : null;
-  return carry(() =>
+  return carry(takeoverBarred, () =>
     runner.run({
       mode,
       correlationId: plan.offerId,
@@ -890,13 +1154,23 @@ async function runOnePlan(
       },
       onStep,
       onConfirmed,
-      resume: held,
+      // A takeover token's run is over: the parent's done picks up its session instead.
+      resume: parked ? null : held,
+      takeover: mayOfferTakeover,
+      takeoverResume: parked?.doneAt
+        ? {
+            sessionId: parked.sessionId,
+            browserId: parked.browserId,
+            purpose: parked.purpose,
+            round: parked.round,
+          }
+        : null,
       waitUntil: sweep.waitUntil,
       onCheckpoint: async (resume) => {
         const saved = await savePlanResume(database, {
           offerId: plan.offerId,
           familyId: plan.familyId,
-          resume,
+          resume: markTakeoverBarred(resume, takeoverBarred),
           letGo: false,
         });
         if (saved && resume.phase === 'paying') paymentMayExist = true;
@@ -904,6 +1178,19 @@ async function runOnePlan(
       },
     }),
   );
+}
+
+function markTakeoverBarred(resume: PlanResumeToken, barred: boolean): PlanResumeToken {
+  return barred && resume.phase === 'signup' ? { ...resume, takeoverBarred: true } : resume;
+}
+
+/** The URL's host, or the text itself when it does not parse. Never throws. */
+function hostnameOr(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 function askedStartFromAvailability(availability: Record<string, unknown> | null): string | null {

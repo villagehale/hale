@@ -11,19 +11,23 @@ import {
   failure,
   settleBrowser,
   stopAndReadCost,
+  structuredOutput,
   taskWithFacts,
   waitForRun,
 } from './engine';
-import { BROWSER_USE_SIGNUP_DETAILS, sameProviderHttpsUrl } from './outcome';
+import { BROWSER_USE_PLAN_DETAILS, detailForLane, sameProviderHttpsUrl } from './outcome';
 import {
   type BrowserUsePlanCheckpoint,
   type BrowserUsePlanInput,
   type BrowserUsePlanResult,
   type PlanEngineDetail,
   type PlanEngineOutcome,
+  TAKEOVER_RESUME_SKILL,
   planFacts,
   priceUnstated,
+  queueTakeoverTurn,
   runBrowserUsePlanSignup,
+  takeoverResumeText,
   withPriceUnstated,
 } from './plan-engine';
 
@@ -53,7 +57,7 @@ export const BROWSER_USE_ASSISTED_OUTCOMES = [
 
 const assistedOutput = z.object({
   outcome: z.enum(BROWSER_USE_ASSISTED_OUTCOMES),
-  detail: z.enum(BROWSER_USE_SIGNUP_DETAILS),
+  detail: z.enum(BROWSER_USE_PLAN_DETAILS),
   choice_index: z.number().int().nonnegative().nullable(),
   page_url: z.string().nullable(),
   fee_cents: z.number().int().nonnegative().nullable(),
@@ -75,7 +79,7 @@ export const BROWSER_USE_ASSISTED_OUTPUT_SCHEMA: Record<string, unknown> = {
   ],
   properties: {
     outcome: { type: 'string', enum: [...BROWSER_USE_ASSISTED_OUTCOMES] },
-    detail: { type: 'string', enum: [...BROWSER_USE_SIGNUP_DETAILS] },
+    detail: { type: 'string', enum: [...BROWSER_USE_PLAN_DETAILS] },
     choice_index: { type: ['integer', 'null'], minimum: 0 },
     page_url: { type: ['string', 'null'] },
     fee_cents: { type: ['integer', 'null'], minimum: 0 },
@@ -150,30 +154,60 @@ async function driveAssisted(
   });
   let runId: string | null = null;
   try {
-    const profile = await ensureProfile(input, deps);
-    if (!profile.ok) return end('error', profile.detail);
+    if (input.resume?.phase === 'signup' && input.resume.runId) {
+      // VIL-718 · only the turn queued after a takeover checkpoints here. A sweep that dies
+      // waiting on it leaves it going: a new run would open a second browser on the account.
+      runId = input.resume.runId;
+      tracker.runId = runId;
+      tracker.sessionId = input.resume.sessionId;
+      tracker.browserId = input.resume.browserId;
+    } else if (input.takeoverResume) {
+      // VIL-718 · the parent finished a takeover: the next turn of the same session. Tracked
+      // before anything can throw, so a throw still stops the parent's browser.
+      const resume = input.takeoverResume;
+      tracker.sessionId = resume.sessionId;
+      tracker.browserId = resume.browserId;
+      const text = takeoverResumeText({
+        resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
+        runSkill: await withPriceUnstated(input, deps, await deps.loadTask(ASSISTED_SIGNUP_SKILL)),
+        facts: assistedFacts(input),
+        purpose: resume.purpose,
+        outputSchema: BROWSER_USE_ASSISTED_OUTPUT_SCHEMA,
+      });
+      const queued = await queueTakeoverTurn(
+        { ...input, takeoverResume: resume },
+        deps,
+        tracker,
+        text,
+      );
+      if (!queued.ok) return end('error', queued.detail);
+      runId = queued.runId;
+    } else {
+      const profile = await ensureProfile(input, deps);
+      if (!profile.ok) return end('error', profile.detail);
 
-    const run = await deps.api.createRun({
-      task: taskWithFacts(
-        await withPriceUnstated(input, deps, await deps.loadTask(ASSISTED_SIGNUP_SKILL)),
-        assistedFacts(input),
-      ),
-      outputSchema: BROWSER_USE_ASSISTED_OUTPUT_SCHEMA,
-      ...ACTION_MODEL,
-      browserSettings: {
-        profileId: profile.profileId,
-        record: false,
-        proxyCountryCode: input.proxyCountryCode ?? null,
-      },
-      keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
-      agentmail: false,
-      maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
-    });
-    runId = run.id;
-    tracker.runId = run.id;
-    tracker.sessionId = run.sessionId || null;
+      const run = await deps.api.createRun({
+        task: taskWithFacts(
+          await withPriceUnstated(input, deps, await deps.loadTask(ASSISTED_SIGNUP_SKILL)),
+          assistedFacts(input),
+        ),
+        outputSchema: BROWSER_USE_ASSISTED_OUTPUT_SCHEMA,
+        ...ACTION_MODEL,
+        browserSettings: {
+          profileId: profile.profileId,
+          record: false,
+          proxyCountryCode: input.proxyCountryCode ?? null,
+        },
+        keepAlive: CHECKOUT_KEEP_ALIVE_SECONDS,
+        agentmail: false,
+        maxCostUsd: SIGNUP_RUN_MAX_COST_USD,
+      });
+      runId = run.id;
+      tracker.runId = run.id;
+      tracker.sessionId = run.sessionId || null;
+    }
 
-    const waited = await waitForRun(deps, run.id, tracker);
+    const waited = await waitForRun(deps, runId, tracker);
     // The run is cancelled at its deadline, but the browser stays: it may still hold the
     // family's place in line, and the parent is the one who submits anyway.
     if (waited.kind === 'timeout') {
@@ -182,15 +216,24 @@ async function driveAssisted(
         holdExpiresAt: waited.liveViewUrl ? browserHold(deps) : null,
       });
     }
-    const summary = await deps.api.getRun(run.id);
+    const summary = await deps.api.getRun(runId);
     if (summary.sessionId) tracker.sessionId = summary.sessionId;
     const ids = { costUsd: summary.totalCostUsd };
     if (waited.status === 'failed') return end('error', 'run_failed', ids);
     if (waited.status === 'cancelled') return end('error', 'run_cancelled', ids);
 
-    const parsed = assistedOutput.safeParse(summary.output);
+    // A turn queued after a takeover has no outputSchema and may answer in JSON text.
+    const afterTakeover =
+      input.takeoverResume != null ||
+      (input.resume?.phase === 'signup' && input.resume.takeover !== undefined);
+    const parsed = assistedOutput.safeParse(
+      afterTakeover ? structuredOutput(summary.output) : summary.output,
+    );
     if (!parsed.success) return end('error', 'unreadable_output', ids);
-    const output = parsed.data;
+    const output = {
+      ...parsed.data,
+      detail: detailForLane(parsed.data.detail, input.takeover === true),
+    };
     if (output.payment_details_entered) return end('error', 'payment_boundary', ids);
     if (output.submitted) return end('error', 'submit_boundary', ids);
     const live = waited.liveViewUrl;

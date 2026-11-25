@@ -13,6 +13,7 @@ import {
 } from '../browser-use/plan-engine';
 import { storeProviderSession } from '../browser-use/vault';
 import { recordSignupOffer } from '../store';
+import { TAKEOVER_LINK_ENABLED_ENV } from '../takeover/flag';
 import type { PlanNoticePart } from './bubbles';
 import {
   PLAN_OPS_STOP_ENABLED_ENV,
@@ -169,6 +170,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.database.delete(schema.authorizedSignupOffers);
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
+  vi.stubEnv(TAKEOVER_LINK_ENABLED_ENV, '');
   vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
   vi.stubEnv('APP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
 });

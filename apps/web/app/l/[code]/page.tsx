@@ -6,6 +6,8 @@ import { providerCredentialsEnabled } from '~/lib/signup/credentials/flag';
 import { CREDENTIAL_RETENTION_MS } from '~/lib/signup/credentials/store';
 import { loginPurposeLine } from '~/lib/signup/login-link/page-copy';
 import { lookupLoginLink } from '~/lib/signup/login-link/store';
+import { takeoverLinkEnabled } from '~/lib/signup/takeover/flag';
+import { TakeoverScreen } from './takeover';
 import { GoneScreen, ProviderLoginVault } from './vault';
 
 export const dynamic = 'force-dynamic';
@@ -17,11 +19,20 @@ interface PageProps {
   params: Promise<{ code: string }>;
 }
 
-/** One read per request: the link preview's metadata and the page see the same row. */
+/**
+ * One read per request: the link preview's metadata and the page see the same row. A saved-
+ * login card answers only while PROVIDER_CREDENTIALS_ENABLED is on; a takeover card (VIL-718)
+ * only while TAKEOVER_LINK_ENABLED is on. Off, either one is gone.
+ */
 const openLoginLink = cache(async (code: string) => {
-  if (!process.env.DATABASE_URL || !providerCredentialsEnabled()) return null;
+  if (!process.env.DATABASE_URL) return null;
+  const credentials = providerCredentialsEnabled();
+  const takeover = takeoverLinkEnabled();
+  if (!credentials && !takeover) return null;
   const looked = await lookupLoginLink(db(), code, new Date());
-  return looked.ok ? looked : null;
+  if (!looked.ok) return null;
+  const isTakeover = looked.purpose?.kind === 'takeover';
+  return (isTakeover ? takeover : credentials) ? looked : null;
 });
 
 /**
@@ -50,6 +61,19 @@ export default async function ProviderLoginPage({ params }: PageProps) {
   const { code } = await params;
   const looked = await openLoginLink(code);
   if (!looked) return <GoneScreen />;
+  if (looked.purpose?.kind === 'takeover') {
+    // VIL-718 · Hale's own browser on the provider's page, opened by a tap: never a login form,
+    // so no saved password is ever on this page, and the live view is not in its HTML.
+    return (
+      <TakeoverScreen
+        code={code}
+        host={looked.providerHost}
+        title={looked.purpose.card?.title ?? null}
+        description={looked.purpose.card?.description ?? null}
+        smsHref={haleTextsHref()}
+      />
+    );
+  }
   return (
     <ProviderLoginVault
       code={code}

@@ -205,6 +205,10 @@ export const FLAGS = [
   // VIL-707. An in-flight group reminder with no provider id can be cancelled,
   // and the send checks opt-out again. Exact `true`.
   exact('group-reminder-inflight-cancel', 'GROUP_REMINDER_INFLIGHT_CANCEL_ENABLED'),
+  // VIL-718. One takeover link for a registration run's sign-in wall, code, passkey or
+  // captcha, and the run resumes when the parent is done. Exact `true`. Env-only: a PostHog
+  // sync must never light it.
+  exact('takeover-link', 'TAKEOVER_LINK_ENABLED', { envOnly: true }),
   // VIL-728. After a run of Hale group messages with no verified person speaking, Hale
   // answers no unverified sender in that chat until a verified person speaks. Exact `true`.
   // Env-only: the guard runs per chat before any family is known, so a family-scoped

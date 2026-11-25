@@ -3,10 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   SIGNUP_TEST_ACTIVITY,
+  SIGNUP_TEST_CAPTCHA_WORD,
+  SIGNUP_TEST_CHALLENGE_COOKIE,
+  SIGNUP_TEST_CODE,
   SIGNUP_TEST_FORM_PATH,
   SIGNUP_TEST_SESSIONS,
   SIGNUP_TEST_SESSION_COOKIE,
   parseSignupTestCart,
+  signupTestChallenge,
+  signupTestChallengePassed,
   signupTestFormEnabled,
   signupTestStorageState,
 } from './test-form';
@@ -79,5 +84,32 @@ describe('Preview Harbor Rec test form', () => {
     );
     expect(login).toContain('signupTestFormEnabled');
     expect(register).toContain('signupTestFormEnabled');
+  });
+
+  it('VIL-718 · puts a step only the parent can do before the form, for the takeover runs', () => {
+    expect(signupTestChallenge('captcha')).toBe('captcha');
+    expect(signupTestChallenge('passed')).toBeNull();
+    expect(signupTestChallenge(undefined)).toBeNull();
+    expect(signupTestChallengePassed('code', SIGNUP_TEST_CODE)).toBe(true);
+    expect(signupTestChallengePassed('code', '000000')).toBe(false);
+    expect(signupTestChallengePassed('captcha', SIGNUP_TEST_CAPTCHA_WORD.toUpperCase())).toBe(true);
+    expect(signupTestChallengePassed('captcha', 'robot')).toBe(false);
+    // A passkey never passes: the only way on is another way to sign in.
+    expect(signupTestChallengePassed('passkey', '')).toBe(false);
+    const state = signupTestStorageState('preview.example.test', 'signed-in', 'passkey') as {
+      cookies: { name: string; value: string }[];
+    };
+    expect(state.cookies.map((c) => [c.name, c.value])).toEqual([
+      [SIGNUP_TEST_SESSION_COOKIE, 'signed-in'],
+      [SIGNUP_TEST_CHALLENGE_COOKIE, 'passkey'],
+    ]);
+    const register = readFileSync(`${DEMO}/register/page.tsx`, 'utf8');
+    expect(register).toContain('SIGNUP_TEST_CHALLENGE_COOKIE');
+    const door = readFileSync(
+      fileURLToPath(new URL('../../app/api/demo/signup-test/challenge/route.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(door).toContain('signupTestFormEnabled');
+    expect(readFileSync(`${DEMO}/challenge/page.tsx`, 'utf8')).toContain('signupTestFormEnabled');
   });
 });

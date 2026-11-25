@@ -24,9 +24,11 @@ import {
   settleBrowser,
   signupFacts,
   stopAndReadCost,
+  structuredOutput,
   sumCost,
   taskWithFacts,
   waitForRunUntil,
+  withAnswerFormat,
 } from './engine';
 import {
   BOUND_PLAN_OUTPUT_SCHEMA,
@@ -34,12 +36,16 @@ import {
   BROWSER_USE_PAYMENT_OUTPUT_SCHEMA,
   BROWSER_USE_PLAN_OUTPUT_SCHEMA,
   BROWSER_USE_REVIEW_OUTPUT_SCHEMA,
+  type BrowserUsePlanDetail,
   type BrowserUseReviewOutput,
+  detailForLane,
   parsePaymentOutput,
   parsePlanOutput,
   parseReviewOutput,
   sameProviderHttpsUrl,
 } from './outcome';
+import { queueSessionRun } from './session-queue';
+import { type TakeoverPurpose, takeoverPurpose } from '../takeover/purpose';
 
 /**
  * VIL-558 · carries out a parent's day-before plan at the open. One run joins the open
@@ -71,6 +77,22 @@ export const CHECKOUT_REVIEW_RUN_MAX_COST_USD = 1;
  * budget plus this stays inside the route's 800 s.
  */
 export const CHECKOUT_REVIEW_MIN_MS = 120_000;
+/**
+ * VIL-718 · the skill for the turn after a takeover: the same plan, from the page the parent
+ * left, in the same browser.
+ */
+export const TAKEOVER_RESUME_SKILL = 'browser-use-takeover-resume';
+/** The resumed turn's cap. It may do most of the registration when the wall came early. */
+export const TAKEOVER_RESUME_RUN_MAX_COST_USD = 2;
+
+/** VIL-718 · the parent finished a takeover in this session's browser. */
+export interface PlanTakeoverResume {
+  sessionId: string;
+  browserId: string | null;
+  purpose: TakeoverPurpose;
+  /** Takeovers this plan has asked for so far, the finished one included. */
+  round: number;
+}
 
 export type PlanEngineOutcome =
   | BrowserUseEngineOutcome
@@ -94,6 +116,7 @@ export interface BrowserUsePlanCheckpoint {
 
 export type PlanEngineDetail =
   | BrowserUseEngineDetail
+  | BrowserUsePlanDetail
   | 'choice_unreadable'
   | 'no_saved_card'
   | 'security_code'
@@ -215,6 +238,17 @@ export interface BrowserUsePlanInput
    */
   onCheckpoint: (resume: PlanResumeToken) => Promise<boolean>;
   /**
+   * VIL-718 · TAKEOVER_LINK_ENABLED exactly `true`, read by the caller. On, a stop for a step
+   * only the parent can do keeps its browser for the takeover link, a captcha included, and
+   * the run is told so. Off (or absent), every stop is what it was.
+   */
+  takeover?: boolean;
+  /**
+   * VIL-718 · set only on the sweep after the parent tapped done on a takeover: the run is
+   * the next turn of that session, in the browser the parent just used, not a new run.
+   */
+  takeoverResume?: PlanTakeoverResume | null;
+  /**
    * VIL-715 · called once on a confirmed registration, before the browser stops, to capture
    * the masked receipt, with no browser id when the run never reported one. Absent: no
    * receipt. A failure here never changes the outcome.
@@ -305,7 +339,59 @@ export function planFacts(input: BrowserUsePlanInput): Record<string, unknown> {
       // On a bound run, a session whose end is its start has no known end. Unbound: as today.
       ends_at: input.binding && choice.endsAt === choice.startsAt ? null : choice.endsAt,
     })),
+    // VIL-718 · only while the takeover link is on, so the task is unchanged while it is off.
+    ...(input.takeover ? { takeover: true } : {}),
   };
+}
+
+/**
+ * VIL-718 · the text of the turn after a takeover: the resume skill, then the run's own skill
+ * and facts as before, then the answer format (a queued turn takes no outputSchema). The
+ * parent signed in themselves, so the facts name no credential alias: this turn has no
+ * secret bindings to fill one.
+ */
+export function takeoverResumeText(input: {
+  resumeSkill: string;
+  runSkill: string;
+  facts: Record<string, unknown>;
+  purpose: TakeoverPurpose;
+  outputSchema: Record<string, unknown>;
+}): string {
+  const facts = { ...input.facts, credentials: null, takeover_done: input.purpose };
+  return withAnswerFormat(
+    `${input.resumeSkill.trim()}\n\n${taskWithFacts(input.runSkill, facts)}`,
+    input.outputSchema,
+  );
+}
+
+/**
+ * VIL-718 · queues the turn after a takeover on the session the parent used and records it
+ * at once, so a sweep that dies after this resumes the queued run instead of queueing another.
+ */
+export async function queueTakeoverTurn(
+  input: Pick<BrowserUsePlanInput, 'onCheckpoint'> & { takeoverResume: PlanTakeoverResume },
+  deps: BrowserUseEngineDeps,
+  tracker: BrowserTracker,
+  text: string,
+): Promise<{ ok: true; runId: string } | { ok: false; detail: 'run_cancelled' | 'timeout' }> {
+  const resume = input.takeoverResume;
+  tracker.sessionId = resume.sessionId;
+  tracker.browserId = resume.browserId;
+  const queued = await queueSessionRun(deps, {
+    sessionId: resume.sessionId,
+    text,
+    maxCostUsd: TAKEOVER_RESUME_RUN_MAX_COST_USD,
+  });
+  if (!queued.ok) return queued;
+  tracker.runId = queued.runId;
+  await input.onCheckpoint({
+    phase: 'signup',
+    runId: queued.runId,
+    sessionId: resume.sessionId,
+    browserId: resume.browserId,
+    takeover: { purpose: resume.purpose, round: resume.round },
+  });
+  return queued;
 }
 
 /** The approval holds a session with no stated price, so this run has no limit to compare. */
@@ -449,8 +535,46 @@ async function drivePlan(
   tracker: PlanTracker,
 ): Promise<BrowserUsePlanResult | BrowserUsePlanCheckpoint> {
   if (input.resume?.phase === 'paying') return resumePayment(input, deps, tracker, input.resume);
+  if (input.resume?.phase === 'takeover') {
+    // Its run is over: waiting on it again would read the same stop back.
+    throw new Error('a takeover is picked back up through takeoverResume');
+  }
+  // VIL-718 · the last takeover this plan asked for, kept on every checkpoint after it.
+  const lastTakeover = input.takeoverResume
+    ? { purpose: input.takeoverResume.purpose, round: input.takeoverResume.round }
+    : input.resume?.takeover;
+  const takeoverMark = lastTakeover ? { takeover: lastTakeover } : {};
   let runId: string | null = input.resume?.runId ?? null;
   try {
+    if (!runId && input.takeoverResume) {
+      const resume = input.takeoverResume;
+      // Tracked before anything can throw, so a throw still stops the parent's browser.
+      tracker.sessionId = resume.sessionId;
+      tracker.browserId = resume.browserId;
+      const text = takeoverResumeText({
+        resumeSkill: await deps.loadTask(TAKEOVER_RESUME_SKILL),
+        // The same task and answer as a first turn: a bound plan's cart is read either way.
+        runSkill: await boundSkill(input, deps, PLAN_SIGNUP_SKILL),
+        facts: planFacts(input),
+        purpose: resume.purpose,
+        outputSchema: input.binding ? BOUND_PLAN_OUTPUT_SCHEMA : BROWSER_USE_PLAN_OUTPUT_SCHEMA,
+      });
+      const queued = await queueTakeoverTurn(
+        { ...input, takeoverResume: resume },
+        deps,
+        tracker,
+        text,
+      );
+      if (!queued.ok) {
+        return planResult(
+          failure('error', queued.detail, { sessionId: resume.sessionId }),
+          'error',
+          queued.detail,
+          null,
+        );
+      }
+      runId = queued.runId;
+    }
     if (!runId) {
       const profile = await ensureProfile(input, deps);
       if (!profile.ok)
@@ -490,6 +614,7 @@ async function drivePlan(
           runId,
           sessionId: tracker.sessionId ?? null,
           browserId: tracker.browserId,
+          ...takeoverMark,
         },
       };
     }
@@ -508,15 +633,26 @@ async function drivePlan(
     if (waited.status === 'failed') return stop('error', 'run_failed');
     if (waited.status === 'cancelled') return stop('error', 'run_cancelled');
 
-    const output = parsePlanOutput(summary.output);
-    if (!output) return stop('error', 'unreadable_output');
+    // A turn queued after a takeover has no outputSchema and may answer in JSON text.
+    const parsed = parsePlanOutput(
+      lastTakeover ? structuredOutput(summary.output) : summary.output,
+    );
+    if (!parsed) return stop('error', 'unreadable_output');
+    const takeover = input.takeover === true;
+    const output = { ...parsed, detail: detailForLane(parsed.detail, takeover) };
     if (output.payment_details_entered) return stop('error', 'payment_boundary');
     const live = waited.liveViewUrl;
 
     if (output.outcome !== 'reached_checkout') {
+      const kept = parentTakesOverLiveView(output.outcome, output.detail, takeover) ? live : null;
       return {
         ...stop(output.outcome, output.detail),
-        liveViewUrl: parentTakesOverLiveView(output.outcome, output.detail) ? live : null,
+        liveViewUrl: kept,
+        // VIL-718 · how long the browser stays open for a takeover: the run's keepAlive.
+        holdExpiresAt:
+          kept && takeover && takeoverPurpose(output.outcome, output.detail)
+            ? new Date(deps.now().getTime() + CHECKOUT_KEEP_ALIVE_SECONDS * 1000)
+            : null,
         cartTotalCents: output.cart_total_cents,
         passwordRejectionMessage: output.password_rejection_message,
         passwordRule: output.password_rule,
@@ -593,6 +729,7 @@ async function drivePlan(
       sessionId: ids.sessionId,
       browserId: tracker.browserId,
       reviewStarted: true,
+      ...takeoverMark,
     });
     tracker.reviewStarted = true;
     const review = await reviewCheckout(input, deps, tracker, ids.sessionId, free);

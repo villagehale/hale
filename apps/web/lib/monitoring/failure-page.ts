@@ -278,6 +278,11 @@ export const OPS_PAGE_VOCABULARY = {
   registration_receipt_unrecorded: {},
   registration_review_placed_order: {},
   registration_review_unread: {},
+  // VIL-718 · a takeover text the model could not write: nothing went to the parent.
+  takeover_unwritten: {
+    purpose: ['sign_in', 'code', 'passkey', 'captcha'],
+    moment: ['ask', 'unfinished'],
+  },
   /** An ops-stopped run whose ending cannot prove it left nothing at the provider. */
   registration_stop_unverified: {},
   linq_effect_delivery_unknown: {},

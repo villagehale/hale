@@ -65,7 +65,7 @@
   },
   "browser-use-assisted-signup.md": {
     "file": "browser-use-assisted-signup.md",
-    "sha256": "294a7e4ddc858e548c751dc187b74902102a49632c3f498dec732815546178b8"
+    "sha256": "cabd063e26d088b26d83ae3424ba546ff9a5e2e5bfe48865e23fd5ea448e08f4"
   },
   "browser-use-cart-read.md": {
     "file": "browser-use-cart-read.md",
@@ -93,7 +93,7 @@
   },
   "browser-use-plan-signup.md": {
     "file": "browser-use-plan-signup.md",
-    "sha256": "4e7d24c03a383e5e686a4f037b727e2770ad7df59dfac12b2b35cb1f485048d2"
+    "sha256": "0050fb179f04204c75c8e6f7b5f18af2e7f1d28cce8c1699962cdf5a42ca8b77"
   },
   "browser-use-price-unstated.md": {
     "file": "browser-use-price-unstated.md",
@@ -106,6 +106,10 @@
   "browser-use-signup.md": {
     "file": "browser-use-signup.md",
     "sha256": "1a505f89e7fc6bdc5f2aeb40eff563c1298703fbe0ab4d9b358dff81ca29fec3"
+  },
+  "browser-use-takeover-resume.md": {
+    "file": "browser-use-takeover-resume.md",
+    "sha256": "5a46f6119d039737aea92e63a95225880ad4a5806afdc1293c04849991e67bd8"
   },
   "browser-use-watch.md": {
     "file": "browser-use-watch.md",
@@ -822,6 +826,10 @@
   "signup-step-reply.md": {
     "file": "signup-step-reply.md",
     "sha256": "7aa0d3ce6b3e3220479a2cda575ce047ee1cf99ee3e3333525de1a11594fc160"
+  },
+  "signup-takeover-notice.md": {
+    "file": "signup-takeover-notice.md",
+    "sha256": "dbe7f53f03ba3dbb952bc4152a9cef37965cb23ab5bb72fa20c4b260684faaaf"
   },
   "spoken-line.md": {
     "file": "spoken-line.md",

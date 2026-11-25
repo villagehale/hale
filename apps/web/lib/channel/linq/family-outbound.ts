@@ -9,6 +9,7 @@ import { type ReplyLanguage, acceptReplyLanguage, copyLanguage } from '~/lib/cha
 import { acceptedStatus } from '~/lib/channel/ledger';
 import {
   configuredOutboundChannel,
+  linqRefusedForCertain,
   outboundChatConfigured,
   readSendRefusal,
   sendLinqChatMessage,
@@ -153,7 +154,8 @@ export type FamilyOutboundDelivery =
       linkOmitted?: 'link_on_new_chat';
     }
   | { status: 'held'; reason: 'quiet_hours' | 'coparent_ask' }
-  | { status: 'skipped'; reason: string };
+  /** `mayHaveLanded`: permanent, but a status (408, 409, 425) that can follow a request Linq took. */
+  | { status: 'skipped'; reason: string; mayHaveLanded?: true };
 
 async function skippedRefusal(
   database: Database,
@@ -167,7 +169,13 @@ async function skippedRefusal(
   if (isGarbledRefusal(err)) {
     await recordGarbledRefusal(database, { familyId, surface: 'family_outbound' });
   }
-  return { status: 'skipped', reason: refusal.code };
+  return {
+    status: 'skipped',
+    reason: refusal.code,
+    ...(err instanceof LinqSendError && !linqRefusedForCertain(err)
+      ? { mayHaveLanded: true as const }
+      : {}),
+  };
 }
 
 function isCoparentAsk(body: string): boolean {
@@ -206,6 +214,8 @@ export async function deliverFamilyOutbound(
     mediaUrls?: string[];
     replyIn?: { chatId: string; messageId: string };
     now?: Date;
+    /** This send's identity at Linq, for a caller that may retry it. */
+    sendKey?: string;
   },
 ): Promise<FamilyOutboundDelivery> {
   const target: FamilyOutboundTarget = input.replyIn
@@ -239,6 +249,7 @@ export async function deliverFamilyOutbound(
       const sent = await sendLinqChatMessage({
         chatId: target.chatId,
         text: input.body,
+        ...(input.sendKey ? { sendKey: input.sendKey } : {}),
         fetch: input.fetch,
       });
       return {
@@ -259,6 +270,7 @@ export async function deliverFamilyOutbound(
       body: input.body,
       mediaUrls: input.mediaUrls,
       ...(input.replyIn ? { replyIn: input.replyIn } : {}),
+      ...(input.sendKey ? { sendKey: input.sendKey } : {}),
     });
     const channel = sent.transport === 'imessage' ? 'imessage' : 'sms';
     return {
