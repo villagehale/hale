@@ -1,10 +1,15 @@
-import type { Locale } from '~/i18n/routing';
-import { ONE_LINER, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
-import { PROMO_OFFER_ID, type HolidayPromo, type PromoTierPrice, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import logo from '~/assets/hale-logo.jpeg';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
+import type { Locale } from '~/i18n/routing';
+import {
+  FOUNDING_REFUND_LINE,
+  type HolidayPromo,
+  PROMO_OFFER_ID,
+  type PromoTierPrice,
+} from '~/lib/promo/holiday';
+import { ONE_LINER, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
 import { FoundingCheckoutLink } from './founding-checkout-link';
-import { PROMO_IMAGES, type PromoImage } from './promo-images';
 import { PromoStickyReveal } from './promo-sticky';
 
 /**
@@ -18,14 +23,13 @@ import { PromoStickyReveal } from './promo-sticky';
  *  - plain "$" in both countries and no CAD / USD beside any price: the
  *    numbers themselves change with the visitor's country;
  *  - yearly only, no monthly option and no trial wording;
- *  - signup stays "Starting Dec 1, signs them up with your ok"; the biggest
- *    sale of the year is said once; no camp-finding, no child names, no
- *    referral or gift offer.
+ *  - signup stays "Starting Dec 1, signs them up with your ok"; no camp-finding,
+ *    no child names, no referral or gift offer.
  *
- * Look (Barton, Nov 16): each phase has its own theme, keyed on
- * data-promo-phase in promo.css. Black Friday is retail night: near-black,
- * gold, a big sale headline. Holiday is warm: deep green, cranberry and cream,
- * soft lights and snow.
+ * Look: both phases share one treatment, the Notes-app page (IG style D).
+ * Ruled cream paper, brush headline, marker highlight on "Sale", and the flat
+ * navy turtle. Phase still switches the sale name. The rules live in promo.css
+ * on .promo-sec.promo-notes, so the banner, sticky bar, and price cards stay as they are.
  */
 
 const REFUND_EMAIL = 'aloha@villagehale.com';
@@ -139,41 +143,13 @@ function PriceLockup({ promo }: { promo: HolidayPromo }) {
   );
 }
 
-function Photo({ image, className }: { image: PromoImage; className: string }) {
-  return (
-    <img
-      className={className}
-      src={image.src}
-      srcSet={image.srcSet}
-      sizes="(max-width: 640px) 92vw, (max-width: 1023.98px) 60vw, 520px"
-      width={image.width}
-      height={image.height}
-      alt={image.alt}
-      loading="lazy"
-      decoding="async"
-    />
-  );
-}
-
-/** One feature photo and two details, all lazy: the offer sits below the hero. */
-function PromoMedia({ promo }: { promo: HolidayPromo }) {
-  const [feature, a, b] = PROMO_IMAGES[promo.phase];
-  return (
-    <div className="promo-media">
-      <Photo image={feature} className="promo-ph promo-ph-feature" />
-      <Photo image={a} className="promo-ph promo-ph-a" />
-      <Photo image={b} className="promo-ph promo-ph-b" />
-    </div>
-  );
-}
-
 const CHIPS = ['Knows your family', 'Finds a fit', 'Gets the open spot', 'Runs group chats'];
 
-/** The sale offer. `id="sale"` is what the banner and sticky bar jump to. */
+/** The sale offer. The id is what the banner and sticky bar jump to. */
 export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
   return (
     <section
-      className="hs promo-sec"
+      className="hs promo-sec promo-notes"
       id={PROMO_OFFER_ID}
       aria-labelledby={`${PROMO_OFFER_ID}-h`}
       data-promo-phase={promo.phase}
@@ -181,43 +157,58 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
     >
       <div className="hs-wrap">
         <div className="promo-card">
-          <div className="promo-main">
-            <p className="promo-kicker">Our holiday sale this season</p>
-            <h2 className="promo-sale" id={`${PROMO_OFFER_ID}-h`}>
-              <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
-              <span className="promo-sale-word">Sale</span>
-            </h2>
-            <PriceLockup promo={promo} />
-            <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
-            <p className="promo-lede">
-              Your price for the rest of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.
-            </p>
-            <ul className="promo-chips">
-              {CHIPS.map((chip) => (
-                <li key={chip}>{chip}</li>
-              ))}
-            </ul>
-            <div className="promo-ctas">
-              <TextDoor className="btn btn-hero promo-btn" placement="promo_section" {...door}>
-                <Bubble />
-                Text Hale to start
-              </TextDoor>
-              <FoundingCheckoutLink
-                className="promo-lockin"
-                placement="promo_section"
-                phase={promo.phase}
-                currency={promo.currency}
-                plan="max"
-              >
-                Already texting Hale? Lock in Max at {promo.max.saleLabel}
-                <Arrow />
-              </FoundingCheckoutLink>
-            </div>
-            <p className="promo-fine">
-              Billed once a year. Sale prices are for families who join by Dec 31, 2026.
-            </p>
+          <div className="promo-notes-bar" aria-hidden="true">
+            <span className="promo-notes-back" />
+            <span className="promo-notes-done" />
           </div>
-          <PromoMedia promo={promo} />
+          <div className="promo-sheet">
+            <div className="promo-main">
+              <p className="promo-kicker">Our holiday sale this season</p>
+              <h2 className="promo-sale" id={`${PROMO_OFFER_ID}-h`}>
+                <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
+                <span className="promo-sale-word">Sale</span>
+              </h2>
+              <PriceLockup promo={promo} />
+              <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
+              <p className="promo-lede">
+                Your price for the rest of the year, locked in for as long as you’re a member. Join
+                by Dec 31. Refund anytime.
+              </p>
+              <ul className="promo-chips">
+                {CHIPS.map((chip) => (
+                  <li key={chip}>{chip}</li>
+                ))}
+              </ul>
+              <div className="promo-ctas">
+                <TextDoor className="btn btn-hero promo-btn" placement="promo_section" {...door}>
+                  <Bubble />
+                  Text Hale to start
+                </TextDoor>
+                <FoundingCheckoutLink
+                  className="promo-lockin"
+                  placement="promo_section"
+                  phase={promo.phase}
+                  currency={promo.currency}
+                  plan="max"
+                >
+                  Already texting Hale? Lock in Max at {promo.max.saleLabel}
+                  <Arrow />
+                </FoundingCheckoutLink>
+              </div>
+              <p className="promo-fine">
+                Billed once a year. Sale prices are for families who join by Dec 31, 2026.
+              </p>
+            </div>
+            <div className="promo-notes-aside" aria-hidden="true">
+              <img
+                className="promo-notes-mark"
+                src={logo.src}
+                width={logo.width}
+                height={logo.height}
+                alt=""
+              />
+            </div>
+          </div>
           <ol className="promo-points">
             <li>
               <span className="promo-pt-ic" aria-hidden="true">

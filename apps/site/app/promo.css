@@ -758,3 +758,321 @@
     font-size: clamp(34px, 10vw, 60px);
   }
 }
+
+/* ── .promo-sec.promo-notes only: IG style D, the Notes page. Both phases.
+   Banner, sticky bar, and tier cards above are unchanged.
+   Faces are SIL OFL, self-hosted under components/promo/fonts
+   (Caveat Brush © 2015 Google; Kalam © 2014 Indian Type Foundry). */
+@font-face {
+  font-family: "Hale Notes Display";
+  src: url("../components/promo/fonts/caveat-brush-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hale Notes Body";
+  src: url("../components/promo/fonts/kalam-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hale Notes Body";
+  src: url("../components/promo/fonts/kalam-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.promo-sec.promo-notes .promo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 18px 32px 32px;
+  border-radius: 4px;
+  color: #1c1c1e;
+  background-color: #fff8dc;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 34px, #e4d3a1 34px 36px);
+  border: 1px solid #e0d0a4;
+  box-shadow: 0 22px 48px -28px rgb(28 28 30 / 0.45);
+}
+.promo-sec.promo-notes .promo-card::before,
+.promo-sec.promo-notes .promo-card::after {
+  content: none;
+  display: none;
+}
+.promo-sec.promo-notes .promo-notes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  color: #b8860b;
+  pointer-events: none;
+  user-select: none;
+}
+.promo-sec.promo-notes .promo-notes-back::before {
+  content: "‹ Notes";
+}
+.promo-sec.promo-notes .promo-notes-done::before {
+  content: "Done";
+  font-weight: 600;
+}
+.promo-sec.promo-notes .promo-kicker {
+  display: block;
+  width: fit-content;
+  margin: 0 0 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #b8860b;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.promo-sec.promo-notes .promo-kicker::before {
+  content: none;
+  display: none;
+}
+.promo-sec.promo-notes .promo-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(180px, 0.72fr);
+  column-gap: 28px;
+  align-items: start;
+}
+.promo-sec.promo-notes .promo-main {
+  min-width: 0;
+}
+.promo-sec.promo-notes .promo-notes-aside {
+  position: relative;
+  display: grid;
+  justify-items: end;
+  align-items: start;
+  padding-top: 8px;
+}
+.promo-sec.promo-notes .promo-notes-aside::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 36px;
+  width: 112px;
+  height: 32px;
+  background: rgb(255 224 102 / 0.85);
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+.promo-sec.promo-notes .promo-notes-mark {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 240px);
+  height: auto;
+  border-radius: 30%;
+  transform: rotate(-2.5deg);
+  box-shadow: 0 18px 36px rgb(28 28 30 / 0.16);
+}
+.promo-sec.promo-notes .promo-sale {
+  margin-top: 4px;
+  font-family: "Hale Notes Display", "Segoe Script", cursive;
+  font-weight: 400;
+  font-size: clamp(56px, 6.2vw, 92px);
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #1c1c1e;
+  text-wrap: balance;
+}
+.promo-sec.promo-notes .promo-sale > span {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+.promo-sec.promo-notes .promo-sale-word {
+  color: #1c1c1e;
+  margin-top: 0.04em;
+  padding: 0 0.08em;
+  background-image: linear-gradient(#ffe066, #ffe066);
+  background-repeat: no-repeat;
+  background-size: 100% 0.42em;
+  background-position: 0 78%;
+}
+.promo-sec.promo-notes .promo-offer {
+  margin-top: 8px;
+}
+.promo-sec.promo-notes .promo-offer-tier {
+  background: #ffe066;
+  color: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-price-sym,
+.promo-sec.promo-notes .promo-price-num,
+.promo-sec.promo-notes .promo-price-per {
+  font-family: "Hale Notes Display", "Segoe Script", cursive;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-price-sym {
+  font-size: clamp(28px, 3vw, 40px);
+}
+.promo-sec.promo-notes .promo-price-num {
+  font-size: clamp(84px, 8.5vw, 112px);
+  background-image: linear-gradient(#ffe066, #ffe066);
+  background-repeat: no-repeat;
+  background-size: 100% 0.34em;
+  background-position: 0 84%;
+}
+.promo-sec.promo-notes .promo-price-per {
+  font-size: clamp(26px, 2.6vw, 36px);
+}
+.promo-sec.promo-notes .promo-price-regular {
+  color: #4a4338;
+  text-decoration-color: #ff6b4a;
+}
+.promo-sec.promo-notes .promo-offer-plus {
+  color: #1c1c1e;
+  font-size: 20px;
+}
+.promo-sec.promo-notes .promo-offer-plus b {
+  color: #1c1c1e;
+  background-image: linear-gradient(#ffe066, #ffe066);
+  background-repeat: no-repeat;
+  background-size: 100% 0.36em;
+  background-position: 0 88%;
+}
+.promo-sec.promo-notes .promo-price-note,
+.promo-sec.promo-notes .promo-lede,
+.promo-sec.promo-notes .promo-points p {
+  font-family: "Hale Notes Body", "Segoe Print", cursive;
+  font-weight: 400;
+  color: #2c2c2e;
+}
+.promo-sec.promo-notes .promo-price-note {
+  max-width: 34ch;
+  font-size: 18px;
+  color: #3a3428;
+}
+.promo-sec.promo-notes .promo-lede {
+  max-width: 38ch;
+  font-size: 22px;
+  line-height: 1.45;
+}
+.promo-sec.promo-notes .promo-chips li {
+  background: rgb(255 224 102 / 0.55);
+  border: 0;
+  color: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-chips li::before {
+  background: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-btn {
+  background: #1c1c1e;
+  color: #fffdf5;
+  font-weight: 700;
+}
+.promo-sec.promo-notes .promo-btn:hover {
+  background: #ffe066;
+  color: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-lockin {
+  color: #1c1c1e;
+  text-decoration-color: rgb(28 28 30 / 0.35);
+}
+.promo-sec.promo-notes .promo-lockin:hover {
+  text-decoration-color: #b8860b;
+}
+.promo-sec.promo-notes .promo-fine {
+  color: #5c5346;
+}
+.promo-sec.promo-notes .promo-card :focus-visible {
+  box-shadow: 0 0 0 3px #fff8dc, 0 0 0 5px #1c1c1e;
+}
+.promo-sec.promo-notes .promo-points li {
+  background: rgb(255 253 245 / 0.94);
+  border: 2px solid #1c1c1e;
+  box-shadow: 3px 4px 0 #1c1c1e;
+}
+.promo-sec.promo-notes .promo-pt-ic {
+  background: #1c1c1e;
+  color: #ffe066;
+}
+.promo-sec.promo-notes .promo-points h3 {
+  font-family: "Hale Notes Display", "Segoe Script", cursive;
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: 0;
+  color: #1c1c1e;
+}
+.promo-sec.promo-notes .promo-points p {
+  font-size: 17px;
+  line-height: 1.45;
+}
+.promo-sec.promo-notes .promo-points a {
+  color: #1c1c1e;
+  text-decoration-color: #b8860b;
+}
+:root[data-theme="dark"] .promo-sec.promo-notes .promo-card,
+:root.dark .promo-sec.promo-notes .promo-card {
+  border-color: #cbbd8c;
+  box-shadow: 0 28px 60px -24px rgb(0 0 0 / 0.72);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .promo-sec.promo-notes .promo-card {
+    border-color: #cbbd8c;
+    box-shadow: 0 28px 60px -24px rgb(0 0 0 / 0.72);
+  }
+}
+@media (max-width: 860px) {
+  .promo-sec.promo-notes .promo-sheet {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+  .promo-sec.promo-notes .promo-notes-aside {
+    order: -1;
+    justify-items: start;
+    padding-top: 0;
+  }
+  .promo-sec.promo-notes .promo-notes-mark {
+    width: 72px;
+    transform: none;
+    box-shadow: none;
+  }
+  .promo-sec.promo-notes .promo-notes-aside::before {
+    content: none;
+  }
+  .promo-sec.promo-notes .promo-card {
+    padding: 14px 16px 22px;
+    gap: 16px;
+  }
+  .promo-sec.promo-notes .promo-notes-bar {
+    font-size: 17px;
+  }
+  .promo-sec.promo-notes .promo-lede {
+    font-size: 18px;
+  }
+  .promo-sec.promo-notes .promo-points h3 {
+    font-size: 26px;
+  }
+}
+@media (max-width: 640px) {
+  .promo-sec.promo-notes .promo-sale {
+    font-size: clamp(46px, 13vw, 64px);
+  }
+  .promo-sec.promo-notes .promo-price-num {
+    font-size: 84px;
+  }
+  .promo-sec.promo-notes .promo-price-sym {
+    font-size: 30px;
+  }
+  .promo-sec.promo-notes .promo-price-per {
+    font-size: 26px;
+  }
+  .promo-sec.promo-notes .promo-offer-plus {
+    font-size: 18px;
+  }
+}
