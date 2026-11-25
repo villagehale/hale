@@ -278,7 +278,7 @@ export function createFamilyEventsCopyStore(database: Database): GroupPlanCopySt
       if (inserted) return { status: 'written', familyEventId: inserted.id };
       const [row] = await database
         .select()
-        .from(fe)
+        .from(schema.familyEvents)
         .where(and(eq(fe.groupPlanCopyKey, key), eq(fe.familyId, familyId)))
         .limit(1);
       if (!row) throw new Error('group plan copy key held by another family');
