@@ -355,13 +355,28 @@ describe('offerSignupFromFacts (production caller)', () => {
       sessionCostUsd: null,
       browserId: null,
     }));
+    // The parent's yes as stored in their own 1:1 thread, the only place a yes counts.
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'Yes, sign us up',
+        inGroup: false,
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
     const result = await runAuthorizedSignup(
       db.database,
       {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-yes-1',
+        inboundChannelMessageId: inbound?.id as string,
         existingThread: true,
         now: NOW,
       },

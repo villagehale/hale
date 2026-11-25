@@ -29,11 +29,7 @@ import {
 } from './browser-use/engine';
 import { browserUseSignupEnabled, browserUseSignupPaymentEnabled } from './browser-use/flag';
 import { browserUseProxyFor } from './browser-use/proxy';
-import {
-  type BrowserUseSignupRunner,
-  browserUseSignupRunnerFromEnv,
-  signupWalletFromEnv,
-} from './browser-use/runner';
+import { type BrowserUseSignupRunner, browserUseSignupRunnerFromEnv } from './browser-use/runner';
 import { loadProviderSession, recordBrowserUseProfile } from './browser-use/vault';
 import { bookingConnectors } from './connectors/registry';
 import { connectorBookingSlots } from './connectors/slots';
@@ -55,7 +51,6 @@ import { type RushSignal, rushOpensAt } from './forms/rush';
 import { collapseSignupFact } from './handoff';
 import { inspectRegistrationPage } from './inspect';
 import { LINK_SPEND_CEILING_CENTS } from './link/client';
-import type { SignupPaymentWallet, SignupWalletSkipped, SignupWalletSource } from './link/wallet';
 import {
   type SignupHelpSeasonFacts,
   type SignupOutcomeFacts,
@@ -137,13 +132,6 @@ export interface SignupRunDeps {
    * that absence is returned as `not_configured`.
    */
   browserUseSignup?: BrowserUseSignupRunner | null;
-  /** Each parent's own Link wallet. Undefined reads the env; null names it absent. */
-  paymentWallet?: SignupWalletSource | null;
-  /** Rule #7. Undefined uses `signupSpendingCap`: the approved price, at most $500. */
-  checkSpendingCap?: (
-    familyId: string,
-    cost: { amountUsd: number; category: string },
-  ) => Promise<{ ok: boolean; reason: string }>;
   /**
    * When Browser Use was skipped because the seasonal allowance is spent, the
    * numbers the reply model restates. Production sets this internally.
@@ -271,15 +259,8 @@ export async function runAuthorizedSignup(
   }
   // VIL-715: a registration's terms are the asker's alone, so a yes counts only in their own
   // thread. Elsewhere only a take-back moves an ask (VIL-760); the coach takes any other turn.
-  // That holds for any ask with terms, after the flag goes off too.
-  if (
-    asks.length > 0 &&
-    (registrationPreflightEnabled(input.familyId) ||
-      (await someOfferHasTerms(database, {
-        familyId: input.familyId,
-        offerIds: asks.map((ask) => ask.offerId),
-      })))
-  ) {
+  // That holds for every ask, whatever the pre-flight flag says (VIL-682).
+  if (asks.length > 0) {
     const thread = await yesThread(database, input);
     if (thread !== 'private') return runTakeBackOnly(database, input, deps, planDeps, asks, thread);
   }
@@ -944,9 +925,8 @@ function browserUseAbsent(
 /**
  * T8 — the parent's yes, the session, the price and the consent grant were all
  * checked above. Browser Use drives the provider's site through the saved
- * session to checkout. With the parent's own Link wallet and the spending cap
- * passed, it pays the exact total once that parent approves in Link; otherwise,
- * or when approval times out, the parent pays on the live browser. A rush
+ * session to checkout, and the parent pays on the live browser: a one-shot ask
+ * has no bound approval, so no card reaches the run (VIL-682). A rush
  * page comes back as a handoff. Every outcome ends through `replyFor`, so the
  * parent hears it in the reply model's words, or the non-send is named.
  */
@@ -1090,10 +1070,10 @@ async function runBrowserUseBranch(
   });
   if (!stored) return done(browserUseAbsent('needs_login', 'no_provider_session'));
 
-  const payment = await signupPayment(database, input, deps, ctx.approvedPriceCents);
-  if (payment.skipped && payment.skipped !== 'payment_flag_off') {
+  const paymentSkipped = signupPaymentSkipped();
+  if (paymentSkipped !== 'payment_flag_off') {
     console.warn(
-      { familyId: input.familyId, offerId: ctx.offerId, paymentSkipped: payment.skipped },
+      { familyId: input.familyId, offerId: ctx.offerId, paymentSkipped },
       'authorized signup: agent payment skipped, stopping at checkout',
     );
   }
@@ -1114,7 +1094,7 @@ async function runBrowserUseBranch(
       { familyId: input.familyId, offerId: ctx.offerId, spentUsd: reserved.spentUsd },
       'authorized signup: browser use registration reserve reached',
     );
-    return done(browserUseAbsent('error', 'spend_reserve_reached'), payment.skipped);
+    return done(browserUseAbsent('error', 'spend_reserve_reached'), paymentSkipped);
   }
   allowanceHeld = true;
 
@@ -1153,7 +1133,7 @@ async function runBrowserUseBranch(
       fieldsAllowed: ctx.fieldsAllowed,
       session: ctx.session,
       approvedPriceCents: ctx.approvedPriceCents,
-      payment: payment.wallet,
+      payment: null,
       providerSession: {
         storageState: stored.storageState,
         browserUseProfileId: stored.browserUseProfileId,
@@ -1181,21 +1161,16 @@ async function runBrowserUseBranch(
           browserId: err.browserId,
           sessionCostUsd: err.sessionCostUsd,
         },
-        payment.skipped,
+        paymentSkipped,
       );
     }
     sessionMayExist = true;
-    return done(browserUseAbsent('error', 'engine_threw'), payment.skipped);
+    return done(browserUseAbsent('error', 'engine_threw'), paymentSkipped);
   }
-  return done(result, payment.skipped);
+  return done(result, paymentSkipped);
 }
 
-export type SignupPaymentSkipped =
-  | 'payment_flag_off'
-  | 'no_approved_price'
-  | 'spending_cap'
-  | 'not_configured'
-  | SignupWalletSkipped;
+export type SignupPaymentSkipped = 'payment_flag_off' | 'no_bound_approval';
 
 /** Rule #7 for sign-ups: the cap is the price the parent approved, never above $500. */
 export function signupSpendingCap(approvedPriceCents: number) {
@@ -1220,32 +1195,13 @@ export function signupSpendingCap(approvedPriceCents: number) {
   };
 }
 
-/** Rule #7: the spending cap runs before any wallet reaches the agent. */
-async function signupPayment(
-  database: Database,
-  input: SignupRunInput,
-  deps: SignupRunDeps,
-  approvedPriceCents: number | null,
-): Promise<{ wallet: SignupPaymentWallet | null; skipped: SignupPaymentSkipped | null }> {
-  if (!browserUseSignupPaymentEnabled()) return { wallet: null, skipped: 'payment_flag_off' };
-  if (approvedPriceCents === null) return { wallet: null, skipped: 'no_approved_price' };
-  const check = deps.checkSpendingCap ?? signupSpendingCap(approvedPriceCents);
-  const verdict = await check(input.familyId, {
-    amountUsd: approvedPriceCents / 100,
-    category: 'registration',
-  });
-  if (!verdict.ok) return { wallet: null, skipped: 'spending_cap' };
-  const source =
-    deps.paymentWallet !== undefined ? deps.paymentWallet : signupWalletFromEnv(database).source;
-  if (!source) return { wallet: null, skipped: 'not_configured' };
-  const lookup = await source.forParent({
-    familyId: input.familyId,
-    parentUserId: input.parentUserId,
-    now: input.now,
-  });
-  return lookup.wallet
-    ? { wallet: lookup.wallet, skipped: null }
-    : { wallet: null, skipped: lookup.skipped };
+/**
+ * VIL-682: a card needs an approval bound to the terms Hale read from the page. A one-shot ask
+ * never carries one (an ask with terms is handed back before any run), so its run stops at
+ * checkout whatever the payment switch says, and the parent pays in the live view.
+ */
+function signupPaymentSkipped(): SignupPaymentSkipped {
+  return browserUseSignupPaymentEnabled() ? 'no_bound_approval' : 'payment_flag_off';
 }
 
 async function resolveBrowser(deps: SignupRunDeps): Promise<SignupRuntimeAcquire> {

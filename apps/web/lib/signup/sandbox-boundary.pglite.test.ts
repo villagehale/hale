@@ -132,6 +132,9 @@ describe('sandbox boundary — browser input is consented slots only', () => {
 
   beforeEach(() => {
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', '');
   });
 
   async function familyWithOffer() {
@@ -181,6 +184,26 @@ describe('sandbox boundary — browser input is consented slots only', () => {
     return { seeded, dob: child.dob, email: `${seeded.familyId}@example.test` };
   }
 
+  /** The parent's yes as stored in their own 1:1 thread, the only place a yes counts. */
+  async function oneToOneYes(seeded: { familyId: string; parentUserId: string }) {
+    const [row] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'Yes, sign us up',
+        inGroup: false,
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
+    if (!row) throw new Error('sandbox boundary: no inbound row');
+    return row.id;
+  }
+
   function assertHandsOnly(calls: Call[], allowedValues: ReadonlySet<string>, dob: string) {
     const open = calls.filter((call) => call.method === 'open');
     expect(open).toEqual([{ method: 'open', args: [`${ORIGIN}/register`] }]);
@@ -221,7 +244,7 @@ describe('sandbox boundary — browser input is consented slots only', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-boundary',
+        inboundChannelMessageId: await oneToOneYes(seeded),
         existingThread: true,
         now: NOW,
       },
@@ -255,7 +278,7 @@ describe('sandbox boundary — browser input is consented slots only', () => {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-boundary-password',
+        inboundChannelMessageId: await oneToOneYes(seeded),
         existingThread: true,
         now: NOW,
       },
@@ -292,7 +315,8 @@ describe('sandbox boundary — browser input is consented slots only', () => {
       { browser },
     );
 
-    expect(result.outcome).toBe('consent_missing');
+    // Not known to be the asker's own thread, so it answers no ask (VIL-682).
+    expect(result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
     expect(calls.filter((call) => call.method === 'fill' || call.method === 'select')).toEqual([]);
     expect(calls.filter((call) => call.method === 'open')).toEqual([]);
   });

@@ -143,7 +143,8 @@ export type PlanEngineStep =
 
 /**
  * VIL-715 · the parent's approval, for a run that must stop on any difference from it.
- * Null: a plan from before binding, which runs on its maximum alone.
+ * Null: a plan from before binding, which runs on its maximum alone and is never paid: its
+ * caller turns `paymentEnabled` off (plan/run.ts).
  */
 export interface PlanBinding {
   approved: SignupTermsApproved;
