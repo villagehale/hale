@@ -3,7 +3,7 @@ import { isShareCardId, paintShareCard, shareCardQueryFromUrl } from '~/lib/site
 
 export const runtime = 'nodejs';
 
-/** Absolute share images: https://www.villagehale.com/og/<card>?v=d2&… */
+/** Absolute share images: https://www.villagehale.com/og/<card>?v=d4&… */
 export async function GET(
   request: Request,
   context: { params: Promise<{ card: string }> },
