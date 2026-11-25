@@ -253,7 +253,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 <p>
                   Hale finds real classes and plans near you, by text. Send a flyer or a screenshot
                   and it keeps the dates. From Dec 1, with your ok, it signs them up, and then the
-                  plan stays with everyone in the chat. All year long.
+                  plan stays with everyone in the chat for good.
                 </p>
               </div>
             </li>
