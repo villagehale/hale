@@ -7,6 +7,7 @@ import { localeHref } from '~/i18n/navigation';
 import { type Locale, routing } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { APP_URL } from '~/lib/app-url';
+import { HALE_SOCIAL } from '~/lib/site/social';
 
 /**
  * The marketing footer — ONE foot, on the homepage and on every subpage.
@@ -18,18 +19,50 @@ import { APP_URL } from '~/lib/app-url';
  * Legal column would duplicate it — and points at this site's own policy pages,
  * since D20 moved them here and the app's old routes permanently redirect back.
  *
- * No "Features" column: the link pointed at the homepage. No social row: the
- * site has no accounts to link, so none are invented.
+ * No "Features" column: the link pointed at the homepage.
  *
- * The theme switch and the language selector both live in the brand block —
- * every page ends here, so this is where a reader changes how the site looks and
- * what language it speaks. Every internal link carries the active locale prefix.
+ * The theme switch, the language selector, and Hale's profiles sit in one row
+ * of the brand block — every page ends here, so this is where a reader changes
+ * how the site looks, what language it speaks, and where else Hale is. Every
+ * internal link carries the active locale prefix.
  *
  * `omitPrivacyLink` is the /text exception only. That page already links the
  * policy once, on the Canada line in the column. The bar's "Privacy policy"
  * would be a second link to the same page, which Design rejected. Every other
  * page keeps the legal pair.
  */
+
+function SocialIcon({ id }: { id: (typeof HALE_SOCIAL)[number]['id'] }) {
+  if (id === 'x') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.725-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+      </svg>
+    );
+  }
+  if (id === 'instagram') {
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        aria-hidden="true"
+      >
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M4.98 3.5C4.98 4.88 3.88 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM.5 8.5h4V24h-4V8.5zM8.5 8.5h3.8v2.1h.1c.5-1 1.8-2.1 3.8-2.1 4 0 4.8 2.6 4.8 6V24h-4v-7.7c0-1.8 0-4.1-2.5-4.1s-2.9 2-2.9 4V24h-4V8.5z" />
+    </svg>
+  );
+}
 
 export function SiteFooter({
   locale = routing.defaultLocale,
@@ -103,6 +136,20 @@ export function SiteFooter({
                 }}
               />
               <LanguageSelect locale={locale} label={lang('label')} />
+              <div className="flex items-center gap-3">
+                {HALE_SOCIAL.map((profile) => (
+                  <a
+                    key={profile.id}
+                    href={profile.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={t(profile.label)}
+                    className="text-slate-green transition-colors hover:text-spruce"
+                  >
+                    <SocialIcon id={profile.id} />
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
 

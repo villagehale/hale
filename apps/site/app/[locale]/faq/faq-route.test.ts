@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FAQ } from '~/lib/faq/index.js';
 import FaqPage from './page.js';
 
@@ -17,6 +17,10 @@ const html = renderToStaticMarkup(
 );
 
 describe('/faq — canonical product FAQ', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('renders every product question once in the visible accordion', () => {
     for (const item of FAQ) {
       expect(html).toContain(item.question);
@@ -56,6 +60,40 @@ describe('/faq — canonical product FAQ', () => {
       'Hale 做什么、读什么、如何保护你家的数据，以及为什么没有你的同意它不会报名或付款。',
     );
     expect(messages('en').Faq.metaTitle).toBe('Questions about Hale · Hale');
+  });
+
+  it('states the yearly price in each locale, in the row and the JSON-LD', async () => {
+    const cases = [
+      ['en', 'Plus is $159/yr, and Max is $329/yr.', '$19/mo'],
+      ['fr', 'Plus coûte 159 $/an, et Max coûte 329 $/an.', '19 $/mois'],
+      ['zh', 'Plus 是每年 $159，Max 是每年 $329。', '每月 $19'],
+    ] as const;
+    for (const [locale, yearly, monthly] of cases) {
+      const page = renderToStaticMarkup(
+        await FaqPage({ params: Promise.resolve({ locale }) }),
+      );
+      expect(page, locale).toContain(yearly);
+      expect(page, locale).not.toContain(monthly);
+      const ld = page.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '';
+      expect(ld, locale).toContain(yearly);
+      expect(ld, locale).not.toContain(monthly);
+    }
+  });
+
+  it('shows the English sale price while the promo runs, and keeps fr and zh on the list yearly price', async () => {
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    const en = renderToStaticMarkup(await FaqPage({ params: Promise.resolve({ locale: 'en' }) }));
+    const fr = renderToStaticMarkup(await FaqPage({ params: Promise.resolve({ locale: 'fr' }) }));
+    const zh = renderToStaticMarkup(await FaqPage({ params: Promise.resolve({ locale: 'zh' }) }));
+    expect(en).toContain('Plus is $59/yr, and Max is $99/yr.');
+    expect(en).not.toContain('$19/mo');
+    expect(en).not.toContain('$159/yr');
+    expect(fr).toContain('159 $/an');
+    expect(fr).not.toContain('$59/yr');
+    expect(fr).not.toContain('19 $/mois');
+    expect(zh).toContain('每年 $159');
+    expect(zh).not.toContain('$59/yr');
+    expect(zh).not.toContain('每月 $19');
   });
 
   it('renders every answer’s text, open or closed', () => {

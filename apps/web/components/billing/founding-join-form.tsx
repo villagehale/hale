@@ -237,7 +237,7 @@ export function FoundingJoinForm({
       ? 'Codes work for 10 minutes or three tries. Send a fresh one to keep going.'
       : step === 'code' && !verified
         ? 'A code is on its way to this number.'
-        : `Plus ${plusLabel} or Max ${maxLabel}, locked for life. We’ll text you a code, then Stripe takes the payment. Full refund anytime.`;
+        : `Plus ${plusLabel} or Max ${maxLabel}, locked in. We’ll text you a code, then Stripe takes the payment. Full refund anytime.`;
 
   return (
     <section className={`${stage.card} ${stage.door}`}>

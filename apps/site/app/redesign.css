@@ -320,7 +320,6 @@
 .rd .ev .m { margin-top: 2px; font-family: var(--font-ui); font-size: 13.6px; font-weight: 500; line-height: 1.4; color: #647290; display: flex; align-items: center; gap: 6px; white-space: nowrap; } /* production .meta */
 .rd .ev .m .mono { font-family: var(--font-mono); font-size: 12px; font-weight: 400; }
 .rd .ev .m i { width: 2px; height: 2px; border-radius: 50%; background: var(--ink-48); }
-.rd .ev .bell { width: 12px; height: 12px; color: var(--amber); }
 .rd .ev.new { background: var(--amber-tint); }
 .rd .ev .who-row { margin-top: 6px; }
 .rd .mini-av {

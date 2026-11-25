@@ -133,11 +133,8 @@ export function RedesignHome({
             <div className="ev">
               <div className="d"><b>{t("TUE")}</b><span>13</span></div>
               <div>
-                <div className="t">{t("Swim registration opens")}</div>
-                <div className="m">
-                  <svg className="bell" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M6 1a3.2 3.2 0 0 0-3.2 3.2v1.9L1.9 7.6a.5.5 0 0 0 .43.76h7.34a.5.5 0 0 0 .43-.76L9.2 6.1V4.2A3.2 3.2 0 0 0 6 1Zm-1.3 8.6a1.3 1.3 0 0 0 2.6 0H4.7Z" /></svg>
-                  {t("Reminder")} <i /> <span className="mono">{t("7:00 PM")}</span>
-                </div>
+                <div className="t">{t("Toddler swim")}</div>
+                <div className="m">Leo <i /> <span className="mono">{t("10:00 AM")}</span></div>
               </div>
             </div>
             <div className="ev">
@@ -276,14 +273,14 @@ export function RedesignHome({
     </div></div>
    </div>
    <div className="hs-beat hs-glass">
-    <p className="hs-when">{t("When Dec 1 arrives")}</p>
-    <h3 className="hs-h3">{t("Gets the open spot today")}</h3>
+    <p className="hs-when">{t("On Dec 1")}</p>
+    <h3 className="hs-h3">{t("Signs them up with your ok")}</h3>
     <p className="hs-p">{t("Starting Dec 1, with your ok, Hale signs them up when you say yes, and you still pay. Near you.")}</p>
     <div className="hs-art"><div className="im-screen" data-motion-scene="chat">
      <HaleHead />
      <div className="im-thread">
       <OneStamp today={t("Today")} time={t("9:41 AM")} />
-      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("A seat just opened")} {t("in Swimmer 3, Saturdays 9:30. From Dec 1,")} <span className="im-link">{t("your ok now")}</span>.</div></div>
+      <div className="im-run" data-motion-step="0.6"><TypingBubble /><div className="im-b in tail">{t("I can sign them up")} {t("for Swimmer 3, Saturdays 9:30. On Dec 1,")} <span className="im-link">{t("with your ok")}</span>.</div></div>
      </div>
     </div></div>
    </div>

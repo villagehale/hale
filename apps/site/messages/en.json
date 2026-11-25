@@ -35,7 +35,10 @@
     "cookieSettings": "Cookie settings",
     "copyright": "© {year} Hale. All rights reserved.",
     "company": "Village Hale Technologies Inc.",
-    "signIn": "Sign in"
+    "signIn": "Sign in",
+    "socialX": "Hale on X",
+    "socialInstagram": "Hale on Instagram",
+    "socialLinkedIn": "Hale on LinkedIn"
   },
   "LanguageSwitcher": {
     "label": "Language"

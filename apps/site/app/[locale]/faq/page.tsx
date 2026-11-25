@@ -4,11 +4,12 @@ import { tx } from '~/components/redesign/tx';
 import { absolutePageUrl, buildAlternates, ogLocale } from '~/i18n/metadata';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
-import { paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { paidPlansYearlyAnswer } from '~/lib/billing/plain-price';
 import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { FAQ, faqJsonLd } from '~/lib/faq/index';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
+import { requestHolidayPromo } from '~/lib/promo/server';
 import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { readSmsNumber } from '~/lib/text-entry';
 
@@ -44,12 +45,14 @@ export default async function FaqPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
   const source = await pageSource(searchParams);
   const currency = await visitorCurrency();
+  // Same helpers as /pricing. requestHolidayPromo is null in French and Chinese,
+  // so those pages stay on the list yearly price. JSON-LD below is this request's
+  // sentence: the visitor's currency, and the sale price while the English promo runs.
+  const promo = await requestHolidayPromo(locale, searchParams);
+  const costAnswer = paidPlansYearlyAnswer(currency, promo);
   const items = FAQ.map((item) => ({
     question: tx(locale, item.question),
-    answer: tx(
-      locale,
-      item.id === 'what-do-paid-plans-cost' ? paidPlansCostAnswer(currency) : item.answer,
-    ),
+    answer: tx(locale, item.id === 'what-do-paid-plans-cost' ? costAnswer : item.answer),
   }));
   return (
     <>
@@ -64,6 +67,7 @@ export default async function FaqPage({ params, searchParams }: PageProps) {
         prefill={intakePrefill(locale)}
         source={source}
         currency={currency}
+        promo={promo}
       />
     </>
   );

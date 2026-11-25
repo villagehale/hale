@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { routing } from '~/i18n/routing';
-import { siteJsonLd } from './structured-data';
+import { HALE_SAME_AS } from './social';
+import { aboutJsonLd, siteJsonLd } from './structured-data';
 
 describe('siteJsonLd', () => {
   const graph = siteJsonLd()['@graph'] as Array<Record<string, unknown>>;
@@ -17,6 +18,16 @@ describe('siteJsonLd', () => {
     const orgId = byType('Organization')?.['@id'];
     expect((byType('WebSite')?.publisher as { '@id': string })['@id']).toBe(orgId);
     expect((byType('SoftwareApplication')?.publisher as { '@id': string })['@id']).toBe(orgId);
+  });
+
+  it('lists Hale’s profiles on the Organization and no phone number', () => {
+    const org = byType('Organization');
+    expect(org?.sameAs).toEqual([...HALE_SAME_AS]);
+    expect(org).not.toHaveProperty('telephone');
+    expect(JSON.stringify(siteJsonLd())).not.toContain('telephone');
+    const about = aboutJsonLd().about as Record<string, unknown>;
+    expect(about.sameAs).toEqual([...HALE_SAME_AS]);
+    expect(about).not.toHaveProperty('telephone');
   });
 
   it('does not name a country of service', () => {

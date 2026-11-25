@@ -67,7 +67,7 @@ export function RedesignPricing({
    <div className="sp-copy">
     <p className="hs-eyebrow">{t("Pricing")}</p>
     <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list ? t("Plus, by the year or the month.") : t("What you pay.")}</h1>
-    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}, and chat stays open with no card needed. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}. Texting Hale costs nothing, no card. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}` : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
     {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
     {noChargeLine ? <p className="hs-meta">{noChargeLine}</p> : null}
     

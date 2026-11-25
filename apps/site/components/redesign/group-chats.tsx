@@ -173,7 +173,7 @@ export function groupChatSlides(locale: Locale, framed: boolean): ReactNode[] {
             </div>
           </div>
           <div className="im-run out" {...step('3')}>
-            <div className="im-b out tail">{t('Got in! 🙌')}</div>
+            <div className="im-b out tail">{t("We're in 🙌")}</div>
             <div className="im-status">{t('Delivered')}</div>
           </div>
         </>,

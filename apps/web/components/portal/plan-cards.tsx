@@ -81,7 +81,7 @@ export function PromoOfferPlan({
         </span>
         <span className={styles['fp-badge']}>{label}</span>
       </div>
-      <h2 className={styles['fp-title']}>{amount}, locked for life.</h2>
+      <h2 className={styles['fp-title']}>{amount}, locked in.</h2>
       <p className={styles['fp-body']}>
         Yearly, at this price, for as long as you keep it. Full refund anytime.
       </p>

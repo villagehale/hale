@@ -53,14 +53,15 @@ describe('/founding offer surface', () => {
     vi.stubEnv('PROMO_NEW_VISITOR_CHECKOUT_ENABLED', 'true');
     const html = await renderFounding();
     expect(html).toContain('Text');
-    expect(html).toContain('$0/mo');
+    expect(html).toContain('>$0</h1>');
+    expect(html).not.toContain('$0/mo');
     expect(html).toContain('No card needed.');
     expect(html).toContain('Join Hale');
     expect(html).not.toMatch(/biggest/i);
     expect(html).not.toMatch(/founding famil/i);
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
+    expect(html).not.toContain('/mo');
     expect(html).not.toContain('$159/yr');
     expect(html).not.toContain('$19');
     expect(html).not.toContain('Continue ·');
@@ -73,6 +74,20 @@ describe('/founding offer surface', () => {
     expect(resolveDocumentTitle(metadata.title, PORTAL_TITLE.template, PORTAL_TITLE.default)).toBe(
       'Join Hale',
     );
+    expect(metadata.description).toBe(
+      'Join Hale. Choose Plus or Max, billed yearly, then text Hale.',
+    );
+    expect(metadata.description).not.toContain('Sign in to Hale');
+    expect(metadata.openGraph?.title).toBe('Join Hale');
+    expect(metadata.openGraph?.description).toBe(metadata.description);
+    expect(metadata.openGraph?.images).toEqual([
+      expect.objectContaining({ url: 'https://www.villagehale.com/og/home' }),
+    ]);
+    expect(metadata.twitter).toMatchObject({
+      card: 'summary_large_image',
+      title: 'Join Hale',
+      description: metadata.description,
+    });
   });
 
   it('shows the same three options with a matching preview token while flags stay off', async () => {
@@ -80,10 +95,11 @@ describe('/founding offer surface', () => {
     vi.stubEnv('AUTH_SECRET', 'test-secret');
     const html = await renderFounding({ preview: 'secret' });
     expect(html).toContain('Text');
-    expect(html).toContain('$0/mo');
+    expect(html).toContain('>$0</h1>');
+    expect(html).not.toContain('$0/mo');
     expect(html).toContain('$59/yr');
     expect(html).toContain('$99/yr');
-    expect(html.replaceAll('$0/mo', '')).not.toContain('/mo');
+    expect(html).not.toContain('/mo');
     expect(cookieJar.value).toBeTruthy();
   });
 

@@ -1,7 +1,7 @@
 import { languageTag } from '~/i18n/metadata';
 import { type Locale, routing } from '~/i18n/routing';
 import { SITE_URL } from '~/lib/app-url';
-import { TEXTING_COST_ANSWER, paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { TEXTING_COST_ANSWER, paidPlansYearlyAnswer } from '~/lib/billing/plain-price';
 import { ONE_LINER, SIGNUP_ANSWER } from '~/lib/site/narrative';
 /**
  * The product FAQ — the questions a parent actually asks an answer engine before
@@ -115,8 +115,9 @@ export const FAQ: readonly FaqItem[] = [
   {
     id: 'what-do-paid-plans-cost',
     question: 'What do paid plans cost?',
-    // CAD is the no-header default. The route swaps in the visitor's row.
-    answer: paidPlansCostAnswer('CAD'),
+    // CAD list yearly is the no-header default. The route swaps in the
+    // visitor's currency, and the English sale price while the promo runs.
+    answer: paidPlansYearlyAnswer('CAD'),
   },
   {
     id: 'what-happens-to-our-data',
