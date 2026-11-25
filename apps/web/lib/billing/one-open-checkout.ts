@@ -75,11 +75,7 @@ export async function createOneOpenCheckout(input: {
   const decision = await database.transaction(async (rawTx): Promise<Decision> => {
     const tx = rawTx as unknown as Database;
     const [family] = await tx
-      .select({
-        planTier: schema.families.planTier,
-        sessionId: schema.families.stripeCheckoutSessionId,
-        openedBy: schema.families.stripeCheckoutOpenedBy,
-      })
+      .select({ planTier: schema.families.planTier })
       .from(schema.families)
       .where(eq(schema.families.id, familyId))
       .limit(1)
@@ -88,15 +84,24 @@ export async function createOneOpenCheckout(input: {
     if (familyAlreadySubscribed(family))
       return { kind: 'done', result: { status: 'already_paid' } };
 
-    const prior = family.sessionId
-      ? ((await retrieve(family.sessionId, { expand: ['subscription'] })) as StripeSession | null)
+    const [open] = await tx
+      .select({
+        sessionId: schema.familyOpenCheckouts.sessionId,
+        openedBy: schema.familyOpenCheckouts.openedBy,
+      })
+      .from(schema.familyOpenCheckouts)
+      .where(eq(schema.familyOpenCheckouts.familyId, familyId))
+      .limit(1);
+    const priorSessionId = open?.sessionId ?? null;
+    const prior = priorSessionId
+      ? ((await retrieve(priorSessionId, { expand: ['subscription'] })) as StripeSession | null)
       : null;
 
     if (prior?.status === 'complete' && !subscriptionEnded(prior.subscription)) {
       return { kind: 'done', result: { status: 'already_paid' } };
     }
     if (prior?.status === 'open') {
-      if (prior.url && family.openedBy === userId && prior.metadata?.priceId === params.priceId) {
+      if (prior.url && open?.openedBy === userId && prior.metadata?.priceId === params.priceId) {
         await tx.insert(schema.auditLog).values(started);
         return { kind: 'done', result: { status: 'created', url: prior.url } };
       }
@@ -119,7 +124,7 @@ export async function createOneOpenCheckout(input: {
     try {
       created = await client.createCheckoutSession({
         ...params,
-        idempotencyKey: idempotencyKey(familyId, family.sessionId, params),
+        idempotencyKey: idempotencyKey(familyId, priorSessionId, params),
       });
     } catch (err) {
       return { kind: 'create_failed', err };
@@ -130,10 +135,11 @@ export async function createOneOpenCheckout(input: {
         err: new Error('stripe checkout session response missing id'),
       };
     }
+    const row = { sessionId: created.id, openedBy: userId, updatedAt: new Date() };
     await tx
-      .update(schema.families)
-      .set({ stripeCheckoutSessionId: created.id, stripeCheckoutOpenedBy: userId })
-      .where(eq(schema.families.id, familyId));
+      .insert(schema.familyOpenCheckouts)
+      .values({ familyId, ...row })
+      .onConflictDoUpdate({ target: schema.familyOpenCheckouts.familyId, set: row });
     await tx.insert(schema.auditLog).values(started);
     return { kind: 'done', result: { status: 'created', url: created.url } };
   });

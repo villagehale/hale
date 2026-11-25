@@ -1,5 +1,5 @@
 import { schema } from '@hale/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeOtpSender } from '~/lib/channels/otp-sender';
 import { pageOps } from '~/lib/monitoring/failure-page';
@@ -120,6 +120,16 @@ async function auditVerbs(familyId: string, verb: string): Promise<number> {
   return rows.length;
 }
 
+async function openCheckoutRows(familyId: string) {
+  return test.database
+    .select({
+      sessionId: schema.familyOpenCheckouts.sessionId,
+      openedBy: schema.familyOpenCheckouts.openedBy,
+    })
+    .from(schema.familyOpenCheckouts)
+    .where(eq(schema.familyOpenCheckouts.familyId, familyId));
+}
+
 describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
   it('two requests at the same moment for the same price leave one payable session', async () => {
     const parent = await signedInParent();
@@ -136,6 +146,9 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
     expect(second).toEqual({ status: 'created', url });
     const create = fake.calls.find((c) => c.path === '/v1/checkout/sessions');
     expect(create?.headers.get('idempotency-key')).toMatch(/^[0-9a-f]{64}$/);
+    expect(await openCheckoutRows(parent.familyId)).toEqual([
+      { sessionId: payable[0]?.id, openedBy: parent.userId },
+    ]);
   });
 
   it('decides under a row lock on the family, which is what makes Postgres take turns', async () => {
@@ -166,9 +179,7 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
 
     const lockedRead = statements.findIndex((s) => /from "families".* for update$/is.test(s));
     expect(lockedRead).toBeGreaterThan(-1);
-    const write = statements.findIndex((s) =>
-      /^update "families" set "stripe_checkout_session_id"/i.test(s),
-    );
+    const write = statements.findIndex((s) => /^insert into "family_open_checkouts"/i.test(s));
     expect(write).toBeGreaterThan(lockedRead);
   });
 
@@ -297,9 +308,9 @@ describe('ONE_OPEN_CHECKOUT_ENABLED on', () => {
 });
 
 describe('the open-checkout migration', () => {
-  const FILE = migrationFiles().find((f) => f.endsWith('_families_open_checkout.sql'));
+  const FILE = migrationFiles().find((f) => f.endsWith('_family_open_checkouts.sql'));
 
-  it('adds both columns and survives a second pass', async () => {
+  it('adds the table, survives a second pass, and goes with its family', async () => {
     if (!FILE) throw new Error('migration file not found');
     const before = migrationFiles()
       .filter((f) => f < FILE)
@@ -309,14 +320,27 @@ describe('the open-checkout migration', () => {
     const columns = async () =>
       (
         await db.client.query<{ column_name: string }>(
-          "select column_name from information_schema.columns where table_name = 'families' and column_name like 'stripe_checkout_%' order by column_name",
+          "select column_name from information_schema.columns where table_name = 'family_open_checkouts' order by column_name",
         )
       ).rows.map((r) => r.column_name);
     try {
       expect(await columns()).toEqual([]);
       await db.applyMigration(FILE);
       await db.applyMigration(FILE);
-      expect(await columns()).toEqual(['stripe_checkout_opened_by', 'stripe_checkout_session_id']);
+      expect(await columns()).toEqual(['family_id', 'opened_by', 'session_id', 'updated_at']);
+      const family = await db.client.query<{ id: string }>(
+        "insert into families (display_name) values ('Household') returning id",
+      );
+      const familyId = family.rows[0]?.id;
+      await db.client.query(
+        'insert into family_open_checkouts (family_id, session_id, opened_by) values ($1, $2, gen_random_uuid())',
+        [familyId, 'cs_test_cascade'],
+      );
+      const rows = async () =>
+        (await db.client.query('select 1 from family_open_checkouts')).rows.length;
+      expect(await rows()).toBe(1);
+      await db.client.query('delete from families where id = $1', [familyId]);
+      expect(await rows()).toBe(0);
     } finally {
       await db.close();
     }
@@ -335,9 +359,6 @@ describe('ONE_OPEN_CHECKOUT_ENABLED off', () => {
       'POST /v1/checkout/sessions',
     ]);
     expect(fake.calls.every((c) => c.headers.get('idempotency-key') === null)).toBe(true);
-    const [family] = await test.database
-      .execute(sql`select stripe_checkout_session_id from families where id = ${parent.familyId}`)
-      .then((r) => (r as unknown as { rows: Array<Record<string, unknown>> }).rows);
-    expect(family).toEqual({ stripe_checkout_session_id: null });
+    expect(await openCheckoutRows(parent.familyId)).toEqual([]);
   });
 });

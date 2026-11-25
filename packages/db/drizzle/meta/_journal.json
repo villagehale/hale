@@ -1721,7 +1721,7 @@
       "idx": 253,
       "version": "7",
       "when": 1795578395750,
-      "tag": "0267_families_open_checkout",
+      "tag": "0267_family_open_checkouts",
       "breakpoints": true
     }
   ]
