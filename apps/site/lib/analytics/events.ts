@@ -71,8 +71,8 @@ export type AnalyticsEvent =
   // per view. The only signal the page has about whether the scroll earns the
   // CTA at the bottom of it.
   | 'landing_scroll'
-  // Holiday promo: a tap on the "already texting Hale? lock in the price"
-  // link, which opens the app's /join page. Properties: cta_placement,
+  // Holiday founding promo: a tap on the "already texting Hale? lock in the price"
+  // link, which opens the app's founding checkout page. Properties: cta_placement,
   // promo_phase (black_friday / holiday), currency (CAD / USD). The promo's
   // Text Hale doors stay cta_text_click / cta_message_click with promo_* placements.
   | 'promo_cta_click';
