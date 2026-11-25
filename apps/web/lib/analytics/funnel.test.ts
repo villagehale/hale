@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captureFunnelEvent, signupFunnelExtras } from './funnel';
 import { createFakeFunnelSender } from './funnel.testkit';
@@ -136,15 +134,5 @@ describe('signupFunnelExtras', () => {
       properties: {},
       options: {},
     });
-  });
-});
-
-describe('the SMS door wires the extras into signup_completed', () => {
-  it('passes the extras to the existing signup_completed capture', () => {
-    const machine = readFileSync(join(__dirname, '../channel/intake/machine.ts'), 'utf8');
-    expect(machine).toContain('signupFunnelExtras({ sourceCode: session.sourceCode, now })');
-    expect(machine).toMatch(
-      /captureWebEvent\('signup_completed', hashFamilyId\(familyId\), props, signup\.options\)/,
-    );
   });
 });

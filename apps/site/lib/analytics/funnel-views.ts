@@ -39,8 +39,9 @@ export function createFunnelViewTracker(): {
 /**
  * The attribution the hale_attr cookie carries to checkout. With web analytics on, the
  * first-touch card code (read and validated by source-code.ts) rides along so a paid
- * checkout can be credited to the card. Off, the code is not even read, so the cookie
- * and the tab's storage stay what they were.
+ * checkout can be credited to the card. That gives the code the cookie's 90-day life,
+ * not the tab's (source-code.ts). Off, the code is not even read, so the cookie and the
+ * tab's storage stay what they were.
  */
 export function funnelAttributionForCookie(
   attribution: Attribution,

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ATTRIBUTION_KEYS, parseAttribution, serializeAttribution } from './attribution.js';
 
-// The attribution keys travel into Stripe metadata and analytics, so a value that is
-// not a campaign or click token never survives the parse.
+// The attribution keys travel into Stripe metadata and analytics, so a value that carries
+// an email, a URL or markup never survives the parse, while real campaign names do.
 
 describe('parseAttribution value sanitizing', () => {
   it('keeps campaign and click tokens as they arrive (positive control)', () => {
@@ -18,6 +18,17 @@ describe('parseAttribution value sanitizing', () => {
       gclid: 'Cj0KCQ-abc_123.x~y',
       fbclid: 'IwAR1 z',
     });
+  });
+
+  it('keeps real campaign names: accents, CJK, pipes, slashes, colons, commas and parentheses', () => {
+    const values = {
+      utm_campaign: 'rentrée-2026',
+      utm_term: '儿童 夏令营',
+      utm_content: 'video/hero',
+      utm_medium: 'bf26:ca',
+      utm_source: 'BF26 | Parents (GTA), fr',
+    };
+    expect(parseAttribution(new URLSearchParams(values))).toEqual(values);
   });
 
   it('drops a value that carries an email address or a URL', () => {

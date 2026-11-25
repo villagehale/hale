@@ -3,8 +3,9 @@
  *
  * These are advertising click and campaign identifiers plus Hale's own card code,
  * not parent or child data. Values are truncated so they fit Stripe metadata (500
- * chars), and a value outside the token alphabet (an email's `@`, a URL, markup) is
- * dropped rather than carried, because these values reach Stripe and analytics.
+ * chars). A value that carries an email's `@`, a URL's `://`, markup or quotes is
+ * dropped whole rather than carried, because these values reach Stripe and analytics.
+ * Anything else a campaign name holds (accents, CJK, `|`, `/`, `:`) passes.
  *
  * `source_code` is Hale's card code. The site reads it from its own `s` / `src` tag
  * with its own validator, never from a landing URL under this name.
@@ -26,7 +27,7 @@ export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
 export type Attribution = Partial<Record<AttributionKey, string>>;
 
 const MAX_VALUE_LENGTH = 200;
-const TOKEN_VALUE = /^[A-Za-z0-9 ._~+-]+$/;
+const UNSAFE_VALUE = /@|:\/\/|[<>"']/;
 /** The site's card-code grammar (apps/site/lib/text-entry.ts SOURCE_CODE_PATTERN). */
 const SOURCE_CODE_VALUE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SOURCE_CODE_MAX_LENGTH = 48;
@@ -41,7 +42,7 @@ function cleanValue(key: AttributionKey, raw: unknown): string | undefined {
       : undefined;
   }
   const bounded = trimmed.slice(0, MAX_VALUE_LENGTH);
-  return TOKEN_VALUE.test(bounded) ? bounded : undefined;
+  return UNSAFE_VALUE.test(bounded) ? undefined : bounded;
 }
 
 /** Pull the known keys out of a query string, URLSearchParams, or a loose map. */

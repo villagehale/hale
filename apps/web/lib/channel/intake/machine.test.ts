@@ -1,6 +1,8 @@
 import { schema } from '@hale/db';
 import { ageInMonths } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetPosthogClientsForTests } from '~/lib/analytics/posthog-node';
+import { decodeBatch, ours } from '~/lib/analytics/posthog-wire.testkit';
 import {
   SCRIPTED_START_CONFIRMATION,
   SCRIPTED_STOP_CONFIRMATION,
@@ -1394,5 +1396,55 @@ describe('intake · a garbled reply sends nothing (VIL-683)', () => {
 
     expect(result).toEqual({ status: 'restarted', ack });
     expect(door.fetchSpy).toHaveBeenCalledTimes(posts);
+  });
+});
+
+/**
+ * signup_completed goes straight to captureWebEvent (not deps.capture), so it is read off
+ * the posthog-node wire: the real capture path, with only the network faked.
+ */
+describe('intake · signup_completed carries the funnel extras', () => {
+  async function signupCompleted(funnelFlag: string) {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_WEB_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'phc_test');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_HOST', 'https://ph.example.com');
+    vi.stubEnv('POSTHOG_HOST', '');
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', funnelFlag);
+    resetPosthogClientsForTests();
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response(null, { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { fake, transport, deps } = harness({});
+      await text(fake, transport, deps, 'Hi (via earlyon-richmondhill)');
+      await text(fake, transport, deps, 'Maya is 4, Leo is 1. M5V 2T6');
+      const found = () =>
+        fetchMock.mock.calls
+          .filter(([url]) => String(url) === 'https://ph.example.com/batch/')
+          .flatMap(([, init]) => decodeBatch(init).events)
+          .filter((e) => e.event === 'signup_completed');
+      await vi.waitFor(() => expect(found()).toHaveLength(1));
+      return found()[0];
+    } finally {
+      vi.unstubAllGlobals();
+      resetPosthogClientsForTests();
+    }
+  }
+
+  it('adds the card code and the signup date with FUNNEL_ATTRIBUTION_ENABLED on', async () => {
+    const event = await signupCompleted('true');
+    expect(ours(event?.properties ?? {})).toEqual({
+      surface: 'sms',
+      source_code: 'earlyon-richmondhill',
+    });
+    expect(event?.properties.$set_once).toEqual({ signup_date: '2026-07-30' });
+  });
+
+  it('sends what main sends with the flag off: the surface only, no person property', async () => {
+    const event = await signupCompleted('');
+    expect(ours(event?.properties ?? {})).toEqual({ surface: 'sms' });
+    expect(event?.properties.$set_once).toBeUndefined();
   });
 });
