@@ -7,8 +7,9 @@ import { FaqItem } from './faq-item';
 import { TextDoor } from './text-door';
 import { localeHref } from '~/i18n/navigation';
 import type { BillingCurrency } from '@hale/types';
-import { paidPlansCostAnswer } from '~/lib/billing/plain-price';
+import { paidPlansYearlyAnswer } from '~/lib/billing/plain-price';
 import { FAQ } from '~/lib/faq/index';
+import type { HolidayPromo } from '~/lib/promo/holiday';
 import { Phrase, tx } from './tx';
 
 
@@ -26,6 +27,7 @@ export function RedesignFaq({
   prefill,
   source = null,
   currency = 'CAD',
+  promo = null,
 }: {
   locale: Locale;
   smsNumber: string;
@@ -34,6 +36,8 @@ export function RedesignFaq({
   source?: string | null;
   /** Which list-price row to print. Missing geo is CAD. */
   currency?: BillingCurrency;
+  /** English promo only. Null keeps the list yearly price, including fr and zh. */
+  promo?: HolidayPromo | null;
 }) {
   const t = (s: string) => tx(locale, s);
   const mode = 'sms' as const;
@@ -75,7 +79,7 @@ export function RedesignFaq({
           ) : item.question === "Is Hale a person?" ? (
             <Phrase locale={locale} sentence={item.answer} phrase="aloha@villagehale.com" href="mailto:aloha@villagehale.com" />
           ) : (
-            t(item.id === 'what-do-paid-plans-cost' ? paidPlansCostAnswer(currency) : item.answer)
+            t(item.id === 'what-do-paid-plans-cost' ? paidPlansYearlyAnswer(currency, promo) : item.answer)
           )}
         </FaqItem>
       ))}

@@ -1,5 +1,5 @@
 import { type BillingCurrency, MAX_LIST_PRICE_DISPLAY, PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
-import { FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+import { FOUNDING_REFUND_LINE, type HolidayPromo } from '~/lib/promo/holiday';
 
 /**
  * Non-promo price sentences. Amounts come from the list display in @hale/types.
@@ -46,4 +46,23 @@ export function plusCloseSentence(currency: BillingCurrency): string {
 /** Location-specific cost answer. Default geo (no header) is CAD, same as checkout. */
 export function paidPlansCostAnswer(currency: BillingCurrency): string {
   return `Plus is ${plusMonthlyLabel(currency)} or ${plusAnnualLabel(currency)}, and Max is ${maxAnnualLabel(currency)}. ${REFUND_LINE}`;
+}
+
+/**
+ * The FAQ's "What do paid plans cost?" sentence, and the FAQPage JSON-LD that
+ * repeats it. Yearly only. While the English promo is on, the sale labels;
+ * otherwise the list annual labels for the visitor's currency. Both come from
+ * the pricing page's helpers. A promo in another currency is ignored, and
+ * French and Chinese pass null so the promo stays English-only.
+ * JSON-LD is built in the same request as the row, so it is the price the
+ * page renders for that geo.
+ */
+export function paidPlansYearlyAnswer(
+  currency: BillingCurrency,
+  promo: HolidayPromo | null = null,
+): string {
+  const plus =
+    promo && promo.currency === currency ? promo.plus.saleLabel : plusAnnualLabel(currency);
+  const max = promo && promo.currency === currency ? promo.max.saleLabel : maxAnnualLabel(currency);
+  return `Plus is ${plus}, and Max is ${max}. ${REFUND_LINE}`;
 }

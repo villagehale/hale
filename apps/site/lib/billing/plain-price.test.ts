@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { buildHolidayPromo } from '~/lib/promo/holiday';
 import {
   PAID_PLANS_LINE,
   TEXTING_COST_ANSWER,
   maxAnnualLabel,
   orAnnualLabel,
   paidPlansCostAnswer,
+  paidPlansYearlyAnswer,
   plusCloseSentence,
   plusMonthlyLabel,
   plusPriceSentence,
@@ -39,6 +41,30 @@ describe('plain list price copy', () => {
       'Plus is $14/mo or $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.',
     );
     expect(paidPlansCostAnswer('CAD')).not.toContain('Paid plans are Plus and Max.');
+    expect(paidPlansYearlyAnswer('CAD')).toBe(
+      'Plus is $159/yr, and Max is $329/yr. Full refund anytime if it’s not for you.',
+    );
+    expect(paidPlansYearlyAnswer('USD')).toBe(
+      'Plus is $119/yr, and Max is $259/yr. Full refund anytime if it’s not for you.',
+    );
+    const usdSale = buildHolidayPromo('holiday', 'USD');
+    const cadSale = buildHolidayPromo('holiday', 'CAD');
+    expect(paidPlansYearlyAnswer('USD', usdSale)).toBe(
+      `Plus is ${usdSale.plus.saleLabel}, and Max is ${usdSale.max.saleLabel}. Full refund anytime if it’s not for you.`,
+    );
+    expect(paidPlansYearlyAnswer('CAD', cadSale)).toBe(
+      `Plus is ${cadSale.plus.saleLabel}, and Max is ${cadSale.max.saleLabel}. Full refund anytime if it’s not for you.`,
+    );
+    expect(paidPlansYearlyAnswer('CAD', usdSale)).toBe(paidPlansYearlyAnswer('CAD'));
+    for (const line of [
+      paidPlansYearlyAnswer('CAD'),
+      paidPlansYearlyAnswer('USD'),
+      paidPlansYearlyAnswer('CAD', cadSale),
+      paidPlansYearlyAnswer('USD', usdSale),
+    ]) {
+      expect(line).not.toMatch(/\/mo/);
+      expect(line).not.toMatch(CURRENCY_LABEL);
+    }
     for (const line of [
       PAID_PLANS_LINE,
       TEXTING_COST_ANSWER,

@@ -92,7 +92,8 @@ describe('the FAQ this build serves', () => {
     const cost = FAQ.find((item) => item.id === 'what-do-paid-plans-cost');
     expect(costQuestion?.answer).toContain('Paid plans are Plus and Max.');
     expect(costQuestion?.answer).toContain('Full refund anytime if it’s not for you.');
-    expect(cost?.answer).toContain('Plus is $19/mo or $159/yr, and Max is $329/yr.');
+    expect(cost?.answer).toContain('Plus is $159/yr, and Max is $329/yr.');
+    expect(cost?.answer).not.toMatch(/\/mo/);
     expect(cost?.answer).not.toContain('Paid plans are Plus and Max.');
     const blob = `${costQuestion?.answer} ${cost?.answer}`;
     expect(blob).not.toMatch(/\b(CAD|USD)\b/);
