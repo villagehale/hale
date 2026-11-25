@@ -17,12 +17,19 @@ type Env = Record<string, string | undefined>;
 export const POSTHOG_WEB_ENABLED_ENV = 'NEXT_PUBLIC_POSTHOG_WEB_ENABLED';
 export const POSTHOG_REPLAY_ENABLED_ENV = 'NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED';
 
-export function posthogWebEnabled(env: Env = process.env): boolean {
-  return env[POSTHOG_WEB_ENABLED_ENV] === 'true';
+// Next.js inlines only a literal `process.env.NEXT_PUBLIC_*` into browser code. A read by a
+// variable name is undefined there, so the browser never armed posthog-js. The default
+// path names each variable literally; an env object is for tests.
+export function posthogWebEnabled(env?: Env): boolean {
+  const value = env ? env[POSTHOG_WEB_ENABLED_ENV] : process.env.NEXT_PUBLIC_POSTHOG_WEB_ENABLED;
+  return value === 'true';
 }
 
-export function posthogReplayEnabled(env: Env = process.env): boolean {
-  return env[POSTHOG_REPLAY_ENABLED_ENV] === 'true';
+export function posthogReplayEnabled(env?: Env): boolean {
+  const value = env
+    ? env[POSTHOG_REPLAY_ENABLED_ENV]
+    : process.env.NEXT_PUBLIC_POSTHOG_REPLAY_ENABLED;
+  return value === 'true';
 }
 
 function exactTrue(name: string, env: Env): boolean {
