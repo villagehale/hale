@@ -184,6 +184,9 @@ function door(purpose: string, facts?: Record<string, string>) {
 beforeEach(() => {
   process.env.APP_ENCRYPTION_KEY = KEY;
   process.env.JOIN_DOOR_MODEL_COPY_ENABLED = 'true';
+  // These cases are the invite flow. With the flag on there is none
+  // (add-command-no-cold-text.pglite.test.ts).
+  vi.stubEnv('ADD_COMMAND_NO_COLD_TEXT_ENABLED', '');
 });
 afterEach(() => {
   process.env.APP_ENCRYPTION_KEY = '';

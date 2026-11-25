@@ -261,6 +261,13 @@ export async function routeInboundText(
       );
       return 'intake_unsent';
     }
+    if (outcome.status === 'add_them_yourself_unwritten') {
+      deps.log.error(
+        { providerMessageId: inbound.providerId, reason: outcome.reason },
+        'inbound: the reply to an add command was not written, nothing sent',
+      );
+      return 'intake_unsent';
+    }
     if (
       outcome.status === 'stopped' ||
       outcome.status === 'helped' ||
