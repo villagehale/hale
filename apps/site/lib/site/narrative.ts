@@ -5,7 +5,7 @@
  * line; their layout is built around it. Pillar titles stay the 11-23 names.
  */
 
-export const H1 = "Every family has a default parent. Now it's Hale.";
+export const H1 = "Every family has a default parent. Now it’s Hale.";
 
 export const PAGE_TITLE = `Hale: ${H1}`;
 

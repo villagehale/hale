@@ -34,7 +34,7 @@ vi.mock('next/headers', () => ({
  */
 
 const HOME_TITLES = {
-  en: "Hale: Every family has a default parent. Now it's Hale.",
+  en: "Hale: Every family has a default parent. Now it’s Hale.",
   fr: 'Hale: Chaque famille a un parent par défaut. Maintenant, c’est Hale.',
   zh: 'Hale: 每个家庭都有一位默认家长。现在是 Hale。',
 } as const;

@@ -67,7 +67,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const REDESIGN_H1: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], "Every family has a default parent. Now it's Hale."],
+  ['/about', pages['/about'], "Every family has a default parent. Now it’s Hale."],
   ['/pricing', pages['/pricing'], 'What you pay.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],

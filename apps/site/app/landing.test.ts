@@ -49,7 +49,7 @@ describe('landing — the redesign hero', () => {
     expect(html).toContain('class="stage"');
     expect(html).toContain('shore-art');
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
-    expect(html).toContain('Every family has a default parent.<br/>Now it&#x27;s Hale.');
+    expect(html).toContain('Every family has a default parent.<br/>Now it’s Hale.');
     expect(html).toContain('The AI agent for family life');
     expect(html).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');
     expect(html).not.toContain('From \u201cwe should\u201d<br/>to \u201cwe\u2019re in.\u201d');
