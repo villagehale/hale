@@ -1,4 +1,5 @@
 import type { PostHog } from 'posthog-node';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { type AnalyticsEvent, buildEvent } from './events';
 import { productClient, projectClient } from './posthog-node';
 
@@ -96,5 +97,11 @@ export async function aliasCheckoutPerson(distinctId: string, alias: string): Pr
 }
 
 function isAliasId(value: string): boolean {
-  return value.length > 0 && value.length <= 200 && !/[\s@]|:\/\//.test(value);
+  return (
+    value.length > 0 &&
+    value.length <= 200 &&
+    !/\s/.test(value) &&
+    !value.includes('@') &&
+    !hasLinkShape(value)
+  );
 }

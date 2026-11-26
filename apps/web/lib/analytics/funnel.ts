@@ -1,4 +1,5 @@
 import { type Attribution, parseAttribution } from '@hale/types';
+import { hasLinkShape } from '~/lib/format/link-shape';
 import { type AnalyticsEvent, type EventProperties, buildEvent } from './events';
 import { funnelAttributionEnabled } from './funnel-flag';
 import { type CaptureOutcome, captureServerEvent, hashFamilyId } from './server-capture';
@@ -48,7 +49,13 @@ export type FunnelOutcome = CaptureOutcome | 'flag_off' | 'refused_identifying';
 type Env = Record<string, string | undefined>;
 
 function isSafeDistinctId(value: string): boolean {
-  return value.length > 0 && value.length <= 200 && !/[\s@]|:\/\//.test(value);
+  return (
+    value.length > 0 &&
+    value.length <= 200 &&
+    !/\s/.test(value) &&
+    !value.includes('@') &&
+    !hasLinkShape(value)
+  );
 }
 
 function isPrimitive(value: unknown): value is string | number | boolean {
