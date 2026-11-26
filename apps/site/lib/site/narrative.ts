@@ -1,17 +1,24 @@
 /**
  * Approved site copy. The homepage headline, the line under it, and the
  * one-liner are three different sentences. The older headline stays only as
- * the group-chat section heading. Share-card images still paint that older
- * line; their layout is built around it. Pillar titles stay the 11-23 names.
+ * the group-chat section heading. The homepage share card paints H1. Pillar
+ * titles stay the 11-23 names.
  */
 
 export const H1 = "Every family has a default parent. Now it’s Hale.";
 
 export const PAGE_TITLE = `Hale: ${H1}`;
 
-/** The line under the homepage H1. Longer than the one-liner, and not a meta description. */
-export const HERO_SUB =
-  'It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents. Text it one-on-one or add it to a group chat.';
+/**
+ * The first sentence of the hero sub. og:description and twitter:description
+ * use this one line. The second sentence, about how to reach Hale, stays on
+ * the page.
+ */
+export const HERO_SHARE =
+  'It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.';
+
+/** The line under the homepage H1. Longer than the one-liner, and not the search snippet. */
+export const HERO_SUB = `${HERO_SHARE} Text it one-on-one or add it to a group chat.`;
 
 export const ONE_LINER =
   'Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.';

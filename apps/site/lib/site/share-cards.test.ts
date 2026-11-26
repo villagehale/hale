@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { PROMO_PRICE_DISPLAY, currencyFromIpCountry } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
 import { tx } from '~/components/redesign/tx';
+import { H1 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { allAnswers } from '~/lib/answers/index';
 import { buildHolidayPromo } from '~/lib/promo/holiday';
 import { generateMetadata as pricingMetadata } from '../../app/[locale]/pricing/page';
 import {
+  HOME_CARD,
   HOME_SLOGAN,
   SHARE_CARD_IDS,
   SHARE_CARD_VERSION,
@@ -236,11 +238,23 @@ describe('share card copy', () => {
     ).toEqual(['我们周六应该做点什么', '幼儿游泳', '周六上午 10 点', '在社区中心', '我们去']);
   });
 
-  it('paints the older group-chat line on the home card in each locale', () => {
+  it('paints the new hero on the home card in each locale', () => {
+    for (const locale of LOCALES) {
+      const card = paintShareCard('home', query({ locale }));
+      expect(card.headline, locale).toBe(tx(locale, H1));
+      expect(card.alt, locale).toBe(`Hale. ${tx(locale, H1)}`);
+      expect(card.slogan?.marked, locale).toBe(HOME_CARD[locale].marked);
+      expect(card.headline, locale).not.toContain("we should");
+    }
+    expect(HOME_CARD.en.plain).toBe(H1);
+    expect(HOME_CARD.en.marked).toBe('Now it’s Hale.');
+  });
+
+  it('keeps the older group-chat line on the about card', () => {
     const line = 'From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d';
     for (const locale of LOCALES) {
       expect(HOME_SLOGAN[locale].plain, locale).toBe(tx(locale, line));
-      expect(paintShareCard('home', query({ locale })).headline, locale).toBe(tx(locale, line));
+      expect(paintShareCard('about', query({ locale })).headline, locale).toBe(tx(locale, line));
     }
   });
 

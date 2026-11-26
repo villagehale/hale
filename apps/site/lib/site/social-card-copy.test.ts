@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOME_SLOGAN } from '~/lib/site/share-cards';
+import { H1 } from '~/lib/site/narrative';
 import { socialCardCopy } from './social-card-copy';
 
 /**
@@ -11,8 +11,8 @@ import { socialCardCopy } from './social-card-copy';
 describe('homepage share card copy', () => {
   it('uses the Style D headline', () => {
     const copy = socialCardCopy();
-    expect(copy.headline).toBe(HOME_SLOGAN.en.plain);
-    expect(copy.alt).toBe(`Hale. ${HOME_SLOGAN.en.plain}`);
+    expect(copy.headline).toBe(H1);
+    expect(copy.alt).toBe(`Hale. ${H1}`);
     const blob = `${copy.headline} ${copy.subline} ${copy.alt}`;
     expect(blob).not.toContain('assistant');
     expect(blob).not.toContain('planner');

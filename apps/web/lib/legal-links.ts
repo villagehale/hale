@@ -15,7 +15,7 @@ export const MARKETING_OG_IMAGE = {
   url: `${MARKETING_SITE_URL}/og/home`,
   width: 1200,
   height: 630,
-  alt: 'Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d',
+  alt: 'Hale. Every family has a default parent. Now it’s Hale.',
 } as const;
 
 export const TERMS_URL = `${MARKETING_SITE_URL}/terms`;

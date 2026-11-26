@@ -8,8 +8,8 @@
   "HomeMeta": {
     "title": "Hale: Chaque famille a un parent par défaut. Maintenant, c’est Hale.",
     "description": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
-    "ogDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
-    "twitterDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
+    "ogDescription": "Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
+    "twitterDescription": "Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
   },
   "Header": {
     "navPricing": "Tarifs",
