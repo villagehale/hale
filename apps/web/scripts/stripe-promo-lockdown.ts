@@ -11,7 +11,11 @@
 // Needs STRIPE_SECRET_KEY. Promo ids come from
 // STRIPE_PRICE_PROMO_{PLUS,MAX}_ANNUAL_{CAD,USD} only.
 
-import { leftoverFoundingPriceIdsFromEnv, promoPriceIdsFromEnv } from '../lib/billing/prices';
+import {
+  bfPriceIdsFromEnv,
+  leftoverFoundingPriceIdsFromEnv,
+  promoPriceIdsFromEnv,
+} from '../lib/billing/prices';
 import { runPromoLockdown, stripePromoLockdownApiFromSecret } from '../lib/billing/promo-lockdown';
 
 const secret = process.env.STRIPE_SECRET_KEY?.trim();
@@ -22,7 +26,7 @@ if (!secret) {
 
 const result = await runPromoLockdown({
   api: stripePromoLockdownApiFromSecret(secret),
-  foundingPriceIds: new Set(promoPriceIdsFromEnv()),
+  foundingPriceIds: new Set([...promoPriceIdsFromEnv(), ...bfPriceIdsFromEnv()]),
   leftoverFoundingPriceIds: new Set(leftoverFoundingPriceIdsFromEnv()),
   apply: process.argv.includes('--apply'),
 });

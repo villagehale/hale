@@ -1,4 +1,5 @@
 import {
+  bfPriceIdsFromEnv,
   familyPriceIdsFromEnv,
   foundingWindowOpen,
   listPriceIdsFromEnv,
@@ -111,7 +112,7 @@ export function decidePaidSessionGrant(
   const event = eventObject(payload);
   if (!event) return { status: 'allow' };
 
-  const promo = new Set(promoPriceIdsFromEnv(env));
+  const promo = new Set([...promoPriceIdsFromEnv(env), ...bfPriceIdsFromEnv(env)]);
   const list = new Set([...listPriceIdsFromEnv(env), ...familyPriceIdsFromEnv(env)]);
   const windowOpen = foundingWindowOpen(now, env);
 

@@ -29,7 +29,10 @@ import { HomeMotion } from './home-motion';
 import { HaleHead, ImBack, ImCompose, OneStamp, StackAvatars } from './imessage-ui';
 import { TypingBubble } from './phone-chat';
 import { TextDoor } from './text-door';
-import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta } from '~/components/promo/holiday-promo';
+import { BlackFridayBanner } from '~/components/promo/black-friday-banner';
+import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
+import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
+import type { BlackFridayOffer } from '~/lib/promo/black-friday';
 import type { HolidayPromo } from '~/lib/promo/holiday';
 import { localeHref } from '~/i18n/navigation';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
@@ -46,6 +49,7 @@ export function RedesignHome({
   prefill,
   source = null,
   promo = null,
+  blackFriday = null,
   priceSurface = 'legacy',
   currency = 'CAD',
 }: {
@@ -56,6 +60,8 @@ export function RedesignHome({
   source?: string | null;
   /** The holiday founding promo for this request, or null when it is off. */
   promo?: HolidayPromo | null;
+  /** One-day price. Null outside the window, and the current promo stays. */
+  blackFriday?: BlackFridayOffer | null;
   priceSurface?: SitePriceSurface;
   currency?: BillingCurrency;
 }) {
@@ -66,7 +72,7 @@ export function RedesignHome({
   
   return (
     <>
-      {promo ? <PromoBanner promo={promo} /> : null}
+      {blackFriday ? <BlackFridayBanner offer={blackFriday} locale={locale} /> : promo ? <PromoBanner promo={promo} /> : null}
       <SiteHeader locale={locale} source={source} />
       <LandingScrollAnalytics />
       <div className="rd">
@@ -236,7 +242,7 @@ export function RedesignHome({
 </main>
 </div>
 <div className="hs-page">
-{promo ? <PromoSection promo={promo} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
+{promo ? <PromoSection promo={promo} todayPlus={blackFriday?.plus} todayMax={blackFriday?.max} checkoutQuery={blackFriday?.checkoutQuery ?? ''} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
 <section className="hs hs-wash-a" id="group-chats">
  <div className="hs-wrap">
   <div className="hs-head">
@@ -381,7 +387,9 @@ export function RedesignHome({
    </li>
    <li className="hs-tier t-plus">
     <div className="hs-tier-head"><span className="hs-tier-name">Plus</span><span className="hs-tier-num">02</span></div>
-    {yearlyOnly ? (
+    {blackFriday?.plus ? (
+    <TierSalePrice price={blackFriday.plus} />
+    ) : yearlyOnly ? (
     <h3>{t(plusAnnualLabel(currency))}</h3>
     ) : (<>
     <h3>{t(plusMonthlyLabel(currency))}</h3>
@@ -389,14 +397,14 @@ export function RedesignHome({
     </>)}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Signs them up Dec 1.")}</span></li></ul>
-    <div className="hs-tier-cta">{list || yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
+    <div className="hs-tier-cta">{blackFriday?.plus ? <FoundingCheckoutLink className="hs-btn-primary" placement="home_pricing" phase="black_friday" currency={blackFriday.currency} plan="plus" query={blackFriday.checkoutQuery}>Plus {blackFriday.plus.saleLabel}</FoundingCheckoutLink> : list || yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
    <li className="hs-tier t-max">
     <div className="hs-tier-head"><span className="hs-tier-name">Max</span><span className="hs-tier-num">03</span></div>
-    <h3>{t(maxAnnualLabel(currency))}</h3>
+    {blackFriday?.max ? <TierSalePrice price={blackFriday.max} /> : <h3>{t(maxAnnualLabel(currency))}</h3>}
     <p className="hs-tier-body">{t("The most Hale can do.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Everything in Plus")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("The highest limits on searches, all year long.")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Priority support")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Help with sign-ups")}</span></li></ul>
-    <div className="hs-tier-cta">{yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
+    <div className="hs-tier-cta">{blackFriday?.max ? <FoundingCheckoutLink className="hs-btn-primary" placement="home_pricing" phase="black_friday" currency={blackFriday.currency} plan="max" query={blackFriday.checkoutQuery}>Max {blackFriday.max.saleLabel}</FoundingCheckoutLink> : yearlyOnly ? <TextDoor className="hs-btn-primary" placement="home_pricing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
    </li>
   </ol>
   <p className="hs-meta hs-foot-note">{list || yearlyOnly ? t("Plus is available today.") : t("Paid plans are Plus and Max.")}</p>
@@ -447,7 +455,7 @@ export function RedesignHome({
 
 
       </div>
-      {promo ? <PromoStickyCta promo={promo} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
+      {promo ? <PromoStickyCta promo={promo} blackFriday={blackFriday} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
       <SiteFooter locale={locale} />
     </>
   );

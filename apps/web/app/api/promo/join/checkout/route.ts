@@ -1,3 +1,4 @@
+import { resolveBlackFridayNow } from '@hale/types';
 import { NextResponse } from 'next/server';
 import { cookieHeaderHasAnalyticsOptOut } from '~/lib/analytics/opt-out';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
@@ -29,7 +30,12 @@ export const runtime = 'nodejs';
 export async function POST(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const token = promoPreviewTokenFromSearch(url.searchParams);
-  const now = new Date();
+  const now = resolveBlackFridayNow({
+    now: new Date(),
+    env: process.env,
+    bf: url.searchParams.get('bf'),
+    bfNow: url.searchParams.get('bf_now'),
+  });
   if (!newVisitorFoundingAllowedFromRequest(req, now)) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }

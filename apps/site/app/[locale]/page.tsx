@@ -5,7 +5,7 @@ import { sitePriceSurface } from '~/lib/billing/site-price-surface';
 import { visitorCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
-import { requestHolidayPromo } from '~/lib/promo/server';
+import { requestBlackFridayOffer, requestHolidayPromo } from '~/lib/promo/server';
 import { homeMetadata } from '~/lib/site/home-meta';
 import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { siteJsonLd } from '~/lib/site/structured-data';
@@ -46,6 +46,7 @@ export default async function LandingPage({
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const source = await pageSource(searchParams);
   const promo = await requestHolidayPromo(locale, searchParams);
+  const blackFriday = await requestBlackFridayOffer(locale, searchParams);
   const priceSurface = sitePriceSurface();
   const currency = await visitorCurrency();
   return (
@@ -61,6 +62,7 @@ export default async function LandingPage({
         prefill={intakePrefill(locale)}
         source={source}
         promo={promo}
+        blackFriday={blackFriday}
         priceSurface={priceSurface}
         currency={currency}
       />

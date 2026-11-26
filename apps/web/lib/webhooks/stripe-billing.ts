@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { BillingPeriod, PlanTier } from '@hale/types';
 import {
+  bfMaxPriceIdsFromEnv,
   familyPriceIdsFromEnv,
   foundingWindowOpen,
   plusPriceIdsFromEnv,
@@ -174,6 +175,11 @@ export function priceTierMapFromEnv(
     if (!(priceId in map)) map[priceId] = 'plus';
   }
   for (const priceId of promoMaxPriceIdsFromEnv(env)) {
+    if (!(priceId in map)) map[priceId] = 'family';
+  }
+  // BF yearly ids grant the same tiers. A subscription on one of them renews
+  // at that price; we never rewrite it onto the season price.
+  for (const priceId of bfMaxPriceIdsFromEnv(env)) {
     if (!(priceId in map)) map[priceId] = 'family';
   }
   for (const priceId of familyPriceIdsFromEnv(env)) {

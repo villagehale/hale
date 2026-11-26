@@ -1,5 +1,9 @@
 import type { BillingCurrency, BillingPeriod } from '@hale/types';
-import { isFoundingPromoWindowOpen, parseFoundingPromoEndsAt } from '@hale/types';
+import {
+  isBlackFridayWindowOpen,
+  isFoundingPromoWindowOpen,
+  parseFoundingPromoEndsAt,
+} from '@hale/types';
 import { checkoutServerCurrencyEnabled, holidayPromoEnabled } from './flags.js';
 import { stripePaymentLinkUrl } from './promo-preview.js';
 
@@ -32,11 +36,17 @@ export const STRIPE_PRICE_PLUS_MONTHLY_USD_ENV = 'STRIPE_PRICE_PLUS_MONTHLY_USD'
 export const STRIPE_PRICE_PLUS_ANNUAL_USD_ENV = 'STRIPE_PRICE_PLUS_ANNUAL_USD';
 export const STRIPE_PRICE_MAX_ANNUAL_CAD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_CAD';
 export const STRIPE_PRICE_MAX_ANNUAL_USD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_USD';
+export const STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV = 'STRIPE_PRICE_BF_PLUS_ANNUAL_CAD';
+export const STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV = 'STRIPE_PRICE_BF_PLUS_ANNUAL_USD';
+export const STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV = 'STRIPE_PRICE_BF_MAX_ANNUAL_CAD';
+export const STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV = 'STRIPE_PRICE_BF_MAX_ANNUAL_USD';
 export const PROMO_FOUNDING_ENDS_AT_ENV = 'PROMO_FOUNDING_ENDS_AT';
 
 export type CheckoutSku =
   | 'promo_plus_annual'
   | 'promo_max_annual'
+  | 'bf_plus_annual'
+  | 'bf_max_annual'
   | 'plus_monthly'
   | 'plus_annual'
   | 'max_annual';
@@ -44,6 +54,8 @@ export type CheckoutSku =
 export const CHECKOUT_SKU_PERIOD: Readonly<Record<CheckoutSku, BillingPeriod>> = {
   promo_plus_annual: 'annual',
   promo_max_annual: 'annual',
+  bf_plus_annual: 'annual',
+  bf_max_annual: 'annual',
   plus_monthly: 'monthly',
   plus_annual: 'annual',
   max_annual: 'annual',
@@ -118,11 +130,18 @@ export function parsePaidTier(value: unknown): PaidTier | null {
 }
 
 export function isPromoAnnualSku(sku: CheckoutSku): boolean {
-  return sku === 'promo_plus_annual' || sku === 'promo_max_annual';
+  return (
+    sku === 'promo_plus_annual' ||
+    sku === 'promo_max_annual' ||
+    sku === 'bf_plus_annual' ||
+    sku === 'bf_max_annual'
+  );
 }
 
 export function paidTierFromSku(sku: CheckoutSku): PaidTier {
-  return sku === 'promo_max_annual' || sku === 'max_annual' ? 'family' : 'plus';
+  return sku === 'promo_max_annual' || sku === 'max_annual' || sku === 'bf_max_annual'
+    ? 'family'
+    : 'plus';
 }
 
 export function promoPlusAnnualPriceId(
@@ -151,6 +170,44 @@ export function promoAnnualPriceId(
   return tier === 'family'
     ? promoMaxAnnualPriceId(currency, env)
     : promoPlusAnnualPriceId(currency, env);
+}
+
+/** Black Friday yearly id for one tier and currency. Null when the env var is unset. */
+export function bfAnnualPriceId(
+  tier: PaidTier,
+  currency: BillingCurrency,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (tier === 'family') {
+    return currency === 'USD'
+      ? trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV])
+      : trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV]);
+  }
+  return currency === 'USD'
+    ? trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV])
+    : trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV]);
+}
+
+export function bfPlusPriceIdsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
+}
+
+export function bfMaxPriceIdsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
+}
+
+export function bfPriceIdsFromEnv(env: Record<string, string | undefined> = process.env): string[] {
+  return [...new Set([...bfPlusPriceIdsFromEnv(env), ...bfMaxPriceIdsFromEnv(env)])];
 }
 
 export function plusListPriceId(
@@ -251,14 +308,18 @@ export function familyPriceIdsFromEnv(
 export function plusPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
-  return [...listPriceIdsFromEnv(env), ...promoPlusPriceIdsFromEnv(env)];
+  return [
+    ...listPriceIdsFromEnv(env),
+    ...promoPlusPriceIdsFromEnv(env),
+    ...bfPlusPriceIdsFromEnv(env),
+  ];
 }
 
 export function isPromoPriceId(
   priceId: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return promoPriceIdsFromEnv(env).includes(priceId);
+  return promoPriceIdsFromEnv(env).includes(priceId) || bfPriceIdsFromEnv(env).includes(priceId);
 }
 
 /** @deprecated Prefer isPromoPriceId. */
@@ -313,6 +374,21 @@ function promoSelection(
   };
 }
 
+function bfSelection(
+  tier: PaidTier,
+  currency: BillingCurrency,
+  env: Record<string, string | undefined>,
+): CheckoutPrice | null {
+  const priceId = bfAnnualPriceId(tier, currency, env);
+  if (!priceId) return null;
+  return {
+    priceId,
+    sku: tier === 'family' ? 'bf_max_annual' : 'bf_plus_annual',
+    currency,
+    period: 'annual',
+  };
+}
+
 function maxListSelection(
   currency: BillingCurrency,
   env: Record<string, string | undefined>,
@@ -357,6 +433,12 @@ export function resolveCheckoutPrice(input: {
   const tier = input.tier ?? 'plus';
   if (!holidayPromoEnabled(env) && !input.preview) {
     return { status: 'unavailable', reason: 'flag_off' };
+  }
+
+  // One Toronto day. A missing BF id falls through to the regular yearly price.
+  if (isBlackFridayWindowOpen(input.now)) {
+    const bf = bfSelection(tier, input.currency, env);
+    if (bf) return { status: 'selected', price: bf };
   }
 
   if (foundingWindowOpen(input.now, env)) {

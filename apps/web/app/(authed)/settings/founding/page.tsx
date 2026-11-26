@@ -1,8 +1,10 @@
 import {
+  BLACK_FRIDAY_PRICE_DISPLAY,
+  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
   FOUNDING_PROMO_STARTS_AT,
   currencyFromIpCountry,
   promoPhaseAt,
-  CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
+  resolveBlackFridayNow,
   serverCheckoutCurrency,
 } from '@hale/types';
 import type { Metadata } from 'next';
@@ -41,7 +43,19 @@ export default async function FoundingCheckoutPage({
     cookieHeader: (await cookies()).toString(),
     search: query,
   });
-  const now = new Date();
+  const now = resolveBlackFridayNow({
+    now: new Date(),
+    env: process.env,
+    bf: typeof params.bf === 'string' ? params.bf : null,
+    bfNow: typeof params.bf_now === 'string' ? params.bf_now : null,
+  });
+  const checkoutSearch = new URLSearchParams();
+  if (process.env.VERCEL_ENV !== 'production') {
+    if (typeof params.bf === 'string' && params.bf.trim() === '1') checkoutSearch.set('bf', '1');
+    if (typeof params.bf_now === 'string' && params.bf_now.trim()) {
+      checkoutSearch.set('bf_now', params.bf_now.trim());
+    }
+  }
   const currency = checkoutServerCurrencyEnabled()
     ? serverCheckoutCurrency(h.get('x-vercel-ip-country'))
     : currencyFromIpCountry(h.get('x-vercel-ip-country'));
@@ -130,6 +144,12 @@ export default async function FoundingCheckoutPage({
         attribution={attribution}
         cancelled={params.checkout === 'cancelled'}
         tier="plus"
+        annualAmount={
+          plus.status === 'selected' && plus.price.sku === 'bf_plus_annual'
+            ? BLACK_FRIDAY_PRICE_DISPLAY.plus[currency].amount
+            : undefined
+        }
+        checkoutSearch={checkoutSearch.toString()}
       />
       <FoundingCheckout
         currency={currency}
@@ -138,6 +158,12 @@ export default async function FoundingCheckoutPage({
         attribution={attribution}
         cancelled={params.checkout === 'cancelled'}
         tier="family"
+        annualAmount={
+          max.status === 'selected' && max.price.sku === 'bf_max_annual'
+            ? BLACK_FRIDAY_PRICE_DISPLAY.family[currency].amount
+            : undefined
+        }
+        checkoutSearch={checkoutSearch.toString()}
       />
     </div>
   );

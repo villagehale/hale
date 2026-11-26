@@ -2,6 +2,7 @@ import logo from '~/assets/hale-logo.jpeg';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import type { Locale } from '~/i18n/routing';
+import type { BlackFridayOffer } from '~/lib/promo/black-friday';
 import {
   FOUNDING_REFUND_LINE,
   type HolidayPromo,
@@ -9,6 +10,7 @@ import {
   type PromoTierPrice,
 } from '~/lib/promo/holiday';
 import { ONE_LINER, PLUS_SIGNUP_LINE, REFUND_EMAIL } from '~/lib/site/narrative';
+import { BlackFridaySticky } from './black-friday-sticky';
 import { FoundingCheckoutLink } from './founding-checkout-link';
 import { PromoStickyReveal } from './promo-sticky';
 
@@ -107,36 +109,46 @@ export function PromoBanner({ promo }: { promo: HolidayPromo }) {
 }
 
 /** The big Max sale price, with the regular Max price struck beside it. */
-function PriceLockup({ promo }: { promo: HolidayPromo }) {
-  const { max } = promo;
+function PriceLockup({
+  promo,
+  plus,
+  max,
+}: {
+  promo: HolidayPromo;
+  plus?: PromoTierPrice | null;
+  max?: PromoTierPrice | null;
+}) {
+  const shownPlus = plus ?? promo.plus;
+  const shownMax = max ?? promo.max;
+  const maxPrice = shownMax;
   return (
     <div className="promo-offer">
       <p className="promo-offer-tier">Max</p>
       <p className="promo-price">
         <span className="promo-sr">
-          Max: {max.saleLabel.replace('/yr', ' a year')}, regular price{' '}
-          {max.regularLabel.replace('/yr', ' a year')}.
+          Max: {maxPrice.saleLabel.replace('/yr', ' a year')}, regular price{' '}
+          {maxPrice.regularLabel.replace('/yr', ' a year')}.
         </span>
         <span className="promo-price-sym" aria-hidden="true">
           {promo.symbol}
         </span>
         <span className="promo-price-num" aria-hidden="true">
-          {max.sale}
+          {maxPrice.sale}
         </span>
         <span className="promo-price-side" aria-hidden="true">
-          <s className="promo-price-regular">{max.regularLabel}</s>
+          <s className="promo-price-regular">{maxPrice.regularLabel}</s>
           <span className="promo-price-per">/yr</span>
         </span>
       </p>
       <p className="promo-offer-plus">
         <span className="promo-sr">
-          Plus: {promo.plus.saleLabel.replace('/yr', ' a year')}, regular price{' '}
-          {promo.plus.regularLabel.replace('/yr', ' a year')}.
+          Plus: {shownPlus.saleLabel.replace('/yr', ' a year')}, regular price{' '}
+          {shownPlus.regularLabel.replace('/yr', ' a year')}.
         </span>
         <span aria-hidden="true">
           <span className="promo-offer-plus-name">Plus</span>{' '}
-          <s className="promo-price-regular">{promo.plus.regularLabel}</s>{' '}
-          <b>{promo.plus.saleLabel}</b>
+          <s className="promo-price-regular">{shownPlus.regularLabel}</s>{' '}
+          <b>{shownPlus.saleLabel}</b>
         </span>
       </p>
     </div>
@@ -248,7 +260,20 @@ function PromoPhone({ locale }: { locale: Locale }) {
 }
 
 /** The sale offer. The id is what the banner and sticky bar jump to. */
-export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
+export function PromoSection({
+  promo,
+  todayPlus = null,
+  todayMax = null,
+  checkoutQuery = '',
+  ...door
+}: {
+  promo: HolidayPromo;
+  todayPlus?: PromoTierPrice | null;
+  todayMax?: PromoTierPrice | null;
+  checkoutQuery?: string;
+} & DoorProps) {
+  const plusPrice = todayPlus ?? promo.plus;
+  const maxPrice = todayMax ?? promo.max;
   return (
     <section
       className="hs promo-sec promo-notes"
@@ -270,7 +295,7 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                 <span>{promo.saleName.replace(/ Sale$/, '')}</span>{' '}
                 <span className="promo-sale-word">Sale</span>
               </h2>
-              <PriceLockup promo={promo} />
+              <PriceLockup promo={promo} plus={plusPrice} max={maxPrice} />
               <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
               <p className="promo-lede">
                 Your price for the rest of the year, locked in for as long as you’re a member. Join
@@ -292,8 +317,9 @@ export function PromoSection({ promo, ...door }: { promo: HolidayPromo } & DoorP
                   phase={promo.phase}
                   currency={promo.currency}
                   plan="max"
+                  query={checkoutQuery}
                 >
-                  Already texting Hale? Lock in Max at {promo.max.saleLabel}
+                  Already texting Hale? Lock in Max at {maxPrice.saleLabel}
                   <Arrow />
                 </FoundingCheckoutLink>
               </div>
@@ -402,7 +428,14 @@ export function TierSalePrice({ price }: { price: PromoTierPrice }) {
 }
 
 /** Mobile-only bar pinned to the bottom once the hero is gone, hidden over the offer itself. */
-export function PromoStickyCta({ promo, ...door }: { promo: HolidayPromo } & DoorProps) {
+export function PromoStickyCta({
+  promo,
+  blackFriday = null,
+  ...door
+}: { promo: HolidayPromo; blackFriday?: BlackFridayOffer | null } & DoorProps) {
+  if (blackFriday) {
+    return <BlackFridaySticky offer={blackFriday} phase={promo.phase} {...door} />;
+  }
   return (
     <PromoStickyReveal phase={promo.phase}>
       <div className="promo-sticky-copy">

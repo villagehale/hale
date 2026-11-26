@@ -1365,3 +1365,75 @@
     background: #000;
   }
 }
+
+/* One-day price, in the promo-bar slot. Glass, site type, pricing buttons.
+   The season bar returns when this is not rendered. */
+.rd.bf-banner {
+  position: relative;
+  z-index: 11;
+  padding: 10px var(--gutter);
+  background: var(--page);
+  color: var(--navy);
+}
+.rd .bf-banner-in {
+  max-width: var(--container);
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border-radius: 20px;
+  font-family: var(--font-ui);
+}
+.rd .bf-banner-copy {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: center;
+}
+.rd .bf-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.rd .bf-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.rd .bf-banner-actions .hs-btn-primary {
+  min-height: 44px;
+  padding: 8px 18px;
+  font-size: 15px;
+}
+.rd [data-bf-sticky="1"] {
+  min-width: 0;
+}
+.rd [data-bf-sticky="1"] span {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .rd.bf-banner {
+    padding: 8px 12px;
+  }
+  .rd .bf-banner-in {
+    padding: 12px;
+  }
+  .rd .bf-banner-copy {
+    flex-basis: 100%;
+    font-size: 14px;
+  }
+  .rd .bf-banner-actions {
+    width: 100%;
+  }
+  .rd .bf-banner-actions .hs-btn-primary {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}

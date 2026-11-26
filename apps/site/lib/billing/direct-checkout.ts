@@ -4,6 +4,7 @@ import {
   type Attribution,
   type BillingCurrency,
   analyticsDistinctId,
+  isBlackFridayWindowOpen,
   isFoundingPromoWindowOpen,
   parseAttribution,
   parseFoundingPromoEndsAt,
@@ -30,9 +31,19 @@ const PLUS_ANNUAL_CAD = 'STRIPE_PRICE_PLUS_ANNUAL';
 const PLUS_ANNUAL_USD = 'STRIPE_PRICE_PLUS_ANNUAL_USD';
 const MAX_ANNUAL_CAD = 'STRIPE_PRICE_MAX_ANNUAL_CAD';
 const MAX_ANNUAL_USD = 'STRIPE_PRICE_MAX_ANNUAL_USD';
+const BF_PLUS_CAD = 'STRIPE_PRICE_BF_PLUS_ANNUAL_CAD';
+const BF_PLUS_USD = 'STRIPE_PRICE_BF_PLUS_ANNUAL_USD';
+const BF_MAX_CAD = 'STRIPE_PRICE_BF_MAX_ANNUAL_CAD';
+const BF_MAX_USD = 'STRIPE_PRICE_BF_MAX_ANNUAL_USD';
 
 export type DirectTier = 'plus' | 'family';
-export type DirectSku = 'promo_plus_annual' | 'promo_max_annual' | 'plus_annual' | 'max_annual';
+export type DirectSku =
+  | 'promo_plus_annual'
+  | 'promo_max_annual'
+  | 'bf_plus_annual'
+  | 'bf_max_annual'
+  | 'plus_annual'
+  | 'max_annual';
 
 export type DirectCheckoutPrice =
   | {
@@ -72,6 +83,18 @@ function promoId(
   return currency === 'USD' ? trimId(env[PROMO_PLUS_USD]) : trimId(env[PROMO_PLUS_CAD]);
 }
 
+/** Black Friday yearly id. Null when that env var is missing, so the caller keeps the regular price. */
+export function bfAnnualPriceId(
+  tier: DirectTier,
+  currency: BillingCurrency,
+  env: Record<string, string | undefined>,
+): string | null {
+  if (tier === 'family') {
+    return currency === 'USD' ? trimId(env[BF_MAX_USD]) : trimId(env[BF_MAX_CAD]);
+  }
+  return currency === 'USD' ? trimId(env[BF_PLUS_USD]) : trimId(env[BF_PLUS_CAD]);
+}
+
 function listAnnualId(
   tier: DirectTier,
   currency: BillingCurrency,
@@ -91,6 +114,18 @@ export function selectDirectCheckoutPrice(input: {
 }): DirectCheckoutPrice {
   const env = input.env ?? process.env;
   if (env.HOLIDAY_PROMO_ENABLED !== 'true') return { status: 'unavailable', reason: 'flag_off' };
+  if (isBlackFridayWindowOpen(input.now)) {
+    const priceId = bfAnnualPriceId(input.tier, input.currency, env);
+    if (priceId) {
+      return {
+        status: 'selected',
+        priceId,
+        sku: input.tier === 'family' ? 'bf_max_annual' : 'bf_plus_annual',
+        currency: input.currency,
+        tier: input.tier,
+      };
+    }
+  }
   const windowOpen = isFoundingPromoWindowOpen(
     input.now,
     parseFoundingPromoEndsAt(env.PROMO_FOUNDING_ENDS_AT),

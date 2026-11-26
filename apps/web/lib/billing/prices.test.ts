@@ -412,6 +412,51 @@ describe('resolveCheckoutPrice', () => {
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
+  it('uses the BF yearly id only inside the Toronto day, and falls back when it is missing', () => {
+    const env = {
+      ...PROMO,
+      STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
+      STRIPE_PRICE_BF_PLUS_ANNUAL_USD: 'price_bf_plus_usd',
+      STRIPE_PRICE_BF_MAX_ANNUAL_CAD: 'price_bf_max_cad',
+      STRIPE_PRICE_BF_MAX_ANNUAL_USD: 'price_bf_max_usd',
+    };
+    const before = new Date('2026-11-27T04:59:59.000Z');
+    const start = new Date('2026-11-27T05:00:00.000Z');
+    const last = new Date('2026-11-28T04:59:59.000Z');
+    const end = new Date('2026-11-28T05:00:00.000Z');
+    expect(
+      resolveCheckoutPrice({ currency: 'CAD', period: 'monthly', now: before, env }),
+    ).toMatchObject({
+      price: { priceId: 'price_plus_cad', sku: 'promo_plus_annual' },
+    });
+    expect(
+      resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: start, env }),
+    ).toMatchObject({
+      price: { priceId: 'price_bf_plus_usd', sku: 'bf_plus_annual' },
+    });
+    expect(
+      resolveCheckoutPrice({ currency: 'CAD', period: 'annual', now: last, env, tier: 'family' }),
+    ).toMatchObject({ price: { priceId: 'price_bf_max_cad', sku: 'bf_max_annual' } });
+    expect(
+      resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: end, env }),
+    ).toMatchObject({
+      price: { priceId: 'price_plus_usd', sku: 'promo_plus_annual' },
+    });
+    const missing = { ...PROMO, STRIPE_PRICE_BF_MAX_ANNUAL_USD: 'price_bf_max_usd' };
+    expect(
+      resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: start, env: missing }),
+    ).toMatchObject({ price: { priceId: 'price_plus_usd', sku: 'promo_plus_annual' } });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'USD',
+        period: 'annual',
+        now: start,
+        env: missing,
+        tier: 'family',
+      }),
+    ).toMatchObject({ price: { priceId: 'price_bf_max_usd', sku: 'bf_max_annual' } });
+  });
+
   it('falls back to CAD list when USD list is unset after the window', () => {
     expect(
       resolveCheckoutPrice({
