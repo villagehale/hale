@@ -39,7 +39,9 @@ function unboundEvent(sessionId: string, eventId: string) {
           utm_source: 'google',
           msclkid: 'msclk',
           source_code: 'poster-oakville',
-        },
+          fbp: 'fb.1.1.cookie',
+          fbc: 'fb.1.1.click',
+        } as Record<string, string>,
       },
     },
   };
@@ -58,9 +60,9 @@ describe('deliverUnboundCheckoutPurchase', () => {
       return 'sent' as const;
     };
     const funnel = createFakeFunnelSender();
-    const fetchImpl = vi.fn(
-      async () => new Response(JSON.stringify({ events_received: 1 }), { status: 200 }),
-    );
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      return new Response(JSON.stringify({ events_received: 1 }), { status: 200 });
+    });
     const env = { FUNNEL_ATTRIBUTION_ENABLED: 'true', ...META };
     const payload = unboundEvent('cs_test_unbound_1', 'evt_unbound_1');
 
@@ -131,6 +133,10 @@ describe('deliverUnboundCheckoutPurchase', () => {
       data: Array<{ event_id?: string; user_data?: Record<string, unknown> }>;
     };
     expect(body.data[0]?.event_id).toBe('cs_test_unbound_1');
+    expect(body.data[0]?.user_data).toMatchObject({
+      fbp: 'fb.1.1.cookie',
+      fbc: 'fb.1.1.click',
+    });
     expect(JSON.stringify(body)).not.toContain('parent@example.com');
     expect(JSON.stringify(body)).not.toContain('+1 555 010 0199');
 

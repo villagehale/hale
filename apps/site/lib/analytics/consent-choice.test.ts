@@ -28,8 +28,8 @@ describe('consentChoiceRequest', () => {
 describe('captureConsentChoice', () => {
   it('counts granted and denied with no visitor id and no person profile', async () => {
     const bodies: string[] = [];
-    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
-      bodies.push(String(init.body));
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(String(init?.body));
       return new Response('ok', { status: 200 });
     });
     const env = {

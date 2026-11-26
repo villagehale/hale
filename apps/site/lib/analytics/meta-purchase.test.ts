@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type MetaPurchaseEvent,
   fireMetaPurchaseConversion,
   metaPurchaseStorageKey,
-  type MetaPurchaseEvent,
 } from './meta-purchase.js';
 
 const EVENT: MetaPurchaseEvent = {
@@ -45,6 +45,21 @@ describe('fireMetaPurchaseConversion', () => {
     );
     expect(storage.getItem(metaPurchaseStorageKey('cs_test_1'))).toBe('1');
     expect(fireMetaPurchaseConversion(EVENT, fbq, storage)).toBe('already_fired');
+    expect(fbq).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends USD with the same eventID and does not fire that session twice', () => {
+    const fbq = vi.fn();
+    const storage = memoryStorage();
+    const event = { ...EVENT, currency: 'USD', value: 39, transactionId: 'cs_test_usd' };
+    expect(fireMetaPurchaseConversion(event, fbq, storage)).toBe('fired');
+    expect(fbq).toHaveBeenCalledWith(
+      'track',
+      'Purchase',
+      { value: 39, currency: 'USD' },
+      { eventID: 'cs_test_usd' },
+    );
+    expect(fireMetaPurchaseConversion(event, fbq, storage)).toBe('already_fired');
     expect(fbq).toHaveBeenCalledTimes(1);
   });
 

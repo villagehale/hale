@@ -28,6 +28,15 @@ describe('adsContextFromRequest', () => {
     expect(adsContextFromStripeMetadata(adsContextToStripeMetadata(context))).toEqual(context);
   });
 
+  it('builds fbc from metadata fbclid when the cookie value was not stored', () => {
+    const context = adsContextFromStripeMetadata({
+      fbp: 'fb.1.1.cookie',
+      fbclid: 'ClickFace',
+    });
+    expect(context.fbp).toBe('fb.1.1.cookie');
+    expect(context.fbc).toMatch(/^fb\.1\.\d+\.ClickFace$/);
+  });
+
   it('prefers the _fbc cookie over a constructed fbc', () => {
     const context = adsContextFromRequest({
       cookieHeader: '_fbc=fb.1.1.fromcookie',
@@ -40,9 +49,9 @@ describe('adsContextFromRequest', () => {
 
 describe('clientIpFromHeaders', () => {
   it('uses the first forwarded hop', () => {
-    expect(
-      clientIpFromHeaders(new Headers({ 'x-vercel-forwarded-for': '198.51.100.2' })),
-    ).toBe('198.51.100.2');
+    expect(clientIpFromHeaders(new Headers({ 'x-vercel-forwarded-for': '198.51.100.2' }))).toBe(
+      '198.51.100.2',
+    );
   });
 });
 

@@ -1,6 +1,7 @@
 'use client';
 
 import type { AnalyticsEvent } from '~/lib/analytics/events';
+import { reportMetaLeadTap } from '~/lib/analytics/meta-lead-client';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 
 /**
@@ -49,12 +50,13 @@ export function LandingCta({
       data-cta={event}
       data-cta-placement={placement}
       data-cta-channel={channel}
-      onClick={() =>
+      onClick={() => {
         capture(event, {
           ...(placement ? { cta_placement: placement } : {}),
           ...(channel ? { channel } : {}),
-        })
-      }
+        });
+        if (event === 'cta_text_click' || event === 'cta_message_click') reportMetaLeadTap();
+      }}
     >
       {children}
     </a>

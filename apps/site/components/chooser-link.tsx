@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
+import { reportMetaLeadTap } from '~/lib/analytics/meta-lead-client';
 import { useAnalytics } from '~/lib/analytics/posthog-provider';
 import { readFirstTouchSourceCode } from '~/lib/analytics/source-code';
 import { platformFromUa } from '~/lib/chooser';
@@ -89,14 +90,15 @@ export function ChooserLink({
       data-cta={target.composer ? 'cta_text_click' : 'cta_message_click'}
       data-cta-placement={placement}
       {...(target.composer ? { 'data-cta-channel': 'sms' as const } : {})}
-      onClick={() =>
+      onClick={() => {
         capture(
           target.composer ? 'cta_text_click' : 'cta_message_click',
           target.composer
             ? { cta_placement: placement, channel: 'sms' }
             : { cta_placement: placement },
-        )
-      }
+        );
+        reportMetaLeadTap();
+      }}
     >
       {children}
     </a>

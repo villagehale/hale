@@ -12,7 +12,9 @@ import type { ReactNode } from 'react';
 import { ATTRIBUTION_STORAGE_KEY } from '~/lib/analytics/attribution';
 import { useAnalytics, useConsentedDistinctId } from '~/lib/analytics/posthog-provider';
 import { readFirstTouchSourceCode } from '~/lib/analytics/source-code';
+import { openDirectCheckout } from '~/lib/billing/checkout-client';
 import type { PromoPhase, PromoTier } from '~/lib/promo/holiday';
+import { readConsent } from '~/lib/site/consent';
 
 /**
  * Plus and Max go straight to Stripe Checkout on this site. The tier is in the
@@ -109,9 +111,21 @@ export function FoundingCheckoutLink({
           sourceCode = null;
         }
         const query = pricingCheckoutQuery({ stored, search, sourceCode, distinctId });
+        const target = query ? pricingCheckoutTarget(plan, query) : href;
+        const fbq = (window as Window & { fbq?: (...args: unknown[]) => void }).fbq;
+        if (readConsent() === 'granted' && typeof fbq === 'function') {
+          event.preventDefault();
+          void openDirectCheckout({
+            href: target,
+            fbq,
+            storage: window.sessionStorage,
+            assign: (url) => window.location.assign(url),
+          });
+          return;
+        }
         if (query) {
           event.preventDefault();
-          window.location.assign(pricingCheckoutTarget(plan, query));
+          window.location.assign(target);
         }
       }}
     >

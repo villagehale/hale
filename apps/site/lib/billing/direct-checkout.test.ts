@@ -275,4 +275,127 @@ describe('GET /api/checkout', () => {
     expect(alias?.distinct_id).toBe('0123456789abcdef');
     expect(alias?.properties).toMatchObject({ alias: 'cs:cs_test_attr' });
   });
+
+  it('stores fbp and fbc on the session and sends InitiateCheckout with that session id', async () => {
+    vi.stubEnv('META_CAPI_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_META_PIXEL_ID', '2041301346827688');
+    vi.stubEnv('META_CAPI_ACCESS_TOKEN', 'token');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_ads',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_ads',
+              amount_total: 5900,
+              currency: 'cad',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const headers = new Headers({
+      'x-vercel-ip-country': 'CA',
+      'x-hale-checkout': 'json',
+      cookie: '_fbp=fb.1.1.cookie; _fbc=fb.1.9.fromcookie',
+      'user-agent': 'Mozilla/5.0 HaleTest',
+      'x-forwarded-for': '203.0.113.9',
+    });
+    const res = await GET(
+      new Request('https://preview.villagehale.com/api/checkout?tier=plus&fbclid=ClickFace', {
+        headers,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_test_ads',
+      sessionId: 'cs_test_ads',
+      value: 59,
+      currency: 'CAD',
+    });
+    const stripe = new URLSearchParams(
+      calls.find((call) => call.url.includes('api.stripe.com'))?.body,
+    );
+    expect(stripe.get('metadata[fbp]')).toBe('fb.1.1.cookie');
+    expect(stripe.get('metadata[fbc]')).toBe('fb.1.9.fromcookie');
+    expect(stripe.get('metadata[fbclid]')).toBe('ClickFace');
+    expect(stripe.get('metadata[client_ip]')).toBe('203.0.113.9');
+    expect(stripe.get('subscription_data[metadata][fbp]')).toBeNull();
+    expect(stripe.get('subscription_data[metadata][fbc]')).toBeNull();
+    const capi = calls.find((call) => call.url.includes('graph.facebook.com'));
+    const body = JSON.parse(capi?.body ?? '{}') as {
+      data: Array<{
+        event_name: string;
+        event_id: string;
+        user_data: Record<string, string>;
+        custom_data: { value: number; currency: string };
+      }>;
+    };
+    expect(body.data[0]).toMatchObject({
+      event_name: 'InitiateCheckout',
+      event_id: 'cs_test_ads',
+      custom_data: { value: 59, currency: 'CAD' },
+      user_data: {
+        fbp: 'fb.1.1.cookie',
+        fbc: 'fb.1.9.fromcookie',
+        client_ip_address: '203.0.113.9',
+        client_user_agent: 'Mozilla/5.0 HaleTest',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('@');
+    expect(body.data[0]?.user_data).not.toHaveProperty('em');
+  });
+
+  it('builds fbc from fbclid when the click cookie is missing', async () => {
+    vi.stubEnv('META_CAPI_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_META_PIXEL_ID', '2041301346827688');
+    vi.stubEnv('META_CAPI_ACCESS_TOKEN', 'token');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_fbclid',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_fbclid',
+              amount_total: 3900,
+              currency: 'usd',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const res = await GET(
+      new Request('https://preview.villagehale.com/api/checkout?tier=plus&fbclid=ClickFace', {
+        headers: { 'x-vercel-ip-country': 'US' },
+      }),
+    );
+    expect(res.status).toBe(303);
+    const stripe = new URLSearchParams(
+      calls.find((call) => call.url.includes('api.stripe.com'))?.body,
+    );
+    expect(stripe.get('metadata[fbc]')).toMatch(/^fb\.1\.\d+\.ClickFace$/);
+    expect(stripe.get('metadata[fbp]')).toBeNull();
+    const capi = JSON.parse(
+      calls.find((call) => call.url.includes('graph.facebook.com'))?.body ?? '{}',
+    ) as {
+      data: Array<{
+        event_id: string;
+        custom_data: { currency: string; value: number };
+        user_data: { fbc: string };
+      }>;
+    };
+    expect(capi.data[0]?.event_id).toBe('cs_test_fbclid');
+    expect(capi.data[0]?.custom_data).toEqual({ currency: 'USD', value: 39 });
+    expect(capi.data[0]?.user_data.fbc).toBe(stripe.get('metadata[fbc]'));
+  });
 });

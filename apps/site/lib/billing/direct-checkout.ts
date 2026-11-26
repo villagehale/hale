@@ -163,6 +163,13 @@ export function directCheckoutForm(input: {
   attribution?: Attribution;
   /** Consented PostHog distinct id. Written only while the funnel flag is on. */
   analyticsDistinctId?: string | null;
+  /** Meta click cookies. Session metadata only, never the subscription. */
+  ads?: {
+    fbp?: string;
+    fbc?: string;
+    clientIp?: string;
+    clientUserAgent?: string;
+  };
   env?: Record<string, string | undefined>;
 }): URLSearchParams {
   const form = new URLSearchParams({
@@ -195,6 +202,10 @@ export function directCheckoutForm(input: {
   }
   const distinct = funnelOn ? analyticsDistinctId(input.analyticsDistinctId) : null;
   if (distinct) form.set(`metadata[${ANALYTICS_DISTINCT_ID_KEY}]`, distinct);
+  if (input.ads?.fbp) form.set('metadata[fbp]', input.ads.fbp);
+  if (input.ads?.fbc) form.set('metadata[fbc]', input.ads.fbc);
+  if (input.ads?.clientIp) form.set('metadata[client_ip]', input.ads.clientIp);
+  if (input.ads?.clientUserAgent) form.set('metadata[client_ua]', input.ads.clientUserAgent);
   return form;
 }
 
