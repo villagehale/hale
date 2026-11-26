@@ -66,7 +66,10 @@ export function CheckoutPending({
   }, [sessionId, router]);
 
   return (
-    <output className="sp-lede" style={{ display: 'block' }}>
+    <output
+      className="hs-p"
+      style={{ display: 'block', fontFamily: 'var(--font-ui)', color: 'var(--navy)' }}
+    >
       {slow ? slowLede : lede}
     </output>
   );

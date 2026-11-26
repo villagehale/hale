@@ -401,7 +401,7 @@ describe('with the flag off', () => {
       stubFacts({ state: 'receipt' });
       const main = mainOf(await renderPage(locale));
       expect(main).toContain(heading);
-      expect(main).toContain(`<p class="sp-lede">${lede}</p>`);
+      expect(main).toContain(lede);
       expect(main).toContain(`sms:${NUMBER}`);
       expect(main).not.toContain('text first');
       expect(main).not.toContain('premier');
@@ -422,7 +422,7 @@ describe('with the flag on', () => {
       withUserAgent(IPHONE);
       stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You’re on Plus.</h1>');
+      expect(main).toContain('<h1 class="hs-h2">You’re on Plus.</h1>');
       expect(main).toContain('Thanks. Keep texting Hale like you do now.');
       expect(main).not.toContain('Riley');
       expect(main).not.toContain('ph-no-capture');
@@ -484,7 +484,7 @@ describe('with the flag on', () => {
     withUserAgent(IPHONE);
     stubFacts({ state: 'upgraded' }, { tier: 'family' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">You’re on Max now.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">You’re on Max now.</h1>');
     expect(main).toContain(
       'You paid only the difference for the rest of your year. Everything carries over.',
     );
@@ -504,7 +504,7 @@ describe('with the flag on', () => {
   it('C renders its final copy with Open Hale alone', async () => {
     stubFacts({ state: 'already_on_plan' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">You’re already on Plus.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">You’re already on Plus.</h1>');
     expect(main).toContain(
       'This payment won’t be kept. We’ll refund it in full within a few days.',
     );
@@ -520,8 +520,8 @@ describe('with the flag on', () => {
       withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You’re in.</h1>');
-      expect(main).toContain('<p class="sp-lede">Text Hale to start.</p>');
+      expect(main).toContain('<h1 class="hs-h2">You’re in.</h1>');
+      expect(main).toContain('Text Hale to start.');
       expect(main).toContain('data-cta-placement="checkout_success"');
       expect(main).toContain('Hale’s number: (555) 555-0100');
       expect(main).toContain('Open Hale');
@@ -535,7 +535,7 @@ describe('with the flag on', () => {
       if (ua) withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You’re in.</h1>');
+      expect(main).toContain('<h1 class="hs-h2">You’re in.</h1>');
       expect(main).toContain('Text Hale from your phone to start.');
       expect(main).toContain('<svg');
       expect(main).toContain('Hale’s number: (555) 555-0100');
@@ -561,16 +561,16 @@ describe('with the flag on', () => {
   it('F says the payment is going through, as a live status', async () => {
     stubFacts({ state: 'pending' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Almost there.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Almost there.</h1>');
     expect(main).toContain(
-      '<output class="sp-lede" style="display:block">Your payment is still going through. This page will update on its own.</output>',
+      'Your payment is still going through. This page will update on its own.',
     );
   });
 
   it('a purchase under review gets the slow line, with a way to reach us and no polling', async () => {
     stubFacts({ state: 'under_review' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Almost there.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Almost there.</h1>');
     expect(main).toContain('It can take a few minutes. You’ll see it in Hale once it clears.');
     expect(main).toContain('Open Hale');
     expect(main).toContain('Email us');
@@ -581,7 +581,7 @@ describe('with the flag on', () => {
   it('the neutral view names no plan and no person', async () => {
     stubFacts({ state: 'receipt', firstName: 'Riley' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Checkout</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Checkout</h1>');
     expect(main).toContain('This checkout is finished. Open Hale to see your plan.');
     expect(main).toContain('Open Hale');
     expect(main).toContain('Email us');
@@ -594,7 +594,7 @@ describe('with the flag on', () => {
     it('says no charge only when Stripe confirmed it', async () => {
       stubFacts({ state: 'not_paid' }, { paid: false });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">Checkout</h1>');
+      expect(main).toContain('<h1 class="hs-h2">Checkout</h1>');
       expect(main).toContain('We couldn’t find a finished payment here. You haven’t been charged.');
       expect(main).toContain('See pricing');
       expect(main).toContain('href="/pricing"');

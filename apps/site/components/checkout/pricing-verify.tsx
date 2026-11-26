@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { TextDoor } from '~/components/redesign/text-door';
 import type { Locale } from '~/i18n/routing';
 
@@ -27,6 +27,8 @@ export type PricingVerifyCopy = {
   lede: string;
   textHale: string;
 };
+
+const copyStyle = { fontFamily: 'var(--font-ui)', color: 'var(--navy)' } as const;
 
 type CodeResponse = {
   status?: string;
@@ -137,38 +139,51 @@ export function PricingCheckoutVerify({
     setNote(messageFor(next, copy));
   }
 
-  if (bound) {
-    return (
-      <div className="sp-grid">
-        <div className="sp-copy sp-checkout">
-          <h1 className="sp-h1">{copy.heading}</h1>
-          {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
-          <p className="sp-lede">{onPlan ? copy.alreadyOnPlan : copy.lede}</p>
-          <div className="sp-cta">
-            <TextDoor
-              className="btn btn-hero"
-              placement="checkout_success"
-              locale={locale}
-              smsNumber={smsNumber}
-              prefill={prefill}
-              mode="sms"
-            >
-              {copy.textHale}
-            </TextDoor>
-          </div>
-        </div>
+  const card = (body: ReactNode) => (
+    <div className="sp-grid">
+      <div className="hs-card sp-card sp-aside">
+        <h1 className="hs-h2">{copy.heading}</h1>
+        {body}
       </div>
+    </div>
+  );
+
+  if (bound) {
+    return card(
+      <>
+        {copy.plan ? <p className="hs-p" style={copyStyle}>{copy.plan}</p> : null}
+        <p className="hs-p" style={copyStyle}>
+          {onPlan ? copy.alreadyOnPlan : copy.lede}
+        </p>
+        <div className="cta-row">
+          <TextDoor
+            className="btn btn-hero"
+            placement="checkout_success"
+            locale={locale}
+            smsNumber={smsNumber}
+            prefill={prefill}
+            mode="sms"
+          >
+            {copy.textHale}
+          </TextDoor>
+        </div>
+      </>,
     );
   }
 
-  return (
-    <div className="sp-grid">
-      <div className="sp-copy sp-checkout">
-        <h1 className="sp-h1">{copy.heading}</h1>
-        {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
-        <p className="sp-lede">{note}</p>
-        {status === 'sent' ? <p className="sp-lede">{copy.codeHint}</p> : null}
-        <form className="sp-verify" onSubmit={confirm}>
+  return card(
+    <>
+      {copy.plan ? <p className="hs-p" style={copyStyle}>{copy.plan}</p> : null}
+      <p className="hs-p" style={copyStyle}>
+        {note}
+      </p>
+      {status === 'sent' ? (
+        <p className="hs-p" style={copyStyle}>
+          {copy.codeHint}
+        </p>
+      ) : null}
+      <form onSubmit={confirm}>
+        <div className="sp-verify" style={{ margin: 'var(--s5) 0 0', width: '100%' }}>
           <label htmlFor="pricing-phone">
             {copy.phoneLabel}
             <input
@@ -183,6 +198,22 @@ export function PricingCheckoutVerify({
               onChange={(event) => setPhone(event.target.value)}
             />
           </label>
+          {editing ? null : (
+            <label htmlFor="pricing-code">
+              {copy.codeLabel}
+              <input
+                id="pricing-code"
+                className="ph-mask"
+                name="code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+        <div className="cta-row">
           {editing ? (
             <button
               className="btn btn-hero"
@@ -193,43 +224,27 @@ export function PricingCheckoutVerify({
               {copy.saveNumber}
             </button>
           ) : (
-            <>
-              <label htmlFor="pricing-code">
-                {copy.codeLabel}
-                <input
-                  id="pricing-code"
-                  className="ph-mask"
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                />
-              </label>
-              <div className="sp-cta">
-                <button
-                  className="btn btn-hero"
-                  type="submit"
-                  disabled={pending || code.trim() === ''}
-                >
-                  {copy.confirm}
-                </button>
-                <button
-                  className="sp-btn2"
-                  type="button"
-                  disabled={pending}
-                  onClick={() => send(null, true)}
-                >
-                  {copy.resend}
-                </button>
-                <button className="sp-btn2" type="button" onClick={() => setEditing(true)}>
-                  {copy.editNumber}
-                </button>
-              </div>
-            </>
+            <button className="btn btn-hero" type="submit" disabled={pending || code.trim() === ''}>
+              {copy.confirm}
+            </button>
           )}
-        </form>
-      </div>
-    </div>
+        </div>
+        {editing ? null : (
+          <div className="cta-row">
+            <button
+              className="rd-textlink"
+              type="button"
+              disabled={pending}
+              onClick={() => send(null, true)}
+            >
+              <span>{copy.resend}</span>
+            </button>
+            <button className="rd-textlink" type="button" onClick={() => setEditing(true)}>
+              <span>{copy.editNumber}</span>
+            </button>
+          </div>
+        )}
+      </form>
+    </>,
   );
 }

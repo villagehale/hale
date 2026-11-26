@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { CheckoutPending } from '~/components/checkout/checkout-pending';
 import { CopyNumberButton } from '~/components/copy-number';
 import { QrCode } from '~/components/qr-code';
@@ -33,7 +34,12 @@ export function CheckoutState({
   const t = getTranslator(locale, 'CheckoutSuccess');
   const sentenceGap = locale === 'zh' ? '' : ' ';
   const opener = intakePrefill(locale);
-  const heading = (text: string) => <h1 className="sp-h1">{text}</h1>;
+  const heading = (text: string) => <h1 className="hs-h2">{text}</h1>;
+  const line = (text: ReactNode) => (
+    <p className="hs-p" style={{ fontFamily: 'var(--font-ui)', color: 'var(--navy)' }}>
+      {text}
+    </p>
+  );
   const textHale = (prefill: string | null) => (
     <TextDoor
       className="btn btn-hero"
@@ -64,7 +70,7 @@ export function CheckoutState({
   const notFound = (lede: string) => (
     <>
       {heading(t('unpaidHeading'))}
-      <p className="sp-lede">{lede}</p>
+      {line(lede)}
       <div className="sp-cta">
         <a className="btn btn-hero" href={localeHref(locale, '/pricing')}>
           {t('seePricing')}
@@ -79,14 +85,16 @@ export function CheckoutState({
       return (
         <>
           {heading(t('plan', { plan: view.plan }))}
-          <p className="sp-lede">
-            {t('thanks')}
-            {sentenceGap}
-            {t('keepTexting')}
-            {view.checkInDue && billingThreadNoticesEnabled()
-              ? `${sentenceGap}${t('checkIn')}`
-              : null}
-          </p>
+          {line(
+            <>
+              {t('thanks')}
+              {sentenceGap}
+              {t('keepTexting')}
+              {view.checkInDue && billingThreadNoticesEnabled()
+                ? `${sentenceGap}${t('checkIn')}`
+                : null}
+            </>,
+          )}
           <div className="sp-cta">
             {openThread}
             {openHale}
@@ -97,7 +105,7 @@ export function CheckoutState({
       return (
         <>
           {heading(t('upgradedHeading'))}
-          <p className="sp-lede">{t('upgradedLede')}</p>
+          {line(t('upgradedLede'))}
           <div className="sp-cta">
             {openThread}
             {openHale}
@@ -108,7 +116,7 @@ export function CheckoutState({
       return (
         <>
           {heading(t('alreadyHeading', { plan: view.plan }))}
-          <p className="sp-lede">{t('alreadyLede')}</p>
+          {line(t('alreadyLede'))}
           <div className="sp-cta">{openHale}</div>
         </>
       );
@@ -117,7 +125,7 @@ export function CheckoutState({
         return (
           <>
             {heading(t('heading'))}
-            <p className="sp-lede">{t('lede')}</p>
+            {line(t('lede'))}
             <div className="sp-cta">{textHale(opener)}</div>
             {numberLine}
             <div className="sp-cta">{openHale}</div>
@@ -127,7 +135,7 @@ export function CheckoutState({
       return (
         <>
           {heading(t('heading'))}
-          <p className="sp-lede">{t('startFromPhone')}</p>
+          {line(t('startFromPhone'))}
           {smsNumber ? (
             <div
               className="hs-glass sp-qr"
@@ -185,7 +193,7 @@ export function CheckoutState({
               slowLede={t('pendingSlowLede')}
             />
           ) : (
-            <p className="sp-lede">{t('pendingSlowLede')}</p>
+            line(t('pendingSlowLede'))
           )}
         </>
       );
@@ -193,7 +201,7 @@ export function CheckoutState({
       return (
         <>
           {heading(t('pendingHeading'))}
-          <p className="sp-lede">{t('pendingSlowLede')}</p>
+          {line(t('pendingSlowLede'))}
           <div className="sp-cta">
             {openHale}
             {emailUs}
@@ -204,7 +212,7 @@ export function CheckoutState({
       return (
         <>
           {heading(t('unpaidHeading'))}
-          <p className="sp-lede">{t('receiptLede')}</p>
+          {line(t('receiptLede'))}
           <div className="sp-cta">
             {openHale}
             {emailUs}

@@ -38,6 +38,8 @@ interface PageProps {
   }>;
 }
 
+const successCopyStyle = { fontFamily: 'var(--font-ui)', color: 'var(--navy)' } as const;
+
 const CONFIRMED_PURCHASE_STATES: ReadonlySet<CheckoutSuccessView['state']> = new Set([
   'plan_active',
   'upgraded',
@@ -158,7 +160,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
             />
           ) : view ? (
             <div className="sp-grid">
-              <div className="sp-copy sp-checkout">
+              <div className="hs-card sp-card sp-aside">
                 <CheckoutState
                   view={view}
                   locale={locale}
@@ -170,20 +172,26 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
             </div>
           ) : (
             <div className="sp-grid">
-              <div className="sp-copy sp-checkout">
-                <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
+              <div className="hs-card sp-card sp-aside">
+                <h1 className="hs-h2">{paid ? t('heading') : t('unpaidHeading')}</h1>
                 {paid ? (
                   <>
-                    {planName ? <p className="sp-lede">{t('plan', { plan: planName })}</p> : null}
-                    <p className="sp-lede">{t('lede')}</p>
-                    <p className="sp-lede">
+                    {planName ? (
+                      <p className="hs-p" style={successCopyStyle}>
+                        {t('plan', { plan: planName })}
+                      </p>
+                    ) : null}
+                    <p className="hs-p" style={successCopyStyle}>
+                      {t('lede')}
+                    </p>
+                    <p className="hs-p" style={successCopyStyle}>
                       {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
                       {textHref ? ' · ' : null}
                       <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
                     </p>
                   </>
                 ) : (
-                  <p className="sp-lede">
+                  <p className="hs-p" style={successCopyStyle}>
                     {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
                   </p>
                 )}
