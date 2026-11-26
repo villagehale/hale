@@ -63,6 +63,41 @@ function tierCard(currency: BillingCurrency, tier: PromoTier): BlackFridayTier {
   };
 }
 
+/** Home share card, while the gate is open. No time zone. */
+export const HOME_SHARE_ONE_DAY_ENDS = 'Ends Friday at midnight';
+
+export function homeShareOneDayCopy(currency: BillingCurrency): { flag: string; prices: string } {
+  const plus = BLACK_FRIDAY_PRICE_DISPLAY.plus[currency].banner;
+  const max = BLACK_FRIDAY_PRICE_DISPLAY.family[currency].banner;
+  return { flag: HOME_SHARE_ONE_DAY_ENDS, prices: `Plus ${plus}/yr · Max ${max}/yr` };
+}
+
+/**
+ * The home /og card's one-day line. Null outside the gate, when the holiday
+ * flag is off, or when either Stripe price id for this currency is missing,
+ * so the card keeps the season line it can actually charge.
+ */
+export function homeShareOneDay(input: {
+  now: Date;
+  currency: BillingCurrency;
+  env?: Env;
+  bf?: string | null;
+  bfNow?: string | null;
+}): { flag: string; prices: string } | null {
+  const env = input.env ?? process.env;
+  if (env.HOLIDAY_PROMO_ENABLED !== 'true') return null;
+  const clock = resolveBlackFridayNow({
+    now: input.now,
+    env,
+    bf: input.bf,
+    bfNow: input.bfNow,
+  });
+  if (!isBlackFridayWindowOpen(clock)) return null;
+  if (!bfAnnualPriceId('plus', input.currency, env)) return null;
+  if (!bfAnnualPriceId('family', input.currency, env)) return null;
+  return homeShareOneDayCopy(input.currency);
+}
+
 export function blackFridayCheckoutQuery(input: {
   env: Env;
   bf?: string | null;
