@@ -27,6 +27,9 @@ export const GETS_THE_SPOT_UNTIL = 'starting Dec 1, with your ok';
 
 export const PLUS_SIGNUP_LINE = 'Starting Dec 1, signs them up with your ok.';
 
+/** The refund address. One constant, so the mailto and the visible address stay the same sentence. */
+export const REFUND_EMAIL = 'aloha@villagehale.com';
+
 /** Pillar titles are the approved names. Sub-lines are the shipped lines. */
 export const PILLARS = [
   { title: 'Knows your family', sub: 'Your family' },

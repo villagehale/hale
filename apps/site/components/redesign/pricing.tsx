@@ -18,10 +18,59 @@ import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import type { SitePriceSurface } from '~/lib/billing/site-price-surface';
 import { logoSrc, shoreSrc } from './assets';
+import { ShoreArt } from './shore-hero';
 import { TextDoor } from './text-door';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
 import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
+
+/** The pricing hero type block. The success page reuses it, hidden, so the shore crop matches. */
+export function PricingHeroCopy({
+  locale,
+  promo,
+  priceSurface,
+  currency,
+  regionBlocked = false,
+  noChargeLine = null,
+  decorative = false,
+}: {
+  locale: Locale;
+  promo: HolidayPromo | null;
+  priceSurface: SitePriceSurface;
+  currency: BillingCurrency;
+  regionBlocked?: boolean;
+  noChargeLine?: string | null;
+  /** A sizing copy, not a second page heading. */
+  decorative?: boolean;
+}) {
+  const t = (s: string) => tx(locale, s);
+  const list = priceSurface === 'list';
+  const yearlyOnly = locale === 'fr' || locale === 'zh';
+  const headline = promo
+    ? `${promo.saleName}: Max for ${promo.max.saleLabel}.`
+    : list || yearlyOnly
+      ? t('Plus, by the year.')
+      : t('What you pay.');
+  const lede = promo
+    ? `Plus is ${promo.plus.saleLabel}. Texting Hale costs nothing, no card. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}`
+    : yearlyOnly
+      ? t(paidPlansYearlyAnswer(currency))
+      : list
+        ? t(plusPriceSentence(currency))
+        : t(PAID_PLANS_LINE);
+  const Heading = decorative ? 'p' : 'h1';
+  return (
+    <div className="sp-grid">
+      <div className="sp-copy">
+        <p className="hs-eyebrow">{t('Pricing')}</p>
+        <Heading className="sp-h1">{headline}</Heading>
+        <p className="sp-lede">{lede}</p>
+        {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
+        {noChargeLine ? <p className="hs-meta">{noChargeLine}</p> : null}
+      </div>
+    </div>
+  );
+}
 
 export function RedesignPricing({
   locale,
@@ -60,23 +109,16 @@ export function RedesignPricing({
       <div className="rd">
         <FaqDeepLink />
 <div className="stage sp-stage">
-<img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
-<span className="shore-drift sky" aria-hidden="true" />
-<span className="shore-drift sea" aria-hidden="true" />
-<span className="shore-scrim" aria-hidden="true" />
-
+<ShoreArt />
 <main id="main" className="sp-hero">
-  <div className="sp-grid">
-   <div className="sp-copy">
-    <p className="hs-eyebrow">{t("Pricing")}</p>
-    <h1 className="sp-h1">{promo ? `${promo.saleName}: Max for ${promo.max.saleLabel}.` : list || yearlyOnly ? t("Plus, by the year.") : t("What you pay.")}</h1>
-    <p className="sp-lede">{promo ? `Plus is ${promo.plus.saleLabel}. Texting Hale costs nothing, no card. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}` : yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
-    {regionBlocked ? <p className="hs-meta">{CHECKOUT_REGION_UNSUPPORTED_MESSAGE}</p> : null}
-    {noChargeLine ? <p className="hs-meta">{noChargeLine}</p> : null}
-    
-   </div>
-   
-  </div>
+  <PricingHeroCopy
+    locale={locale}
+    promo={promo}
+    priceSurface={priceSurface}
+    currency={currency}
+    regionBlocked={regionBlocked}
+    noChargeLine={noChargeLine}
+  />
  </main>
 </div>
 <div className="hs-page">

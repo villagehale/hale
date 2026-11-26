@@ -804,6 +804,20 @@
    Type       = production subpage H1 76/450/-0.02em/1.04 (41.6 on a phone), measured on
                 villagehale.com/pricing; lede = the home hero sub (18.4/1.45 navy .9). */
 .rd .sp-stage { min-height: 0; }
+/* Checkout success reuses the pricing hero's shore. The stage stays that
+   hero's height (a hidden copy of the pricing headline sizes it) and the card
+   overlaps it, so the scrim fades to the canvas across the card. */
+.rd.checkout-band { display: grid; }
+.rd.checkout-band > .stage,
+.rd.checkout-band > .checkout-over { grid-area: 1 / 1; }
+.rd.checkout-band > .stage { align-self: start; }
+.rd .checkout-sizer { visibility: hidden; }
+.rd .checkout-over {
+  align-self: start;
+  position: relative;
+  z-index: 1;
+  padding: 96px var(--s5) 0;
+}
 .rd .sp-hero { position: relative; padding: 96px var(--s5) 128px; }
 /* the band's own fade is the gap: the first section starts close under it */
 .rd .sp-stage + .hs-page > section:first-child { padding-top: var(--s6); }
@@ -987,6 +1001,7 @@
 .rd .lg-intro { font-size: 18.4px !important; }
 
 @media (max-width: 640px) {
+  .rd .checkout-over { padding: var(--s7) var(--s5) 0; }
   .rd .sp-hero { padding: var(--s7) var(--s5) var(--s8); }
   .rd .sp-legal .sp-hero { padding: var(--s6) var(--s5) var(--s7); }
   .rd .sp-grid { display: flex; flex-direction: column; align-items: center; text-align: center; }

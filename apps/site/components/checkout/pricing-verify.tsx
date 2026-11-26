@@ -5,10 +5,28 @@ import { TextDoor } from '~/components/redesign/text-door';
 import type { Locale } from '~/i18n/routing';
 
 export type PricingVerifyCopy = {
-  heading: string;
-  plan: string | null;
+  memberPlus: string;
+  memberMax: string;
+  welcomePlus: string;
+  welcomeMax: string;
+  priceLocked: string;
+  verifyPrompt: string;
+  sayHi: string;
+  inPlus: string;
+  inMax: string;
+  knowsTitle: string;
+  knowsLine: string;
+  findsTitle: string;
+  findsLine: string;
+  chatTitle: string;
+  chatLine: string;
+  spotTitle: string;
+  spotLine: string;
+  maxEverything: string;
+  maxLimits: string;
+  maxSupport: string;
+  refund: string;
   codeSent: string;
-  codeHint: string;
   phoneLabel: string;
   codeLabel: string;
   resend: string;
@@ -24,11 +42,19 @@ export type PricingVerifyCopy = {
   confirm: string;
   paymentEnded: string;
   alreadyOnPlan: string;
-  lede: string;
   textHale: string;
 };
 
 const copyStyle = { fontFamily: 'var(--font-ui)', color: 'var(--navy)' } as const;
+const titleStyle = {
+  display: 'block',
+  fontFamily: 'var(--font-ui)',
+  fontWeight: 600,
+  color: 'var(--navy)',
+} as const;
+/** Pricing-card CTAs sit at the start of the card. `hs-tier-cta` pins to the
+ * bottom of a tier card; here it only supplies that left alignment. */
+const leftCta = { marginTop: 'var(--s5)', paddingTop: 0 } as const;
 
 type CodeResponse = {
   status?: string;
@@ -61,6 +87,53 @@ function messageFor(status: string, copy: PricingVerifyCopy): string {
   }
 }
 
+function Check() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 8.5l3 3 6-7" />
+    </svg>
+  );
+}
+
+function Benefit({ title, line }: { title: string; line?: string }) {
+  return (
+    <li>
+      <Check />
+      <span>
+        <b style={titleStyle}>{title}</b>
+        {line ?? null}
+      </span>
+    </li>
+  );
+}
+
+function RefundLine({ template, email }: { template: string; email: string }) {
+  const token = '{email}';
+  const at = template.indexOf(token);
+  if (at < 0) {
+    return (
+      <p className="hs-p" style={{ ...copyStyle, marginTop: 'var(--s5)' }}>
+        {template}
+      </p>
+    );
+  }
+  return (
+    <p className="hs-p" style={{ ...copyStyle, marginTop: 'var(--s5)' }}>
+      {template.slice(0, at)}
+      <a href={`mailto:${email}`}>{email}</a>
+      {template.slice(at + token.length)}
+    </p>
+  );
+}
+
 /**
  * The paid session is confirmed. Text Hale waits until the code matches the
  * number Hale will bind. Resend and a corrected number both ask for a new code.
@@ -70,28 +143,33 @@ export function PricingCheckoutVerify({
   initialPhone,
   initialStatus,
   initialBound = false,
+  tier,
   locale,
   smsNumber,
   prefill,
+  refundEmail,
   copy,
 }: {
   sessionId: string;
   initialPhone: string | null;
   initialStatus: string;
   initialBound?: boolean;
+  tier: 'plus' | 'family' | null;
   locale: Locale;
   smsNumber: string;
   prefill: string;
+  refundEmail: string;
   copy: PricingVerifyCopy;
 }) {
   const [phone, setPhone] = useState(initialPhone ?? '');
   const [editing, setEditing] = useState(initialStatus === 'invalid_phone' || !initialPhone);
   const [code, setCode] = useState('');
-  const [status, setStatus] = useState(initialStatus);
+  const [_status, setStatus] = useState(initialStatus);
   const [note, setNote] = useState(messageFor(initialStatus, copy));
   const [bound, setBound] = useState(initialBound);
   const [onPlan, setOnPlan] = useState(false);
   const [pending, setPending] = useState(false);
+  const max = tier === 'family';
 
   async function post(path: string, body: Record<string, unknown>): Promise<CodeResponse | null> {
     setPending(true);
@@ -139,11 +217,37 @@ export function PricingCheckoutVerify({
     setNote(messageFor(next, copy));
   }
 
-  const card = (body: ReactNode) => (
+  const card = (middle: ReactNode) => (
     <div className="sp-grid">
-      <div className="hs-card sp-card sp-aside">
-        <h1 className="hs-h2">{copy.heading}</h1>
-        {body}
+      <div className="hs-glass sp-card sp-aside">
+        <p className="hs-eyebrow">{max ? copy.memberMax : copy.memberPlus}</p>
+        <h1 className="hs-h2" style={copyStyle}>
+          {max ? copy.welcomeMax : copy.welcomePlus}
+        </h1>
+        <p className="hs-p" style={copyStyle}>
+          {copy.priceLocked}
+        </p>
+        {middle}
+        <h2 className="hs-h3" style={{ ...copyStyle, marginTop: 'var(--s5)' }}>
+          {max ? copy.inMax : copy.inPlus}
+        </h2>
+        <ul className="hs-checks" style={{ marginTop: 'var(--s4)' }}>
+          {max ? (
+            <>
+              <Benefit title={copy.maxEverything} />
+              <Benefit title={copy.maxLimits} />
+              <Benefit title={copy.maxSupport} />
+            </>
+          ) : (
+            <>
+              <Benefit title={copy.knowsTitle} line={copy.knowsLine} />
+              <Benefit title={copy.findsTitle} line={copy.findsLine} />
+              <Benefit title={copy.chatTitle} line={copy.chatLine} />
+              <Benefit title={copy.spotTitle} line={copy.spotLine} />
+            </>
+          )}
+        </ul>
+        <RefundLine template={copy.refund} email={refundEmail} />
       </div>
     </div>
   );
@@ -151,11 +255,12 @@ export function PricingCheckoutVerify({
   if (bound) {
     return card(
       <>
-        {copy.plan ? <p className="hs-p" style={copyStyle}>{copy.plan}</p> : null}
-        <p className="hs-p" style={copyStyle}>
-          {onPlan ? copy.alreadyOnPlan : copy.lede}
-        </p>
-        <div className="cta-row">
+        {onPlan ? (
+          <p className="hs-p" style={copyStyle}>
+            {copy.alreadyOnPlan}
+          </p>
+        ) : null}
+        <div className="hs-tier-cta" style={leftCta}>
           <TextDoor
             className="btn btn-hero"
             placement="checkout_success"
@@ -164,26 +269,29 @@ export function PricingCheckoutVerify({
             prefill={prefill}
             mode="sms"
           >
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 2.75c4.28 0 7.75 2.86 7.75 6.38 0 3.53-3.47 6.38-7.75 6.38-.86 0-1.69-.11-2.46-.33L3.6 16.9a.4.4 0 0 1-.56-.46l.83-2.97C2.88 12.36 2.25 10.8 2.25 9.13c0-3.52 3.47-6.38 7.75-6.38Z" />
+            </svg>
             {copy.textHale}
           </TextDoor>
         </div>
+        <p className="hs-meta" style={{ ...copyStyle, marginTop: 'var(--s3)' }}>
+          {copy.sayHi}
+        </p>
       </>,
     );
   }
 
   return card(
-    <>
-      {copy.plan ? <p className="hs-p" style={copyStyle}>{copy.plan}</p> : null}
+    <div className="hs-card sp-panel" style={{ marginTop: 'var(--s5)' }}>
+      <p className="hs-p" style={{ ...copyStyle, marginTop: 0 }}>
+        {copy.verifyPrompt}
+      </p>
       <p className="hs-p" style={copyStyle}>
         {note}
       </p>
-      {status === 'sent' ? (
-        <p className="hs-p" style={copyStyle}>
-          {copy.codeHint}
-        </p>
-      ) : null}
       <form onSubmit={confirm}>
-        <div className="sp-verify" style={{ margin: 'var(--s5) 0 0', width: '100%' }}>
+        <div className="sp-verify" style={{ margin: 'var(--s4) auto 0', width: '100%' }}>
           <label htmlFor="pricing-phone">
             {copy.phoneLabel}
             <input
@@ -213,7 +321,7 @@ export function PricingCheckoutVerify({
             </label>
           )}
         </div>
-        <div className="cta-row">
+        <div className="hs-tier-cta" style={leftCta}>
           {editing ? (
             <button
               className="btn btn-hero"
@@ -230,7 +338,17 @@ export function PricingCheckoutVerify({
           )}
         </div>
         {editing ? null : (
-          <div className="cta-row">
+          <div
+            className="hs-tier-cta"
+            style={{
+              ...leftCta,
+              marginTop: 'var(--s4)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-start',
+              gap: 'var(--s5)',
+            }}
+          >
             <button
               className="rd-textlink"
               type="button"
@@ -245,6 +363,6 @@ export function PricingCheckoutVerify({
           </div>
         )}
       </form>
-    </>,
+    </div>,
   );
 }

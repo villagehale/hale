@@ -8,7 +8,7 @@ import {
   PROMO_OFFER_ID,
   type PromoTierPrice,
 } from '~/lib/promo/holiday';
-import { ONE_LINER, PLUS_SIGNUP_LINE } from '~/lib/site/narrative';
+import { ONE_LINER, PLUS_SIGNUP_LINE, REFUND_EMAIL } from '~/lib/site/narrative';
 import { FoundingCheckoutLink } from './founding-checkout-link';
 import { PromoStickyReveal } from './promo-sticky';
 
@@ -33,8 +33,6 @@ import { PromoStickyReveal } from './promo-sticky';
  * in promo.css on .promo-sec.promo-notes, so the banner, sticky bar, and price
  * cards stay as they are.
  */
-
-const REFUND_EMAIL = 'aloha@villagehale.com';
 
 interface DoorProps {
   locale: Locale;

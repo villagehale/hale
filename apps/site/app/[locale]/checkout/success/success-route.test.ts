@@ -188,12 +188,75 @@ describe('/checkout/success', () => {
     );
     const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
     expect(main).toContain('We sent a code to this number.');
+    expect(main).toContain('One quick step: confirm your number so Hale knows it’s you.');
+    expect(main).not.toContain('Enter it here.');
+    expect(html).not.toContain('Enter it here.');
+    expect(html).not.toContain('Entre-le ici.');
+    expect(html).not.toContain('在这里输入。');
+    expect(html).toContain('checkout-band');
+    expect(html).toContain('checkout-sizer');
+    expect(html).toContain('sp-h1');
+    expect(main).not.toContain('sp-h1');
+    expect(main).toContain('hs-tier-cta');
+    expect(main).not.toContain('sp-cta');
     expect(main).toContain('+14165550100');
     expect(main).toContain('Confirm');
     expect(main).toContain('Send again');
     expect(main).toContain('Use a different number');
+    expect(main).toContain('PLUS MEMBER');
+    expect(main).toContain('Welcome to Hale Plus.');
+    expect(main).toContain('Starting Dec 1, signs them up with your ok.');
+    expect(main).toContain('mailto:aloha@villagehale.com');
+    expect(html).toContain('shore-art');
+    expect(main).toContain('hs-glass');
     expect(main).not.toContain('sms:');
     expect(main).not.toContain('app.villagehale.com');
+  });
+
+  it('names Max on a family direct checkout', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: false,
+              phone: '+14165550100',
+              tier: 'family',
+              status: 'sent',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_max',
+            value: 99,
+            currency: 'CAD',
+            paid: true,
+            tier: 'family',
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_max' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('MAX MEMBER');
+    expect(main).toContain('Welcome to Hale Max.');
+    expect(main).toContain('What’s in Max');
+    expect(main).toContain('Everything in Plus');
+    expect(main).toContain('Highest limits on searches');
+    expect(main).toContain('Priority support');
+    expect(main).not.toContain('Knows your family');
+    expect(main).not.toContain('Welcome to Hale Plus.');
   });
 
   it('shows Text Hale once that direct checkout is bound', async () => {
@@ -231,7 +294,12 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_bound' }),
       }),
     );
-    expect(html).toContain('You’re in.');
+    expect(html).toContain('Welcome to Hale Plus.');
+    expect(html).toContain('Say hi. Send a flyer or a screenshot and it keeps the dates.');
+    expect(html).toContain('btn btn-hero');
+    expect(html).toContain('hs-tier-cta');
+    expect(html).not.toContain('sp-cta');
+    expect(html).not.toContain('You’re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('href="/text"');
     expect(html).toContain('data-cta-placement="checkout_success"');
@@ -313,6 +381,7 @@ describe('/checkout/success', () => {
     const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
     expect(main).toContain('send a code just now');
     expect(main).toContain('Send a code to this number');
+    expect(main).toContain('One quick step: confirm your number so Hale knows it’s you.');
     expect(main).not.toContain('sms:');
   });
 
@@ -729,6 +798,76 @@ describe('the CheckoutSuccess copy', () => {
     expect(keys.length).toBeGreaterThan(20);
     expect(Object.keys(bundle('fr')).sort()).toEqual(keys);
     expect(Object.keys(bundle('zh')).sort()).toEqual(keys);
+  });
+
+  it.each(LOCALES)('%s welcome card renders every new line', async (locale) => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', NUMBER);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: false,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'sent',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_locale',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+            direct: true,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const main = mainOf(await renderPage(locale, { session_id: 'cs_test_locale' }));
+    const copy = bundle(locale);
+    expect(main).toContain(copy.welcomePlus);
+    expect(main).toContain(copy.verifyPrompt);
+    expect(main).toContain(copy.knowsLine);
+    expect(main).toContain(copy.findsLine);
+    expect(main).toContain(copy.chatLine);
+    expect(main).toContain('mailto:aloha@villagehale.com');
+    expect(main).not.toContain('CheckoutSuccess.');
+  });
+
+  it('keeps curly apostrophes in the welcome lines', () => {
+    const keys = [
+      'priceLocked',
+      'verifyPrompt',
+      'inPlus',
+      'inMax',
+      'knowsLine',
+      'findsLine',
+      'chatLine',
+      'refund',
+    ];
+    for (const locale of ['en', 'fr'] as const) {
+      for (const key of keys) {
+        expect(bundle(locale)[key], `${locale}.${key}`).not.toContain("'");
+      }
+    }
+    for (const locale of LOCALES) {
+      expect(bundle(locale).refund).toContain('{email}');
+    }
+  });
+
+  it('drops the extra code-entry line in every language', () => {
+    for (const locale of LOCALES) {
+      const copy = bundle(locale);
+      expect(copy.codeHint).toBeUndefined();
+      expect(Object.values(copy).join('\n')).not.toMatch(/Enter it here|Entre-le ici|在这里输入/);
+    }
   });
 
   it('never says founding, first or early, in any language', () => {
