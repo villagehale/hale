@@ -6,6 +6,13 @@ import { CONSENT_STORAGE_KEY } from '~/lib/site/consent';
 import type { ConsentMode } from '~/lib/site/consent-region';
 import { ConsentBanner } from './consent-banner';
 
+vi.mock('posthog-js', () => ({
+  default: {
+    __loaded: false,
+    opt_out_capturing: () => {},
+  },
+}));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PIXEL = '1111111111111111';
@@ -131,6 +138,7 @@ describe('consent banner region behavior', () => {
     );
     await act(async () => {
       turnOff?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.dynamicImportSettled();
     });
     expect(localStorage.getItem(CONSENT_STORAGE_KEY)).toBe('denied');
     await act(async () => root.unmount());
