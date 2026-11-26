@@ -6,10 +6,10 @@
     "notFoundTitle": "Page introuvable · Hale"
   },
   "HomeMeta": {
-    "title": "Hale: De « on devrait » à « on y va ».",
-    "description": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-    "ogDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-    "twitterDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
+    "title": "Hale: Chaque famille a un parent par défaut. Maintenant, c’est Hale.",
+    "description": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
+    "ogDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
+    "twitterDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
   },
   "Header": {
     "navPricing": "Tarifs",
@@ -18,7 +18,7 @@
     "signIn": "Se connecter"
   },
   "Footer": {
-    "blurb": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
+    "blurb": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— hawaïen pour « maison ».",
@@ -59,12 +59,12 @@
   },
   "About": {
     "metaTitle": "À propos · Hale",
-    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui. Pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
+    "metaDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents. Pour les parents aux États-Unis et au Canada. Créée par Barton Dong et Eugene Song chez Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "Aucun montant n’a été débité.",
     "metaTitle": "Tarifs · Hale",
-    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
+    "metaDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -165,17 +165,17 @@
     "inMax": "Ce qu’il y a dans Max",
     "knowsLine": "Il se souvient de ta famille, d’une saison à l’autre.",
     "findsLine": "De vrais cours et des plans près de chez toi, pour l’âge de tes enfants.",
-    "chatLine": "Ajoute Hale à une conversation avec d’autres familles, et tout le monde arrive à un oui.",
+    "chatLine": "Texte-le en tête-à-tête, ou ajoute-le à une conversation avec d’autres familles.",
     "maxLimits": "Les limites les plus hautes pour les recherches",
     "refund": "Tu as changé d’avis ? Écris à {email} et on te rembourse, n’importe quand."
   },
   "Text": {
     "metaTitle": "Texter Hale",
-    "metaDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
+    "metaDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
   },
   "Jsonld": {
-    "orgDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-    "appDescription": "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui."
+    "orgDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
+    "appDescription": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents."
   },
   "Rd": {
     "0–11 months": "0–11 mois",
@@ -473,6 +473,12 @@
     "Will Hale tell me if a class is any good?": "Hale va me dire si un cours est bon?",
     "With your co-parent or crew": "Avec l’autre parent ou la gang",
     "Works in your group chats": "Dans tes groupes texto",
+    "The AI agent for family life": "L’agent IA pour la vie de famille",
+    "Every family has a default parent.": "Chaque famille a un parent par défaut.",
+    "Now it's Hale.": "Maintenant, c’est Hale.",
+    "Every family has a default parent. Now it's Hale.": "Chaque famille a un parent par défaut. Maintenant, c’est Hale.",
+    "It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents. Text it one-on-one or add it to a group chat.": "Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents. Texte-le en tête-à-tête, ou ajoute-le à un groupe.",
+    "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.": "Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.",
     "Sign-ups done for you, when you say yes": "Inscriptions faites pour toi, quand tu dis oui",
     "Help with sign-ups": "De l’aide pour les inscriptions",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "Oui. Pars un groupe avec Hale et ceux qui partagent la charge : l’autre parent, le covoiturage, d’autres parents du cours. Demande dans le groupe et Hale répond là.",

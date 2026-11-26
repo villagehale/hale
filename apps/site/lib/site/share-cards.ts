@@ -13,7 +13,6 @@ import {
   promoPhase,
   resolveHolidayPromo,
 } from '~/lib/promo/holiday';
-import { H1 } from '~/lib/site/narrative';
 import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
 
 /**
@@ -195,9 +194,10 @@ export function answerShareUrl(
 }
 
 /**
- * The home line, split the way the card draws it. The words are the page H1
- * in each locale. French is two lines, with non-breaking spaces inside the
- * guillemets so a word cannot drop onto its own line.
+ * The older group-chat line, split the way the card draws it. The homepage H1
+ * moved on; this sentence is now only the group-chat section heading, and the
+ * card still paints it. French is two lines, with non-breaking spaces inside
+ * the guillemets so a word cannot drop onto its own line.
  */
 export const HOME_SLOGAN: Record<
   Locale,
@@ -288,7 +288,9 @@ function pageHeadline(
     case 'faq':
       return tx(locale, 'Is Hale right for your family?');
     case 'about':
-      return tx(locale, H1);
+      // The card still paints the older line. Its split layout is built for that
+      // sentence, so the image words stay until a design pass.
+      return HOME_SLOGAN[locale].plain;
     case 'activities':
       return tx(locale, 'Things to do with your kids, near you.');
     case 'answers':

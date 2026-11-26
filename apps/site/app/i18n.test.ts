@@ -292,13 +292,13 @@ describe('VIL-325 designer-locked intake copy', () => {
   it('keeps HomeMeta, page meta, and Jsonld on the one-liner', () => {
     const oneLiner = {
       en: ONE_LINER,
-      fr: "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-      zh: 'Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。',
+      fr: 'Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.',
+      zh: 'Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。',
     } as const;
     const title = {
       en: `Hale: ${H1}`,
-      fr: 'Hale: De « on devrait » à « on y va ».',
-      zh: 'Hale: 从“改天吧”到“就这么定了”。',
+      fr: 'Hale: Chaque famille a un parent par défaut. Maintenant, c’est Hale.',
+      zh: 'Hale: 每个家庭都有一位默认家长。现在是 Hale。',
     } as const;
     const banned = [
       'village your family lost',
@@ -366,7 +366,7 @@ describe('VIL-325 designer-locked intake copy', () => {
       await AboutPage({ params: Promise.resolve({ locale: 'en' as const }) }),
     );
     expect(html).toContain('Parent-built in Toronto');
-    expect(html).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');
+    expect(html).toContain('Every family has a default parent. Now it&#x27;s Hale.');
     expect(html).not.toContain('It starts with one text');
   });
 });

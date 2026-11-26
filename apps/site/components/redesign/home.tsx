@@ -78,9 +78,9 @@ export function RedesignHome({
     <section className="copy">
       <span className="chip">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true"><path d="M6.5 2.5c2.5 0 4.5 1.6 4.5 3.6S9 9.7 6.5 9.7c-.45 0-.9-.05-1.3-.15L2.8 10.6l.65-1.75C2.55 8.2 2 7.2 2 6.1 2 4.1 4 2.5 6.5 2.5Z" /><path d="M12.2 6.2c1.1.6 1.8 1.6 1.8 2.7 0 .9-.45 1.7-1.2 2.3l.5 1.5-1.9-.85c-.4.1-.8.15-1.2.15-1.3 0-2.45-.45-3.25-1.2" /></svg>
-        {t("Works in your group chats")}
+        {t("The AI agent for family life")}
       </span>
-      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t('From \u201cwe should\u201d')}<br />{t('to \u201cwe\u2019re in.\u201d')}</h1>
+      <h1 className={locale === "fr" ? "h1-fr" : undefined}>{t("Every family has a default parent.")}<br />{t("Now it's Hale.")}</h1>
       <p className="sub">{t(HERO_SUB)}</p>
       <div className="cta-row">
         <TextDoor className="btn btn-hero" placement="hero" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>
@@ -231,7 +231,7 @@ export function RedesignHome({
  <div className="hs-wrap">
   <div className="hs-head">
    <p className="hs-eyebrow">{t("In your group chats")}</p>
-   <h2 className="hs-h2">{t("Hale joins the chats you already have.")}</h2>
+   <h2 className="hs-h2">{t('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d')}</h2>
    <p className="hs-lede">{t("Ask in the chat. Hale answers in a line or two, keeps track of what you decided, then goes quiet.")}</p>
   </div>
   <div className="hs-chats hs-chats-static">{groupChatSlides(locale, false)}</div>

@@ -148,7 +148,7 @@ describe('share previews', () => {
 
     const about = await aboutPageMetadata({ params: Promise.resolve(en) });
     expect(about.openGraph?.description).toContain('Barton Dong');
-    expect(about.openGraph?.description).toContain('gets the group chat to a yes');
+    expect(about.openGraph?.description).toContain('the AI agent for family life');
   });
 
   it('does not sell Hale with the retired pitch in the new preview copy', async () => {

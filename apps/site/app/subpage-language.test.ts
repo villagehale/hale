@@ -67,7 +67,7 @@ const termsHtml = await renderAsync(TermsPage({ params: Promise.resolve(EN) }));
 /** The eight pages that wear the pulled-up headline, and the sentence each must
  * still read as once the words are split apart. */
 const REDESIGN_H1: [name: string, html: string, headline: string][] = [
-  ['/about', pages['/about'], 'From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d'],
+  ['/about', pages['/about'], "Every family has a default parent. Now it's Hale."],
   ['/pricing', pages['/pricing'], 'What you pay.'],
   ['/faq', pages['/faq'], 'Is Hale right for your family?'],
   ['/contact', pages['/contact'], 'Say hello.'],
@@ -199,9 +199,8 @@ describe('/about — the locked page', () => {
       const copy = JSON.stringify(about);
       expect(about.metaDescription).toContain('Barton Dong');
       expect(about.metaDescription).toContain('Eugene Song');
-      expect(copy).not.toMatch(
-        /Anzhe|agentic|agentique|智能体|equity|ownership|cap table|cap-table/,
-      );
+      // 智能体 is the locked translation of "AI agent", so it stays in the meta line.
+      expect(copy).not.toMatch(/Anzhe|agentic|agentique|equity|ownership|cap table|cap-table/);
     }
   });
 });

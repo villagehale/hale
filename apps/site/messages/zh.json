@@ -6,10 +6,10 @@
     "notFoundTitle": "找不到这个页面 · Hale"
   },
   "HomeMeta": {
-    "title": "Hale: 从“改天吧”到“就这么定了”。",
-    "description": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",
-    "ogDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",
-    "twitterDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。"
+    "title": "Hale: 每个家庭都有一位默认家长。现在是 Hale。",
+    "description": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。",
+    "ogDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。",
+    "twitterDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。"
   },
   "Header": {
     "navPricing": "价格",
@@ -18,7 +18,7 @@
     "signIn": "登录"
   },
   "Footer": {
-    "blurb": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",
+    "blurb": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "——夏威夷语，意为「家」。",
@@ -59,12 +59,12 @@
   },
   "About": {
     "metaTitle": "关于 · Hale",
-    "metaDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。给美国和加拿大的家长。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
+    "metaDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。给美国和加拿大的家长。由 Village Hale Technologies Inc. 的 Barton Dong 和 Eugene Song 打造。"
   },
   "Pricing": {
     "noCharge": "你没有被扣款。",
     "metaTitle": "价格 · Hale",
-    "metaDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。"
+    "metaDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。"
   },
   "Contact": {
     "metaTitle": "联系我们 · Hale",
@@ -110,7 +110,7 @@
   },
   "Text": {
     "metaTitle": "给 Hale 发 iMessage",
-    "metaDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。"
+    "metaDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。"
   },
   "CheckoutSuccess": {
     "plan": "你现在用的是 {plan}。",
@@ -169,13 +169,13 @@
     "inMax": "Max 里有什么",
     "knowsLine": "记住你的家庭，一个季节又一个季节。",
     "findsLine": "按孩子的年龄，找到你附近真实的课程和安排。",
-    "chatLine": "把 Hale 加进和其他家庭的聊天，它会帮大家说到一起。",
+    "chatLine": "可以一对一发消息，也可以加进和其他家庭的聊天。",
     "maxLimits": "搜索次数上限更高",
     "refund": "改主意了？写邮件给 {email}，我们随时退款。"
   },
   "Jsonld": {
-    "orgDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。",
-    "appDescription": "Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。"
+    "orgDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。",
+    "appDescription": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。"
   },
   "Rd": {
     "0–11 months": "0–11 个月",
@@ -473,6 +473,12 @@
     "Will Hale tell me if a class is any good?": "Hale 会告诉我一门课好不好吗？",
     "With your co-parent or crew": "和另一位家长，或者你们一伙",
     "Works in your group chats": "在你的群聊里就行",
+    "The AI agent for family life": "家庭生活的 AI 智能体",
+    "Every family has a default parent.": "每个家庭都有一位默认家长。",
+    "Now it's Hale.": "现在是 Hale。",
+    "Every family has a default parent. Now it's Hale.": "每个家庭都有一位默认家长。现在是 Hale。",
+    "It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents. Text it one-on-one or add it to a group chat.": "它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。可以一对一发消息，也可以拉进群聊。",
+    "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.": "Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。",
     "Sign-ups done for you, when you say yes": "你点头后代你报名",
     "Help with sign-ups": "协助报名",
     "Yes. Start a group with Hale and whoever shares the load: your co-parent, the carpool, other parents from the class. Ask in the chat and Hale answers there.": "可以。跟 Hale 和一起分担的人建个群：另一位家长、拼车的、班上别的家长。在群里问，Hale 就在群里答。",

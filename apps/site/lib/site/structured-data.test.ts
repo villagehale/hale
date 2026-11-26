@@ -53,9 +53,9 @@ describe('siteJsonLd', () => {
     const org = nodes.find((n) => n['@type'] === 'Organization');
     const app = nodes.find((n) => n['@type'] === 'SoftwareApplication');
     const oneLiner = {
-      en: "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
-      fr: "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-      zh: 'Hale 帮你找到附近适合孩子年龄的真实活动，让家长群一起定下来。',
+      en: 'Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.',
+      fr: 'Hale est l’agent IA pour la vie de famille. Il connaît tes enfants, trouve ce qui leur va, les inscrit avec ton accord, et s’occupe de l’horaire, des trajets et des autres parents.',
+      zh: 'Hale 是家庭生活的 AI 智能体。它了解你家的孩子，找到合适的，经你同意帮他们报名，并处理日程、接送和其他家长。',
     }[locale];
     expect(org?.description).toBe(oneLiner);
     expect(app?.description).toBe(oneLiner);

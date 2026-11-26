@@ -35,18 +35,23 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('From \u201cwe should\u201d<br/>to \u201cwe\u2019re in.\u201d');
-    expect(HTML.en).toContain('we\u2019re in.');
-    expect(HTML.en).toContain('Plans already live in group chats');
+    expect(HTML.en).toContain('Every family has a default parent.<br/>Now it&#x27;s Hale.');
+    expect(HTML.en).toContain('The AI agent for family life');
+    expect(HTML.en).toContain('It knows your kids, finds what fits');
+    expect(HTML.en).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');
+    expect(HTML.en).not.toContain('From \u201cwe should\u201d<br/>');
     expect(HTML.en).toContain('Library playgroup');
+    expect(rd(HTML.fr)).toContain('Chaque famille a un parent par défaut.');
+    expect(rd(HTML.fr)).toContain('Maintenant, c’est Hale.');
+    expect(rd(HTML.fr)).toContain('Il connaît tes enfants');
     expect(rd(HTML.fr)).toContain('De « on devrait »');
     expect(rd(HTML.fr)).toContain('à « on y va ».');
-    expect(rd(HTML.fr)).toContain('Les plans sont déjà dans les groupes texto');
     expect(rd(HTML.fr)).not.toContain('From \u201cwe should\u201d');
+    expect(rd(HTML.zh)).toContain('每个家庭都有一位默认家长。');
+    expect(rd(HTML.zh)).toContain('现在是 Hale。');
+    expect(rd(HTML.zh)).toContain('它了解你家的孩子');
     expect(rd(HTML.zh)).toContain('从“改天吧”');
     expect(rd(HTML.zh)).toContain('到“就这么定了”。');
-    expect(rd(HTML.zh)).toContain('就这么定了');
-    expect(rd(HTML.zh)).toContain('计划已经在家长群里');
     expect(rd(HTML.zh)).not.toContain('From \u201cwe should\u201d');
     expect(rd(HTML.zh)).not.toContain('已报名');
   });
@@ -54,13 +59,7 @@ describe('every locale renders the redesign', () => {
   it('uses tu inside the French redesign', () => {
     const body = rd(HTML.fr);
     // « Rendez-vous » is the playdate noun, not the vous pronoun.
-    // Sloane's hero sub and one-liner are the approved vous/vos sentences.
-    const approved = [
-      "Hale rejoint le groupe de parents, trouve de vraies activités près de chez vous pour l'âge de vos enfants et amène chaque famille à un oui.",
-      "Hale trouve de vraies activités près de chez vous pour l'âge de vos enfants, et amène le groupe à un oui.",
-    ];
-    let prose = body.replace(/rendez-vous/gi, '').replace(/&#x27;/g, "'");
-    for (const line of approved) prose = prose.split(line).join('');
+    const prose = body.replace(/rendez-vous/gi, '').replace(/&#x27;/g, "'");
     expect(prose).not.toMatch(/\bvous\b/i);
     expect(prose).not.toMatch(/\bvos\b/i);
     expect(prose).not.toMatch(/\bvotre\b/i);
@@ -69,7 +68,7 @@ describe('every locale renders the redesign', () => {
 
   it('keeps the FR and ZH hero and sign-up lines on the English promise', () => {
     const fr = rd(HTML.fr);
-    expect(fr).toContain('Les plans sont déjà dans les groupes texto');
+    expect(fr).toContain('Il connaît tes enfants');
     expect(fr).toContain('Les inscrit le 1er déc.');
     expect(fr).toContain('Plus de choses faites pour toi, toute l’année.');
     expect(fr).toContain('Le maximum de ce que Hale peut faire.');
@@ -80,7 +79,7 @@ describe('every locale renders the redesign', () => {
     expect(rd(HTML.en)).not.toContain('Every kid, caregivers included');
     expect(rd(HTML.en)).not.toContain('For the whole crew');
     const zh = rd(HTML.zh);
-    expect(zh).toContain('计划已经在家长群里');
+    expect(zh).toContain('它了解你家的孩子');
     expect(zh).toContain('12 月 1 日帮他们报名。');
     expect(zh).toContain('一整年，更多事由它来做。');
     expect(zh).toContain('Hale 能做的，到这里最多。');
