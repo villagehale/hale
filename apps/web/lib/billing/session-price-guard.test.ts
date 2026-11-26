@@ -1,3 +1,4 @@
+import { BLACK_FRIDAY_WINDOW_END_ISO } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { decidePaidSessionGrant, paidSessionPriceIds } from './session-price-guard';
 
@@ -55,7 +56,7 @@ describe('decidePaidSessionGrant', () => {
     expect(
       decidePaidSessionGrant(
         checkout({ id: 'cs_bf_late', metadata: { tier: 'plus', priceId: 'price_bf_plus_cad' } }),
-        new Date('2026-11-28T08:00:00.000Z'),
+        new Date(BLACK_FRIDAY_WINDOW_END_ISO),
         env,
       ),
     ).toEqual({ status: 'allow' });

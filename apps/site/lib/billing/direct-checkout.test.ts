@@ -488,5 +488,17 @@ describe('GET /api/checkout', () => {
     expect(forced.status).toBe(303);
     expect(forced.headers.get('x-hale-price-id')).toBe('price_bf_plus_cad');
     expect(new URLSearchParams(bodies[3]).get('line_items[0][price]')).toBe('price_bf_plus_cad');
+
+    vi.stubEnv('STRIPE_PRICE_BF_PLUS_ANNUAL_USD', 'price_bf_plus_usd');
+    const previewCad = await GET(request('plus', 'US', undefined, '&bf=1&country=CA'));
+    expect(previewCad.status).toBe(303);
+    expect(new URLSearchParams(bodies[4]).get('line_items[0][price]')).toBe('price_bf_plus_cad');
+
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.setSystemTime(new Date('2026-11-27T12:00:00.000Z'));
+    const productionCountry = await GET(request('plus', 'US', undefined, '&country=CA&bf=1'));
+    expect(productionCountry.status).toBe(303);
+    expect(new URLSearchParams(bodies[5]).get('line_items[0][price]')).toBe('price_bf_plus_usd');
+    expect(productionCountry.headers.get('x-hale-price-id')).toBeNull();
   });
 });

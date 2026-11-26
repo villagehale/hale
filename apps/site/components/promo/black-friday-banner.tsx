@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
 import { blackFridayCountdownCopy, blackFridaySentence } from '~/lib/promo/black-friday';
-import { pricingCheckoutTarget } from './founding-checkout-link';
+import { FoundingCheckoutLink } from './founding-checkout-link';
 
 /**
  * "Ends Friday at midnight" in the visitor's zone, filled in after mount so
@@ -53,10 +53,6 @@ export function BlackFridayCountdown({ serverNow, locale }: { serverNow: number;
   );
 }
 
-function checkoutHref(plan: 'plus' | 'max', query: string): string {
-  return pricingCheckoutTarget(plan, query);
-}
-
 /** Glass strip in the existing promo-bar slot. Desktop and mobile, above the header. */
 export function BlackFridayBanner({
   offer,
@@ -78,14 +74,28 @@ export function BlackFridayBanner({
         <BlackFridayCountdown serverNow={offer.serverNow} locale={locale} />
         <div className="bf-banner-actions">
           {offer.plus ? (
-            <a className="hs-btn-primary" href={checkoutHref('plus', offer.checkoutQuery)}>
+            <FoundingCheckoutLink
+              className="hs-btn-primary"
+              placement="bf_banner"
+              phase="black_friday"
+              currency={offer.currency}
+              plan="plus"
+              query={offer.checkoutQuery}
+            >
               Plus {offer.plus.saleLabel}
-            </a>
+            </FoundingCheckoutLink>
           ) : null}
           {offer.max ? (
-            <a className="hs-btn-primary" href={checkoutHref('max', offer.checkoutQuery)}>
+            <FoundingCheckoutLink
+              className="hs-btn-primary"
+              placement="bf_banner"
+              phase="black_friday"
+              currency={offer.currency}
+              plan="max"
+              query={offer.checkoutQuery}
+            >
               Max {offer.max.saleLabel}
-            </a>
+            </FoundingCheckoutLink>
           ) : null}
         </div>
       </div>

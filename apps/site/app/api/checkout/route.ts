@@ -19,6 +19,19 @@ import { visitorCurrencyFromHeaders } from '~/lib/billing/visitor-currency';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Preview can ask for CA or US. Vercel overwrites the geo header from the
+ * caller IP, so a query is the only way to open both currencies from one
+ * machine. Production ignores it and uses the edge country.
+ */
+function currencyHeaders(request: Request, url: URL): Headers {
+  const headers = new Headers(request.headers);
+  if (process.env.VERCEL_ENV === 'production') return headers;
+  const country = url.searchParams.get('country')?.trim().toUpperCase();
+  if (country === 'CA' || country === 'US') headers.set('x-vercel-ip-country', country);
+  return headers;
+}
+
+/**
  * Plus and Max on /pricing. A GET so the button is a link. Nothing is created
  * before Stripe: no code, no account. The browser is sent to Checkout.
  */
@@ -29,7 +42,7 @@ export async function GET(request: Request): Promise<Response> {
   const tier = directCheckoutTier(url.searchParams.get('tier'));
   if (!tier) return NextResponse.json({ error: 'invalid_tier' }, { status: 400 });
 
-  const currency = visitorCurrencyFromHeaders(request.headers);
+  const currency = visitorCurrencyFromHeaders(currencyHeaders(request, url));
   if (!currency) return NextResponse.json({ error: 'region_unsupported' }, { status: 403 });
 
   const now = resolveBlackFridayNow({
