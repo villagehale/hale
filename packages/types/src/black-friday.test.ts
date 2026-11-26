@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BLACK_FRIDAY_COUNTDOWN_END_MS,
   BLACK_FRIDAY_PRICE_DISPLAY,
   BLACK_FRIDAY_WINDOW_END_ISO,
+  BLACK_FRIDAY_WINDOW_END_MS,
   BLACK_FRIDAY_WINDOW_START_ISO,
-  blackFridayCountdownLabel,
+  blackFridayCountdownRemainingMs,
+  blackFridayVisitorCountdownEndMs,
   isBlackFridayWindowOpen,
   resolveBlackFridayNow,
 } from './black-friday.js';
@@ -13,24 +14,31 @@ const OUTSIDE = new Date('2026-11-26T18:00:00.000Z');
 const INSIDE = new Date('2026-11-27T15:00:00.000Z');
 
 describe('Black Friday window', () => {
-  it('opens at 05:00:00Z on the 27th and closes at 05:00:00Z on the 28th', () => {
+  it('opens at 05:00:00Z on the 27th and closes at 08:00:00Z on the 28th', () => {
     expect(BLACK_FRIDAY_WINDOW_START_ISO).toBe('2026-11-27T05:00:00.000Z');
-    expect(BLACK_FRIDAY_WINDOW_END_ISO).toBe('2026-11-28T05:00:00.000Z');
+    expect(BLACK_FRIDAY_WINDOW_END_ISO).toBe('2026-11-28T08:00:00.000Z');
     expect(isBlackFridayWindowOpen(new Date('2026-11-27T04:59:59.000Z'))).toBe(false);
     expect(isBlackFridayWindowOpen(new Date('2026-11-27T05:00:00.000Z'))).toBe(true);
-    expect(isBlackFridayWindowOpen(new Date('2026-11-28T04:59:59.000Z'))).toBe(true);
-    expect(isBlackFridayWindowOpen(new Date('2026-11-28T05:00:00.000Z'))).toBe(false);
+    expect(isBlackFridayWindowOpen(new Date('2026-11-28T07:59:59.000Z'))).toBe(true);
+    expect(isBlackFridayWindowOpen(new Date('2026-11-28T08:00:00.000Z'))).toBe(false);
   });
 
-  it('counts down to 23:59:59 America/Toronto, one second before the end', () => {
-    expect(BLACK_FRIDAY_COUNTDOWN_END_MS).toBe(Date.parse('2026-11-28T04:59:59.000Z'));
-    expect(new Date(BLACK_FRIDAY_COUNTDOWN_END_MS).toISOString()).toBe('2026-11-28T04:59:59.000Z');
-    const remaining = BLACK_FRIDAY_COUNTDOWN_END_MS - Date.parse(BLACK_FRIDAY_WINDOW_START_ISO);
-    expect(blackFridayCountdownLabel(remaining)).toBe('23:59');
-    expect(blackFridayCountdownLabel(60_000)).toBe('00:01');
-    expect(blackFridayCountdownLabel(59_000)).toBe('00:00');
-    expect(blackFridayCountdownLabel(0)).toBeNull();
-    expect(blackFridayCountdownLabel(-1)).toBeNull();
+  it('hides an ET countdown at local 23:59:59 while the gate stays open', () => {
+    const at = Date.parse('2026-11-28T04:59:59.000Z');
+    expect(blackFridayVisitorCountdownEndMs('America/New_York')).toBe(at);
+    expect(blackFridayCountdownRemainingMs(at, 'America/New_York')).toBe(0);
+    expect(blackFridayCountdownRemainingMs(at - 1000, 'America/New_York')).toBe(1000);
+    expect(isBlackFridayWindowOpen(new Date(at))).toBe(true);
+  });
+
+  it('caps a Hawaii countdown at the gate end', () => {
+    expect(blackFridayVisitorCountdownEndMs('Pacific/Honolulu')).toBe(BLACK_FRIDAY_WINDOW_END_MS);
+    expect(
+      blackFridayCountdownRemainingMs(BLACK_FRIDAY_WINDOW_END_MS - 1000, 'Pacific/Honolulu'),
+    ).toBe(1000);
+    expect(blackFridayCountdownRemainingMs(BLACK_FRIDAY_WINDOW_END_MS, 'Pacific/Honolulu')).toBe(0);
+    expect(isBlackFridayWindowOpen(new Date(BLACK_FRIDAY_WINDOW_END_MS - 1000))).toBe(true);
+    expect(isBlackFridayWindowOpen(new Date(BLACK_FRIDAY_WINDOW_END_MS))).toBe(false);
   });
 
   it('pins the four yearly amounts', () => {

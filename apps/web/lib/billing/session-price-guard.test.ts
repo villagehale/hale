@@ -52,6 +52,13 @@ describe('decidePaidSessionGrant', () => {
         env,
       ),
     ).toEqual({ status: 'allow' });
+    expect(
+      decidePaidSessionGrant(
+        checkout({ id: 'cs_bf_late', metadata: { tier: 'plus', priceId: 'price_bf_plus_cad' } }),
+        new Date('2026-11-28T08:00:00.000Z'),
+        env,
+      ),
+    ).toEqual({ status: 'allow' });
   });
 
   it('allows a Plus or Max promo Checkout Session during the window', () => {

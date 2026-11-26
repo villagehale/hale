@@ -177,8 +177,9 @@ export function priceTierMapFromEnv(
   for (const priceId of promoMaxPriceIdsFromEnv(env)) {
     if (!(priceId in map)) map[priceId] = 'family';
   }
-  // BF yearly ids grant the same tiers. A subscription on one of them renews
-  // at that price; we never rewrite it onto the season price.
+  // BF yearly ids grant the same tiers, including when the webhook arrives
+  // after the price gate closes. A subscription on one of them renews at that
+  // price; we never rewrite it onto the season price.
   for (const priceId of bfMaxPriceIdsFromEnv(env)) {
     if (!(priceId in map)) map[priceId] = 'family';
   }

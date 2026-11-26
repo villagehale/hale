@@ -1,46 +1,39 @@
 'use client';
 
-import { blackFridayCountdownLabel } from '@hale/types';
+import { blackFridayCountdownRemainingMs } from '@hale/types';
 import { useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
-import { blackFridayEndsPrefix, blackFridaySentence } from '~/lib/promo/black-friday';
+import { blackFridayCountdownCopy, blackFridaySentence } from '~/lib/promo/black-friday';
 import { pricingCheckoutTarget } from './founding-checkout-link';
 
 /**
- * Live hours:minutes until 23:59:59 America/Toronto.
- * The first paint uses the server clock. After that it ticks, and the whole
- * banner unmounts when it hits zero so a stale tab does not keep the sale up.
+ * "Ends Friday at midnight" in the visitor's zone, filled in after mount so
+ * the server HTML and the first client paint match. Null once that Friday
+ * has ended. The prices stay; only this sentence goes away.
  */
-export function useBlackFridayRemaining(endsAt: number, serverNow: number): number {
-  const [nowMs, setNowMs] = useState(serverNow);
+export function useBlackFridayCountdownCopy(serverNow: number, locale: Locale): string | null {
+  const [copy, setCopy] = useState<string | null>(null);
   useEffect(() => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const skew = serverNow - Date.now();
-    const tick = () => setNowMs(Date.now() + skew);
+    const tick = () => {
+      const now = Date.now() + skew;
+      setCopy(blackFridayCountdownCopy(locale, blackFridayCountdownRemainingMs(now, timeZone)));
+    };
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [serverNow]);
-  return endsAt - nowMs;
+  }, [serverNow, locale]);
+  return copy;
 }
 
-export function BlackFridayCountdown({
-  endsAt,
-  serverNow,
-  prefix,
-}: {
-  endsAt: number;
-  serverNow: number;
-  prefix: string;
-}) {
-  const label = blackFridayCountdownLabel(useBlackFridayRemaining(endsAt, serverNow));
-  if (!label) return null;
+export function BlackFridayCountdown({ serverNow, locale }: { serverNow: number; locale: Locale }) {
+  const copy = useBlackFridayCountdownCopy(serverNow, locale);
+  if (!copy) return null;
   return (
-    <span className="bf-count">
-      {prefix}{' '}
-      <time dateTime={new Date(endsAt).toISOString()} suppressHydrationWarning>
-        {label}
-      </time>
+    <span className="bf-count" data-bf-countdown="1">
+      {copy}
     </span>
   );
 }
@@ -57,8 +50,6 @@ export function BlackFridayBanner({
   offer: BlackFridayOffer;
   locale: Locale;
 }) {
-  const remaining = useBlackFridayRemaining(offer.endsAt, offer.serverNow);
-  if (blackFridayCountdownLabel(remaining) === null) return null;
   const sentence = blackFridaySentence(
     locale,
     offer.plus?.banner ?? null,
@@ -68,11 +59,7 @@ export function BlackFridayBanner({
     <div className="rd bf-banner" data-bf="1" data-bf-currency={offer.currency}>
       <div className="bf-banner-in v4-glass">
         <p className="bf-banner-copy">{sentence}</p>
-        <BlackFridayCountdown
-          endsAt={offer.endsAt}
-          serverNow={offer.serverNow}
-          prefix={blackFridayEndsPrefix(locale)}
-        />
+        <BlackFridayCountdown serverNow={offer.serverNow} locale={locale} />
         <div className="bf-banner-actions">
           {offer.plus ? (
             <a className="hs-btn-primary" href={checkoutHref('plus', offer.checkoutQuery)}>

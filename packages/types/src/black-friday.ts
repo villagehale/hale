@@ -1,12 +1,13 @@
 import type { BillingCurrency } from './promo.js';
 
 /**
- * Black Friday 2026, one Toronto day.
+ * Black Friday 2026 price gate.
  *
- * The window is [2026-11-27T05:00:00Z, 2026-11-28T05:00:00Z): midnight to
- * midnight America/Toronto on Friday 27 Nov, which is EST (UTC−5) that week.
- * The countdown target is the last second inside it, 23:59:59 local, one
- * second before the exclusive end.
+ * Half-open [2026-11-27T05:00:00Z, 2026-11-28T08:00:00Z): Friday 00:00
+ * America/Toronto through Friday 23:59:59 America/Los_Angeles. Checkout,
+ * the bar, and the price a new session charges all read this window.
+ * The visitor countdown is separate: Friday 23:59:59 in their own zone,
+ * and never later than this gate end.
  *
  * Display amounts are whole dollars. Checkout charges the Stripe price ids in
  * env and never trusts these numbers. A missing id falls back to the regular
@@ -14,12 +15,20 @@ import type { BillingCurrency } from './promo.js';
  */
 
 export const BLACK_FRIDAY_WINDOW_START_ISO = '2026-11-27T05:00:00.000Z';
-export const BLACK_FRIDAY_WINDOW_END_ISO = '2026-11-28T05:00:00.000Z';
+export const BLACK_FRIDAY_WINDOW_END_ISO = '2026-11-28T08:00:00.000Z';
 
 export const BLACK_FRIDAY_WINDOW_START_MS = Date.parse(BLACK_FRIDAY_WINDOW_START_ISO);
 export const BLACK_FRIDAY_WINDOW_END_MS = Date.parse(BLACK_FRIDAY_WINDOW_END_ISO);
-/** 23:59:59 America/Toronto. The window stays open for the following second. */
-export const BLACK_FRIDAY_COUNTDOWN_END_MS = BLACK_FRIDAY_WINDOW_END_MS - 1000;
+
+/** Friday 27 Nov 2026, 23:59:59, as a wall clock in the visitor's zone. */
+export const BLACK_FRIDAY_LOCAL_FRIDAY_END = {
+  year: 2026,
+  month: 11,
+  day: 27,
+  hour: 23,
+  minute: 59,
+  second: 59,
+} as const;
 
 export const BLACK_FRIDAY_NOW_OVERRIDE_ENV = 'BLACK_FRIDAY_NOW_OVERRIDE';
 
@@ -38,7 +47,7 @@ export const BLACK_FRIDAY_PRICE_DISPLAY: Record<
   },
 };
 
-/** Inclusive start, exclusive end. `04:59:59Z` on the 27th is off; `05:00:00Z` is on. */
+/** Inclusive start, exclusive end. `07:59:59Z` on the 28th is on; `08:00:00Z` is off. */
 export function isBlackFridayWindowOpen(now: Date): boolean {
   const t = now.getTime();
   return t >= BLACK_FRIDAY_WINDOW_START_MS && t < BLACK_FRIDAY_WINDOW_END_MS;
@@ -76,11 +85,53 @@ export function resolveBlackFridayNow(input: {
   return input.now;
 }
 
-/** Hours and minutes until `endsAt`. Null once the countdown has hit zero. */
-export function blackFridayCountdownLabel(remainingMs: number): string | null {
-  if (remainingMs <= 0) return null;
-  const totalMinutes = Math.floor(remainingMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+function timeZoneOffsetMs(timeZone: string, instantMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instantMs));
+  const pick = (type: Intl.DateTimeFormatPartTypes) => {
+    const value = parts.find((part) => part.type === type)?.value ?? '0';
+    return value === '24' ? 0 : Number(value);
+  };
+  const asUtc = Date.UTC(
+    pick('year'),
+    pick('month') - 1,
+    pick('day'),
+    pick('hour'),
+    pick('minute'),
+    pick('second'),
+  );
+  return asUtc - instantMs;
+}
+
+/** UTC instant of a wall clock in `timeZone`. */
+export function zonedWallClockToUtcMs(
+  timeZone: string,
+  wall: { year: number; month: number; day: number; hour: number; minute: number; second: number },
+): number {
+  const guess = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+  const corrected = guess - timeZoneOffsetMs(timeZone, guess);
+  return guess - timeZoneOffsetMs(timeZone, corrected);
+}
+
+/**
+ * When this visitor's "Ends Friday at midnight" line hits zero.
+ * Friday 23:59:59 in `timeZone`, capped at the gate end so a zone west of
+ * Pacific (Hawaii) stops at 2026-11-28T08:00:00Z with the gate.
+ */
+export function blackFridayVisitorCountdownEndMs(timeZone: string): number {
+  const local = zonedWallClockToUtcMs(timeZone, BLACK_FRIDAY_LOCAL_FRIDAY_END);
+  return Math.min(local, BLACK_FRIDAY_WINDOW_END_MS);
+}
+
+/** Milliseconds until the visitor countdown hides. Zero or less means hide it. */
+export function blackFridayCountdownRemainingMs(nowMs: number, timeZone: string): number {
+  return blackFridayVisitorCountdownEndMs(timeZone) - nowMs;
 }

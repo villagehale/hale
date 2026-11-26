@@ -435,7 +435,7 @@ export function resolveCheckoutPrice(input: {
     return { status: 'unavailable', reason: 'flag_off' };
   }
 
-  // One Toronto day. A missing BF id falls through to the regular yearly price.
+  // Price gate [2026-11-27T05:00Z, 2026-11-28T08:00Z). A missing BF id falls through.
   if (isBlackFridayWindowOpen(input.now)) {
     const bf = bfSelection(tier, input.currency, env);
     if (bf) return { status: 'selected', price: bf };

@@ -1,6 +1,6 @@
 import {
-  BLACK_FRIDAY_COUNTDOWN_END_MS,
   BLACK_FRIDAY_PRICE_DISPLAY,
+  BLACK_FRIDAY_WINDOW_END_MS,
   type BillingCurrency,
   PROMO_PRICE_DISPLAY,
   currencyFromIpCountry,
@@ -100,7 +100,7 @@ export function resolveBlackFridayOffer(input: {
   if (!plusId && !maxId) return null;
   return {
     currency,
-    endsAt: BLACK_FRIDAY_COUNTDOWN_END_MS,
+    endsAt: BLACK_FRIDAY_WINDOW_END_MS,
     serverNow: clock.getTime(),
     plus: plusId ? tierCard(currency, 'plus') : null,
     max: maxId ? tierCard(currency, 'max') : null,
@@ -145,8 +145,16 @@ export function blackFridaySentence(
   return `Black Friday: yearly Max ${max}, today only.`;
 }
 
-export function blackFridayEndsPrefix(locale: 'en' | 'fr' | 'zh'): string {
-  if (locale === 'fr') return 'Fin dans';
-  if (locale === 'zh') return '剩余';
-  return 'Ends in';
+/**
+ * The countdown sentence. Null once the visitor's Friday has ended, including
+ * zero remaining. Callers must not substitute an "ended" line.
+ */
+export function blackFridayCountdownCopy(
+  locale: 'en' | 'fr' | 'zh',
+  remainingMs: number,
+): string | null {
+  if (remainingMs <= 0) return null;
+  if (locale === 'fr') return 'Se termine vendredi à minuit';
+  if (locale === 'zh') return '周五午夜结束';
+  return 'Ends Friday at midnight';
 }

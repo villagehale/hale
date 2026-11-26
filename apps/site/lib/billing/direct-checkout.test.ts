@@ -94,8 +94,8 @@ describe('direct checkout price', () => {
     };
     const before = new Date('2026-11-27T04:59:59.000Z');
     const start = new Date('2026-11-27T05:00:00.000Z');
-    const last = new Date('2026-11-28T04:59:59.000Z');
-    const end = new Date('2026-11-28T05:00:00.000Z');
+    const last = new Date('2026-11-28T07:59:59.000Z');
+    const end = new Date('2026-11-28T08:00:00.000Z');
     expect(
       selectDirectCheckoutPrice({ tier: 'plus', currency: 'CAD', now: before, env }),
     ).toMatchObject({

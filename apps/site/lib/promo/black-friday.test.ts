@@ -1,8 +1,10 @@
+import { blackFridayCountdownRemainingMs } from '@hale/types';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PromoStickyCta } from '~/components/promo/holiday-promo';
 import {
+  blackFridayCountdownCopy,
   blackFridaySentence,
   resolveBlackFridayFromSearch,
   resolveBlackFridayOffer,
@@ -45,12 +47,12 @@ describe('resolveBlackFridayOffer', () => {
       env: IDS,
     });
     const last = resolveBlackFridayOffer({
-      now: new Date('2026-11-28T04:59:59.000Z'),
+      now: new Date('2026-11-28T07:59:59.000Z'),
       country: 'CA',
       env: IDS,
     });
     const after = resolveBlackFridayOffer({
-      now: new Date('2026-11-28T05:00:00.000Z'),
+      now: new Date('2026-11-28T08:00:00.000Z'),
       country: 'US',
       env: IDS,
     });
@@ -121,7 +123,7 @@ describe('resolveBlackFridayOffer', () => {
       now: new Date('2026-11-26T18:00:00.000Z'),
       country: 'US',
       env,
-      search: { bf_now: '2026-11-28T04:59:59.000Z' },
+      search: { bf_now: '2026-11-28T07:59:59.000Z' },
     });
     expect(pinned?.max?.banner).toBe('US$49');
     expect(
@@ -129,9 +131,25 @@ describe('resolveBlackFridayOffer', () => {
         now: new Date('2026-11-26T18:00:00.000Z'),
         country: 'US',
         env,
-        search: { bf_now: '2026-11-28T05:00:00.000Z' },
+        search: { bf_now: '2026-11-28T08:00:00.000Z' },
       }),
     ).toBeNull();
+  });
+
+  it('keeps BF prices after an ET Friday ends, and hides the midnight sentence', () => {
+    const at = new Date('2026-11-28T04:59:59.000Z');
+    const offer = resolveBlackFridayOffer({ now: at, country: 'US', env: IDS });
+    expect(offer?.plus?.banner).toBe('US$29');
+    expect(offer?.max?.banner).toBe('US$49');
+    const remaining = blackFridayCountdownRemainingMs(at.getTime(), 'America/New_York');
+    expect(remaining).toBe(0);
+    expect(blackFridayCountdownCopy('en', remaining)).toBeNull();
+    expect(blackFridayCountdownCopy('fr', remaining)).toBeNull();
+    expect(blackFridayCountdownCopy('zh', remaining)).toBeNull();
+    expect(blackFridayCountdownCopy('en', remaining - 1)).toBeNull();
+    expect(blackFridayCountdownCopy('en', 1)).toBe('Ends Friday at midnight');
+    expect(blackFridayCountdownCopy('fr', 1)).toBe('Se termine vendredi à minuit');
+    expect(blackFridayCountdownCopy('zh', 1)).toBe('周五午夜结束');
   });
 });
 
@@ -169,8 +187,9 @@ describe('sticky promo bar', () => {
     const start = bar('2026-11-27T05:00:00.000Z', 'US');
     expect(start).toContain('Plus US$29');
     expect(start).toContain('Max US$49');
-    expect(start).toContain('Ends in');
-    expect(start).toContain('23:59');
+    expect(start).not.toContain('Ends Friday');
+    expect(start).not.toContain('ended');
+    expect(start).not.toContain('expired');
     expect(start).not.toContain('Join by Dec 31');
     expect(start).not.toContain('$79/yr');
 
@@ -179,12 +198,14 @@ describe('sticky promo bar', () => {
     expect(canadaStart).toContain('Max C$59');
     expect(canadaStart).not.toContain('$99/yr');
 
-    const lastMinute = bar('2026-11-28T04:59:00.000Z', 'US');
-    expect(lastMinute).toContain('Plus US$29');
-    expect(lastMinute).toContain('00:00');
-    expect(lastMinute).not.toContain('Join by Dec 31');
+    const afterEtMidnight = bar('2026-11-28T04:59:59.000Z', 'US');
+    expect(afterEtMidnight).toContain('Plus US$29');
+    expect(afterEtMidnight).toContain('Max US$49');
+    expect(afterEtMidnight).not.toContain('Ends Friday');
+    expect(afterEtMidnight).not.toContain('ended');
+    expect(afterEtMidnight).not.toContain('Join by Dec 31');
 
-    const after = bar('2026-11-28T05:00:00.000Z', 'US');
+    const after = bar('2026-11-28T08:00:00.000Z', 'US');
     expect(after).toContain('Max $79/yr, Plus $39/yr');
     expect(after).toContain('Join by Dec 31');
     expect(after).not.toContain('US$29');
@@ -199,8 +220,24 @@ describe('sticky promo bar', () => {
     );
     expect(forced).toContain('Plus C$39');
     expect(forced).toContain('Max C$59');
-    expect(forced).toContain('23:59');
     expect(forced).not.toContain('Join by Dec 31');
+
+    const hidden = bar(
+      '2026-11-26T18:00:00.000Z',
+      'US',
+      { bf: '1', bf_now: '2026-11-28T06:00:00.000Z' },
+      { ...IDS, VERCEL_ENV: 'preview' },
+    );
+    expect(hidden).toContain('Plus US$29');
+    expect(hidden).toContain('Max US$49');
+    expect(
+      blackFridayCountdownCopy(
+        'en',
+        blackFridayCountdownRemainingMs(Date.parse('2026-11-28T06:00:00.000Z'), 'America/New_York'),
+      ),
+    ).toBeNull();
+    expect(hidden).not.toContain('ended');
+    expect(hidden).not.toContain('Join by Dec 31');
 
     const production = bar(
       '2026-11-26T18:00:00.000Z',

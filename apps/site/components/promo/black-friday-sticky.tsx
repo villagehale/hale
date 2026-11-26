@@ -1,18 +1,17 @@
 'use client';
 
-import { blackFridayCountdownLabel } from '@hale/types';
 import { TextDoor } from '~/components/redesign/text-door';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
-import { blackFridayEndsPrefix } from '~/lib/promo/black-friday';
 import type { HolidayPromo } from '~/lib/promo/holiday';
-import { BlackFridayCountdown, useBlackFridayRemaining } from './black-friday-banner';
+import { useBlackFridayCountdownCopy } from './black-friday-banner';
 import { PromoStickyReveal } from './promo-sticky';
 
 /**
- * The mobile sticky bar during the one-day window.
- * Same shell as the season bar. The copy is the BF price for this region
- * and the live countdown. At zero the bar unmounts.
+ * The mobile sticky bar while the price gate is open.
+ * Same shell as the season bar. The price line stays after the visitor's
+ * Friday ends; only the midnight sentence goes away. The season bar returns
+ * when the server stops sending this offer.
  */
 export function BlackFridaySticky({
   offer,
@@ -31,8 +30,7 @@ export function BlackFridaySticky({
   source?: string | null;
   mode: 'chooser' | 'sms';
 }) {
-  const remaining = useBlackFridayRemaining(offer.endsAt, offer.serverNow);
-  if (blackFridayCountdownLabel(remaining) === null) return null;
+  const countdown = useBlackFridayCountdownCopy(offer.serverNow, locale);
   const bits = [
     offer.plus ? `Plus ${offer.plus.banner}` : null,
     offer.max ? `Max ${offer.max.banner}` : null,
@@ -44,13 +42,13 @@ export function BlackFridaySticky({
       <div className="promo-sticky-copy" data-bf-sticky="1">
         <strong>Black Friday</strong>
         <span>{bits}</span>
-        <small>
-          <BlackFridayCountdown
-            endsAt={offer.endsAt}
-            serverNow={offer.serverNow}
-            prefix={blackFridayEndsPrefix(locale)}
-          />
-        </small>
+        {countdown ? (
+          <small>
+            <span className="bf-count" data-bf-countdown="1">
+              {countdown}
+            </span>
+          </small>
+        ) : null}
       </div>
       <TextDoor
         className="promo-sticky-btn"

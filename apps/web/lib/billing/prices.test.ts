@@ -412,7 +412,7 @@ describe('resolveCheckoutPrice', () => {
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
-  it('uses the BF yearly id only inside the Toronto day, and falls back when it is missing', () => {
+  it('uses the BF yearly id only inside the gate, and falls back when it is missing', () => {
     const env = {
       ...PROMO,
       STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
@@ -422,8 +422,8 @@ describe('resolveCheckoutPrice', () => {
     };
     const before = new Date('2026-11-27T04:59:59.000Z');
     const start = new Date('2026-11-27T05:00:00.000Z');
-    const last = new Date('2026-11-28T04:59:59.000Z');
-    const end = new Date('2026-11-28T05:00:00.000Z');
+    const last = new Date('2026-11-28T07:59:59.000Z');
+    const end = new Date('2026-11-28T08:00:00.000Z');
     expect(
       resolveCheckoutPrice({ currency: 'CAD', period: 'monthly', now: before, env }),
     ).toMatchObject({
