@@ -857,7 +857,9 @@ async function runOnePlan(
       choices,
       maxPriceCents: plan.maxPriceCents,
       waiverAccepted: plan.waiverAccepted,
-      paymentEnabled: browserUseSignupPaymentEnabled(),
+      // A card only on an approval bound to the terms read from the page; without one the
+      // run stops at checkout as with the switch off, and the parent pays in the live view.
+      paymentEnabled: binding !== null && browserUseSignupPaymentEnabled(),
       binding,
       credentials,
       accountCreate: providerAccountCreateEnabled(),

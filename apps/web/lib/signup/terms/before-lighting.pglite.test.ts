@@ -785,7 +785,7 @@ describe('a take-back typed outside the private thread', () => {
     expect((await termsRow(offerId))?.approved).toBeNull();
   });
 
-  it('with the flag off and no terms row, a group turn takes today’s path (control)', async () => {
+  it('with the flag off and no terms row, a group take-back takes the same take-back-only path', async () => {
     vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
     const f = await household();
     const stored = await recordSignupOffer(db.database, {
@@ -802,19 +802,21 @@ describe('a take-back typed outside the private thread', () => {
     });
     if (!stored.ok) throw new Error(stored.reason);
     await sentOn(f, stored.id);
-    const reader = takesBack();
+    const reader = takesBackNamed();
 
     const taken = await turn(f, TAKE_BACK, {
-      body: 'cancel it',
+      body: 'cancel gym',
       inGroup: true,
       takeBackReader: reader,
     });
 
-    expect(reader.read).not.toHaveBeenCalled();
-    expect(taken.planReader.read).toHaveBeenCalledTimes(1);
+    // VIL-682: a group turn is read for a take-back only, whatever the flag says.
+    expect(reader.read).toHaveBeenCalledTimes(1);
+    expect(taken.planReader.read).not.toHaveBeenCalled();
     expect(taken.result.outcome).toBe('plan_declined');
-    expect(taken.written.at(-1)).toMatchObject({ moment: 'declined', childFirstName: 'Ada' });
-    expect(taken.result.stamp).toBeDefined();
+    expect((await offerRow(stored.id)).status).toBe('handed_back');
+    expect(taken.written.at(-1)).toMatchObject({ moment: 'declined', childFirstName: null });
+    expect(taken.result.stamp).toBeUndefined();
   });
 
   describe('a bare take-back in a group', () => {

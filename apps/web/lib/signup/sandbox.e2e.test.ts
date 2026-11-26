@@ -285,6 +285,9 @@ describe('authorized signup sandbox', () => {
   beforeEach(() => {
     posts.length = 0;
     vi.stubEnv('AUTHORIZED_SIGNUP_ENABLED', 'on');
+    vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+    vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
+    vi.stubEnv('BOOKING_REFERENCE_CONNECTOR_ENABLED', '');
   });
 
   async function offer(input: {
@@ -340,13 +343,28 @@ describe('authorized signup sandbox', () => {
   async function book(seeded: { familyId: string; parentUserId: string }) {
     const browser = await playwrightSignupBrowser();
     expect(browser, 'Playwright is a dev dependency of apps/web').not.toBeNull();
+    // The parent's yes as stored in their own 1:1 thread, the only place a yes counts.
+    const [inbound] = await db.database
+      .insert(schema.channelMessages)
+      .values({
+        familyId: seeded.familyId,
+        parentUserId: seeded.parentUserId,
+        channel: 'imessage',
+        direction: 'in',
+        category: 'reply',
+        status: 'delivered',
+        body: 'Yes, sign us up',
+        inGroup: false,
+        sentAt: NOW,
+      })
+      .returning({ id: schema.channelMessages.id });
     return runAuthorizedSignup(
       db.database,
       {
         familyId: seeded.familyId,
         parentUserId: seeded.parentUserId,
         body: 'Yes, sign us up',
-        inboundChannelMessageId: 'msg-sandbox',
+        inboundChannelMessageId: inbound?.id as string,
         existingThread: true,
         now: NOW,
       },

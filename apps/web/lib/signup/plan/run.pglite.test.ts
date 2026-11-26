@@ -173,6 +173,52 @@ async function plannedFamily(
   return { ...seeded, phone, offerId: offer.id };
 }
 
+/** The terms Hale read from the page, approved with the plan: a bound approval. */
+async function bindTerms(family: { familyId: string; parentUserId: string; offerId: string }) {
+  const offer = await offerRow(family.offerId);
+  await db.database.insert(schema.authorizedSignupTerms).values({
+    offerId: family.offerId,
+    familyId: family.familyId,
+    childId: offer?.childId as string,
+    parentUserId: family.parentUserId,
+    shown: {
+      v: 1,
+      read: 'course_model',
+      program: { courseIds: ['c-1'], name: 'Preschool Swim' },
+      residency: 'resident',
+      age: { fit: 'in_band', band: null, rule: null },
+      prerequisite: { required: 'no', quote: null },
+      refund: null,
+      currency: 'cad',
+      countsAgainstSeason: false,
+      priorChargeUnknown: false,
+      sessions: SESSIONS.map((session) => ({
+        sessionId: session.id,
+        rates: [{ rate: 'resident' as const, cents: 9800 }],
+        tax: 'included' as const,
+        source: 'course_model' as const,
+      })),
+    },
+    approved: {
+      v: 1,
+      sessions: SESSIONS.map((session) => ({
+        sessionId: session.id,
+        program: { courseIds: ['c-1'], name: 'Preschool Swim' },
+        startsAt: session.startsAt,
+        sharesDate: false,
+        amount: { kind: 'exact' as const, cents: [9800], currency: 'cad' as const, plusTax: null },
+      })),
+      quantity: 1,
+      maxCents: 10000,
+      countsAgainstSeason: false,
+      seasonKey: null,
+      hold: null,
+    },
+    approvingMessageId: `msg-plan-${messageSeq}`,
+    approvedAt: new Date(NOW.getTime() - 20 * 60 * 60_000),
+  });
+}
+
 const PAID: BrowserUsePlanResult = {
   outcome: 'completed',
   detail: 'none',
@@ -479,16 +525,43 @@ describe('carrying out plans at the open', () => {
   });
 
   it.each([
+    ['exactly `true`', 'true'],
+    ['`true` with a trailing newline', 'true\n'],
+    ['unset', ''],
+  ])(
+    'a plan with no bound approval never arms the pay step: payment switch %s',
+    async (_name, value) => {
+      vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, value);
+      const family = await plannedFamily();
+      const { runner, inputs } = engineLike(PAID);
+      await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+      const input = inputs.find((i) => i.correlationId === family.offerId);
+      expect(input?.binding).toBeNull();
+      expect(input?.paymentEnabled).toBe(false);
+    },
+  );
+
+  it.each([
     ['exactly `true`', 'true', true],
     ['`true` with a trailing newline', 'true\n', false],
     ['unset', '', false],
-  ])('the pay step obeys the env-only payment kill switch: %s', async (_name, value, expected) => {
-    vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, value);
-    const family = await plannedFamily();
-    const { runner, inputs } = engineLike(PAID);
-    await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
-    expect(inputs.find((i) => i.correlationId === family.offerId)?.paymentEnabled).toBe(expected);
-  });
+  ])(
+    'a bound plan: the pay step obeys the env-only payment kill switch: %s',
+    async (_name, value, expected) => {
+      vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', 'true');
+      vi.stubEnv(BROWSER_USE_SIGNUP_PAYMENT_ENABLED_ENV, value);
+      const family = await plannedFamily();
+      await bindTerms(family);
+      const { runner, inputs } = engineLike(PAID);
+      await runDueSignupPlans(db.database, { now: NOW }, deps(runner).deps);
+      const input = inputs.find((i) => i.correlationId === family.offerId);
+      expect(input?.binding?.approved.sessions.map((s) => s.sessionId)).toEqual([
+        'sat-0900',
+        'sun-1000',
+      ]);
+      expect(input?.paymentEnabled).toBe(expected);
+    },
+  );
 
   it('a final total it could not read hands the cart back, audited step by step, and tells the parent', async () => {
     const posted = stubOpsSlack();

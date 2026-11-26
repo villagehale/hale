@@ -67,7 +67,6 @@ const SESSIONS = [
 ];
 
 let db: TestDb;
-let seq = 0;
 
 beforeAll(async () => {
   db = await createTestDb();
@@ -78,6 +77,7 @@ afterAll(async () => {
 beforeEach(() => {
   vi.stubEnv(REGISTRATION_PLAN_RUN_ENABLED_ENV, 'true');
   vi.stubEnv('REGISTRATION_PREFLIGHT_ENABLED', '');
+  vi.stubEnv('BROWSER_USE_SIGNUP_ENABLED', '');
   vi.stubEnv(AUTHORIZED_SIGNUP_ENABLED_ENV, 'on');
 });
 afterEach(() => {
@@ -214,13 +214,36 @@ async function seedCoParent(familyId: string): Promise<string> {
   return user.id;
 }
 
-function turn(f: { familyId: string; parentUserId: string }, body = 'parent words') {
-  seq += 1;
+/** The parent's text as stored: in their own 1:1 thread, the only place a yes counts, or not. */
+async function oneToOneText(
+  f: { familyId: string; parentUserId: string },
+  body: string,
+  inGroup = false,
+) {
+  const [row] = await db.database
+    .insert(schema.channelMessages)
+    .values({
+      familyId: f.familyId,
+      parentUserId: f.parentUserId,
+      channel: 'imessage',
+      direction: 'in',
+      category: 'reply',
+      status: 'delivered',
+      body,
+      inGroup,
+      sentAt: NOW,
+    })
+    .returning({ id: schema.channelMessages.id });
+  if (!row) throw new Error('oneToOneText: no inbound row');
+  return row.id;
+}
+
+async function turn(f: { familyId: string; parentUserId: string }, body = 'parent words') {
   return {
     familyId: f.familyId,
     parentUserId: f.parentUserId,
     body,
-    inboundChannelMessageId: `msg-${seq}`,
+    inboundChannelMessageId: await oneToOneText(f, body),
     existingThread: true,
     now: NOW,
   };
@@ -294,7 +317,7 @@ describe('the day-before plan conversation', () => {
   it("stores the parent's ranked yes as the plan and replies with the model's text", async () => {
     const f = await family();
     const { planReader, planWriter, written } = fakes(APPROVE);
-    const input = turn(f, 'yes, Sunday first, Saturday if not, up to $105, tick the waiver');
+    const input = await turn(f, 'yes, Sunday first, Saturday if not, up to $105, tick the waiver');
     const result = await runAuthorizedSignup(db.database, input, { planReader, planWriter });
 
     expect(result).toEqual({
@@ -340,14 +363,17 @@ describe('the day-before plan conversation', () => {
     expect(identity?.childDob).toBeNull();
 
     const { planReader, planWriter, written } = fakes(APPROVE);
-    const first = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
+    const first = await runAuthorizedSignup(db.database, await turn(f), { planReader, planWriter });
     expect(first?.outcome).toBe('plan_clarify');
     expect(written[0]?.moment).toBe('clarify');
     expect(written[0]?.question).toMatch(/date of birth/i);
     expect((await offer(f.offerId)).status).toBe('pending');
     expect(await auditSteps(f.offerId)).toContain('plan_ask_dob');
 
-    const second = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
+    const second = await runAuthorizedSignup(db.database, await turn(f), {
+      planReader,
+      planWriter,
+    });
     expect(second?.outcome).toBe('plan_approved');
     expect((await offer(f.offerId)).status).toBe('planned');
   });
@@ -358,7 +384,7 @@ describe('the day-before plan conversation', () => {
     const { planReader, planWriter, written } = fakes(APPROVE);
     const result = await runAuthorizedSignup(
       db.database,
-      turn({ ...f, parentUserId: coParentUserId }),
+      await turn({ ...f, parentUserId: coParentUserId }),
       {
         planReader,
         planWriter,
@@ -381,7 +407,7 @@ describe('the day-before plan conversation', () => {
     expect(consents).toEqual([]);
 
     // Positive control: the parent the plan was offered to can still approve it.
-    const own = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
+    const own = await runAuthorizedSignup(db.database, await turn(f), { planReader, planWriter });
     expect(own?.outcome).toBe('plan_approved');
     expect((await offer(f.offerId)).status).toBe('planned');
   });
@@ -410,7 +436,7 @@ describe('the day-before plan conversation', () => {
     };
     const { planWriter } = fakes(null);
     const unasked = await family();
-    const result = await runAuthorizedSignup(db.database, turn(unasked, text), {
+    const result = await runAuthorizedSignup(db.database, await turn(unasked, text), {
       planReader,
       planWriter,
     });
@@ -426,7 +452,7 @@ describe('the day-before plan conversation', () => {
       kind: 'ask_waiver',
       now: NOW,
     });
-    await runAuthorizedSignup(db.database, turn(asked, text), { planReader, planWriter });
+    await runAuthorizedSignup(db.database, await turn(asked, text), { planReader, planWriter });
     expect((await offer(asked.offerId)).planWaiverAccepted).toBe(true);
   });
 
@@ -435,7 +461,7 @@ describe('the day-before plan conversation', () => {
     const f = await family();
     const { planReader, planWriter } = fakes(APPROVE);
     const consentReader = unrelatedConsent();
-    const result = await runAuthorizedSignup(db.database, turn(f), {
+    const result = await runAuthorizedSignup(db.database, await turn(f), {
       planReader,
       planWriter,
       consentReader,
@@ -450,7 +476,11 @@ describe('the day-before plan conversation', () => {
     const f = await family({ opensAt: null });
     const { planReader, planWriter } = fakes(APPROVE);
     const consentReader = unrelatedConsent();
-    await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter, consentReader });
+    await runAuthorizedSignup(db.database, await turn(f), {
+      planReader,
+      planWriter,
+      consentReader,
+    });
     expect(planReader.read).not.toHaveBeenCalled();
     expect(consentReader.read).toHaveBeenCalledTimes(1);
   });
@@ -470,7 +500,7 @@ describe('the day-before plan conversation', () => {
     });
     expect(approved).toEqual({ ok: true });
     const { planReader, planWriter, written } = fakes(TAKE_BACK);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'actually never mind'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'actually never mind'), {
       planReader,
       planWriter,
     });
@@ -529,7 +559,7 @@ describe('the day-before plan conversation', () => {
         .set({ status: 'submitting', planResume: resume, planLeaseUntil: null })
         .where(eq(schema.authorizedSignupOffers.id, f.offerId));
       const later = {
-        ...turn(f, 'stop, I will do it myself'),
+        ...(await turn(f, 'stop, I will do it myself')),
         now: new Date(OPENS.getTime() + 20 * 60_000),
       };
       const { planReader, planWriter, written } = fakes(TAKE_BACK);
@@ -574,7 +604,7 @@ describe('the day-before plan conversation', () => {
   it('a no to the offered plan closes the offer', async () => {
     const f = await family();
     const { planReader, planWriter } = fakes(TAKE_BACK);
-    const result = await runAuthorizedSignup(db.database, turn(f, "no thanks, I'll do it"), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, "no thanks, I'll do it"), {
       planReader,
       planWriter,
     });
@@ -601,7 +631,7 @@ describe('the day-before plan conversation', () => {
     const { planReader, planWriter, written } = fakes({ verdict: 'take_back', named: 'tokens' });
     const result = await runAuthorizedSignup(
       db.database,
-      turn({ ...f, parentUserId: coParentUserId }, 'cancel the swim one'),
+      await turn({ ...f, parentUserId: coParentUserId }, 'cancel the swim one'),
       { planReader, planWriter },
     );
 
@@ -617,7 +647,7 @@ describe('the day-before plan conversation', () => {
     expect(await auditSteps(f.offerId)).toEqual(['plan_approved']);
 
     // Positive control: the parent who set it takes it back.
-    const own = await runAuthorizedSignup(db.database, turn(f, 'cancel the swim one'), {
+    const own = await runAuthorizedSignup(db.database, await turn(f, 'cancel the swim one'), {
       planReader,
       planWriter,
     });
@@ -631,7 +661,7 @@ describe('the day-before plan conversation', () => {
     const { planReader, planWriter } = fakes(TAKE_BACK);
     const result = await runAuthorizedSignup(
       db.database,
-      turn({ ...f, parentUserId: coParentUserId }, 'no thanks'),
+      await turn({ ...f, parentUserId: coParentUserId }, 'no thanks'),
       { planReader, planWriter },
     );
     expect(result).toMatchObject({ claimed: false, outcome: 'not_claimed' });
@@ -643,7 +673,7 @@ describe('the day-before plan conversation', () => {
     const f = await family();
     const { planReader, planWriter, written } = fakes(TAKE_BACK);
     const declineSeat = vi.fn(async () => true);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'cancel it'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'cancel it'), {
       planReader,
       planWriter,
       declineSeat,
@@ -659,7 +689,7 @@ describe('the day-before plan conversation', () => {
     expect((await offer(f.offerId)).status).toBe('pending');
 
     // Positive control: a seat that may authorize takes it back.
-    const allowed = await runAuthorizedSignup(db.database, turn(f, 'cancel it'), {
+    const allowed = await runAuthorizedSignup(db.database, await turn(f, 'cancel it'), {
       planReader,
       planWriter,
       declineSeat: async () => false,
@@ -675,7 +705,10 @@ describe('the day-before plan conversation', () => {
       question: 'Which day first?',
       named: null,
     });
-    const result = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
+    const result = await runAuthorizedSignup(db.database, await turn(f), {
+      planReader,
+      planWriter,
+    });
     expect(result?.outcome).toBe('plan_clarify');
     expect(written[0]?.question).toBe('Which day first?');
     expect((await offer(f.offerId)).status).toBe('pending');
@@ -684,7 +717,10 @@ describe('the day-before plan conversation', () => {
   it('a yes the store refuses is said back with the registration link after the text', async () => {
     const f = await family();
     const { planReader, planWriter, written } = fakes({ ...APPROVE, maxPriceCents: 900_000 });
-    const result = await runAuthorizedSignup(db.database, turn(f), { planReader, planWriter });
+    const result = await runAuthorizedSignup(db.database, await turn(f), {
+      planReader,
+      planWriter,
+    });
     expect(result?.outcome).toBe('plan_refused');
     expect(written[0]?.refusal).toBe('max_price');
     expect(result?.reply).toBe(`reply for refused\n${URL}`);
@@ -694,7 +730,7 @@ describe('the day-before plan conversation', () => {
   it('a reply the model could not write sends nothing and says so', async () => {
     const f = await family();
     const { planReader } = fakes({ verdict: 'unclear', question: 'Which day?', named: null });
-    const result = await runAuthorizedSignup(db.database, turn(f), {
+    const result = await runAuthorizedSignup(db.database, await turn(f), {
       planReader,
       planWriter: { write: async () => null },
     });
@@ -707,7 +743,7 @@ describe('the day-before plan conversation', () => {
     };
     const plan = await family();
     const { planReader, planWriter } = fakes({ verdict: 'unrelated' });
-    const result = await runAuthorizedSignup(db.database, turn(plan), {
+    const result = await runAuthorizedSignup(db.database, await turn(plan), {
       planReader,
       planWriter,
       consentReader,
@@ -718,7 +754,7 @@ describe('the day-before plan conversation', () => {
 
     // Positive control: an offer with no open time still goes to the consent read.
     const ordinary = await family({ opensAt: null });
-    await runAuthorizedSignup(db.database, turn(ordinary), {
+    await runAuthorizedSignup(db.database, await turn(ordinary), {
       planReader,
       planWriter,
       consentReader,
@@ -730,7 +766,7 @@ describe('the day-before plan conversation', () => {
   it('the reader is told which program and host the plan is for', async () => {
     const f = await family();
     const { planReader, planWriter } = fakes({ verdict: 'unrelated' });
-    await runAuthorizedSignup(db.database, turn(f, 'what time is pickup friday'), {
+    await runAuthorizedSignup(db.database, await turn(f, 'what time is pickup friday'), {
       planReader,
       planWriter,
     });
@@ -738,6 +774,62 @@ describe('the day-before plan conversation', () => {
       activity: 'Preschool Swim',
       host: 'register.example-rec.test',
     });
+  });
+});
+
+describe('a yes counts only in the asker’s own 1:1, with the pre-flight flag unset', () => {
+  const groupTurn = async (f: { familyId: string; parentUserId: string }, body: string) => ({
+    ...(await turn(f, body)),
+    inboundChannelMessageId: await oneToOneText(f, body, true),
+  });
+
+  it('a bare yes in the family group binds nothing; the same yes 1:1 plans the ask', async () => {
+    const f = await family();
+    // The model's worst read of a group "yes": an approval.
+    const takeBackReader: PlanReader = { read: vi.fn(async () => APPROVE) };
+    const { planReader, planWriter, written } = fakes(APPROVE);
+
+    const held = await runAuthorizedSignup(db.database, await groupTurn(f, 'yes'), {
+      planReader,
+      planWriter,
+      takeBackReader,
+    });
+
+    expect(held).toMatchObject({ claimed: false, outcome: 'asks_held_for_private', reply: null });
+    expect(planReader.read).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    const pending = await offer(f.offerId);
+    expect(pending.status).toBe('pending');
+    expect(pending.planChoiceIds).toBeNull();
+    expect(await auditSteps(f.offerId)).not.toContain('plan_approved');
+
+    // Positive control: the asker's own 1:1 yes binds the same ask.
+    const direct = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
+      planReader,
+      planWriter,
+      takeBackReader,
+    });
+    expect(direct).toMatchObject({ claimed: true, outcome: 'plan_approved' });
+    expect((await offer(f.offerId)).status).toBe('planned');
+  });
+
+  it('a take-back typed in the family group still acts', async () => {
+    const f = await family();
+    const takeBackReader: PlanReader = {
+      read: vi.fn(async () => ({ verdict: 'take_back' as const, named: 'tokens' as const })),
+    };
+    const { planReader, planWriter, written } = fakes(APPROVE);
+
+    const taken = await runAuthorizedSignup(
+      db.database,
+      await groupTurn(f, 'cancel the preschool swim'),
+      { planReader, planWriter, takeBackReader },
+    );
+
+    expect(taken).toMatchObject({ claimed: true, outcome: 'plan_declined' });
+    expect(planReader.read).not.toHaveBeenCalled();
+    expect((await offer(f.offerId)).status).toBe('handed_back');
+    expect(written.at(-1)).toMatchObject({ moment: 'declined', childFirstName: null });
   });
 });
 
@@ -795,7 +887,7 @@ describe('which ask a message answers', () => {
     const f = await family();
     const kickersId = await kickersAsk(f);
     const { planReader, planWriter } = fakes(APPROVE);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
     });
@@ -818,7 +910,7 @@ describe('which ask a message answers', () => {
       'Preschool Swim': { verdict: 'take_back', named: 'tokens' },
     });
     const { planWriter, written } = fakes(null);
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'cancel the swim one'), {
+    const asked = await runAuthorizedSignup(db.database, await turn(f, 'cancel the swim one'), {
       planReader,
       planWriter,
     });
@@ -836,7 +928,7 @@ describe('which ask a message answers', () => {
       'Little Kickers': TAKE_BACK,
       'Preschool Swim': TAKE_BACK,
     });
-    const cancelled = await runAuthorizedSignup(db.database, turn(f, 'no'), {
+    const cancelled = await runAuthorizedSignup(db.database, await turn(f, 'no'), {
       planReader: bare,
       planWriter,
     });
@@ -856,7 +948,7 @@ describe('which ask a message answers', () => {
       'Preschool Swim': { verdict: 'take_back', named: null },
     });
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'cancel'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'cancel'), {
       planReader,
       planWriter,
     });
@@ -888,7 +980,7 @@ describe('which ask a message answers', () => {
     const { planReader, planWriter } = fakes(TAKE_BACK);
     const result = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'stop'), ...later },
+      { ...(await turn(f, 'stop')), ...later },
       { planReader, planWriter },
     );
 
@@ -902,7 +994,7 @@ describe('which ask a message answers', () => {
     const named = readerBy({ 'Preschool Swim': { verdict: 'take_back', named: 'tokens' } });
     const asked = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'stop the swim registration'), ...later },
+      { ...(await turn(f, 'stop the swim registration')), ...later },
       { planReader: named, planWriter },
     );
     expect(asked.outcome).toBe('plan_clarify');
@@ -910,7 +1002,7 @@ describe('which ask a message answers', () => {
     await replySent(asked, f);
     const stopped = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'stop'), ...later },
+      { ...(await turn(f, 'stop')), ...later },
       { planReader: readerBy({ 'Preschool Swim': TAKE_BACK }), planWriter },
     );
     expect(stopped.outcome).toBe('plan_cancelled');
@@ -948,7 +1040,7 @@ describe('which ask a message answers', () => {
     const { planWriter, written } = fakes(null);
 
     const named = reads('approve', 'unrelated');
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'yes to the swim one'), {
+    const asked = await runAuthorizedSignup(db.database, await turn(f, 'yes to the swim one'), {
       planReader: named,
       planWriter,
     });
@@ -966,7 +1058,7 @@ describe('which ask a message answers', () => {
 
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const bare = reads('approve', 'approve');
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: bare,
       planWriter,
     });
@@ -988,7 +1080,7 @@ describe('which ask a message answers', () => {
       'Preschool Swim': APPROVE,
     });
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'ok'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'ok'), {
       planReader,
       planWriter,
     });
@@ -1017,7 +1109,7 @@ describe('which ask a message answers', () => {
       'Preschool Swim': APPROVE,
     });
     const { planWriter, written } = fakes(null);
-    const unnamed = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const unnamed = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: bare,
       planWriter,
     });
@@ -1038,14 +1130,14 @@ describe('which ask a message answers', () => {
       'Little Kickers': { verdict: 'unrelated' },
       'Preschool Swim': { ...APPROVE, named: 'tokens' },
     });
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'yes to the swim one'), {
+    const asked = await runAuthorizedSignup(db.database, await turn(f, 'yes to the swim one'), {
       planReader,
       planWriter,
     });
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(f.offerId)).status).toBe('pending');
     await replySent(asked, f);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: bare,
       planWriter,
     });
@@ -1074,7 +1166,7 @@ describe('which ask a message answers', () => {
         ),
       ),
     };
-    const stopped = await runAuthorizedSignup(db.database, turn(f, 'no stop'), {
+    const stopped = await runAuthorizedSignup(db.database, await turn(f, 'no stop'), {
       planReader: stop,
       planWriter,
     });
@@ -1129,7 +1221,7 @@ describe('which ask a message answers', () => {
 
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
     });
@@ -1150,13 +1242,13 @@ describe('which ask a message answers', () => {
     // yes after that question plans it.
     const asked = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'yes to the kickers one'), now: LATER },
+      { ...(await turn(f, 'yes to the kickers one')), now: LATER },
       { planReader: goAheadReader('the kickers one'), planWriter },
     );
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(kickersId)).status).toBe('pending');
     await replySent(asked, f);
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: goAheadReader(null),
       planWriter,
     });
@@ -1194,7 +1286,7 @@ describe('which ask a message answers', () => {
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
     });
@@ -1225,7 +1317,7 @@ describe('which ask a message answers', () => {
 
     const planReader = goAheadReader(null);
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
     });
@@ -1245,13 +1337,13 @@ describe('which ask a message answers', () => {
     // yes after that question plans it.
     const asked = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'yes to the kickers one'), now: LATER },
+      { ...(await turn(f, 'yes to the kickers one')), now: LATER },
       { planReader: goAheadReader('the kickers one'), planWriter },
     );
     expect(asked.outcome).toBe('plan_clarify');
     expect((await offer(kickersId)).status).toBe('pending');
     await replySent(asked, f);
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: goAheadReader(null),
       planWriter,
     });
@@ -1267,7 +1359,7 @@ describe('which ask a message answers', () => {
     const kickersId = await kickersAsk(f);
     const planReader = readerBy({ 'Little Kickers': null, 'Preschool Swim': APPROVE });
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
       consentReader,
@@ -1291,7 +1383,7 @@ describe('which ask a message answers', () => {
     const coParentUserId = await seedCoParent(f.familyId);
     const kickersId = await kickersAsk({ ...f, parentUserId: coParentUserId });
     const { planReader, planWriter, written } = fakes(APPROVE);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
     });
@@ -1304,10 +1396,14 @@ describe('which ask a message answers', () => {
 
     // The co-parent's own yes reaches only the ask Hale made them.
     const theirs = fakes({ verdict: 'unrelated' });
-    await runAuthorizedSignup(db.database, turn({ ...f, parentUserId: coParentUserId }, 'yes'), {
-      planReader: theirs.planReader,
-      planWriter: theirs.planWriter,
-    });
+    await runAuthorizedSignup(
+      db.database,
+      await turn({ ...f, parentUserId: coParentUserId }, 'yes'),
+      {
+        planReader: theirs.planReader,
+        planWriter: theirs.planWriter,
+      },
+    );
     expect(readOrder(theirs.planReader)).toEqual(['Little Kickers']);
   });
 
@@ -1332,7 +1428,7 @@ describe('which ask a message answers', () => {
       read: vi.fn(async () => ({ verdict: 'consent' as const, sessionId: 'sat-0900' })),
     };
     const { planReader, planWriter } = fakes(APPROVE);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
       consentReader,
@@ -1352,17 +1448,21 @@ describe('which ask a message answers', () => {
       'Preschool Swim': { ...APPROVE, named: 'tokens' },
     });
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(older, 'yes to the swim one'), {
-      planReader,
-      planWriter,
-    });
+    const result = await runAuthorizedSignup(
+      db.database,
+      await turn(older, 'yes to the swim one'),
+      {
+        planReader,
+        planWriter,
+      },
+    );
     expect(result.outcome).toBe('plan_clarify');
     expect(await replyBindings(older.offerId)).toEqual(['tokens']);
 
     const f = await family();
     const kickersId = await kickersAsk(f);
     const newest = fakes({ ...APPROVE, named: 'tokens' });
-    await runAuthorizedSignup(db.database, turn(f, 'yes to kickers'), {
+    await runAuthorizedSignup(db.database, await turn(f, 'yes to kickers'), {
       planReader: newest.planReader,
       planWriter: newest.planWriter,
     });
@@ -1417,7 +1517,7 @@ describe('which ask a message answers', () => {
         ),
       };
       const { planWriter, written } = fakes(null);
-      const result = await runAuthorizedSignup(db.database, turn(f, body), {
+      const result = await runAuthorizedSignup(db.database, await turn(f, body), {
         planReader,
         planWriter,
       });
@@ -1459,7 +1559,7 @@ describe('which ask a message answers', () => {
       ),
     };
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, '儿童游泳课，取消吧'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, '儿童游泳课，取消吧'), {
       planReader: named,
       planWriter,
     });
@@ -1522,7 +1622,7 @@ describe('which ask a message answers', () => {
 
     // The bare yes names the stuffed ask, so Hale asks about it. Nothing is approved.
     for (const attempt of [1, 2]) {
-      const asked = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
+      const asked = await runAuthorizedSignup(db.database, await turn(f, 'yes please'), {
         planReader: stuffedReader(),
         planWriter,
       });
@@ -1536,13 +1636,13 @@ describe('which ask a message answers', () => {
     expect((await offer(f.offerId)).status).toBe('pending');
 
     // Only once Hale's question about it went out does the bare yes after it bind it.
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
+    const asked = await runAuthorizedSignup(db.database, await turn(f, 'yes please'), {
       planReader: stuffedReader(),
       planWriter,
     });
     expect(asked.outcome).toBe('plan_clarify');
     await replySent(asked, f);
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes please'), {
       planReader: stuffedReader(),
       planWriter,
     });
@@ -1587,10 +1687,14 @@ describe('which ask a message answers', () => {
       raw({ verdict: 'unclear', named: 'the later one', question }),
       raw({ verdict: 'unrelated' }),
     );
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'can we do the later one?'), {
-      planReader: later,
-      planWriter,
-    });
+    const asked = await runAuthorizedSignup(
+      db.database,
+      await turn(f, 'can we do the later one?'),
+      {
+        planReader: later,
+        planWriter,
+      },
+    );
     expect(readOrder(later)).toEqual(['Little Kickers', 'Preschool Swim']);
     expect(asked).toEqual({
       claimed: false,
@@ -1602,7 +1706,7 @@ describe('which ask a message answers', () => {
     // The parent's bare yes next answers the only ask Hale put to them: the newest.
     const yes = { said: 'yes', choiceIds: ['sat-0900'], maxPriceCents: 9800 };
     const bare = readerOf(raw({ verdict: 'approve', ...yes }), raw({ verdict: 'approve', ...yes }));
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: bare,
       planWriter,
     });
@@ -1619,7 +1723,7 @@ describe('which ask a message answers', () => {
     );
     const clarified = await runAuthorizedSignup(
       db.database,
-      turn(f, 'can we do the later swim one?'),
+      await turn(f, 'can we do the later swim one?'),
       { planReader: named, planWriter },
     );
     expect(clarified.outcome).toBe('plan_clarify');
@@ -1658,13 +1762,17 @@ describe('which ask a message answers', () => {
     const question = 'Do you want the Sunday 10:00 swim session instead?';
     const { planWriter, written } = fakes(null);
 
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'can we do the later swim one?'), {
-      planReader: readerOf(
-        raw({ verdict: 'unclear', named: 'the later swim one', question }),
-        raw({ verdict: 'unrelated' }),
-      ),
-      planWriter,
-    });
+    const asked = await runAuthorizedSignup(
+      db.database,
+      await turn(f, 'can we do the later swim one?'),
+      {
+        planReader: readerOf(
+          raw({ verdict: 'unclear', named: 'the later swim one', question }),
+          raw({ verdict: 'unrelated' }),
+        ),
+        planWriter,
+      },
+    );
     expect(asked.outcome).toBe('plan_clarify');
     expect(written.at(-1)?.question).toBe(question);
     // Asked only once the question went out: the router sends it, then stamps it.
@@ -1675,7 +1783,7 @@ describe('which ask a message answers', () => {
     // The model's worst answer: both asks read the bare yes as a go-ahead.
     const yes = { said: 'yes', choiceIds: ['sun-1000'], maxPriceCents: 9800 };
     const bare = readerOf(raw({ verdict: 'approve', ...yes }), raw({ verdict: 'approve', ...yes }));
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader: bare,
       planWriter,
     });
@@ -1696,7 +1804,7 @@ describe('which ask a message answers', () => {
     const f = await family();
     await kickersAsk(f);
     const { planReader, planWriter } = fakes({ verdict: 'unrelated' });
-    const result = await runAuthorizedSignup(db.database, turn(f, 'what time is pickup'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'what time is pickup'), {
       planReader,
       planWriter,
       consentReader,
@@ -1766,7 +1874,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       sessionId: 'gym-sat',
     });
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
       consentReader,
@@ -1820,13 +1928,13 @@ describe('a plan ask and a one-shot ask, both live', () => {
       browser: null,
     };
 
-    const planned = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
+    const planned = await runAuthorizedSignup(db.database, await turn(f, 'yes'), deps);
     expect(planned.outcome).toBe('plan_approved');
     expect(consentReader.read).not.toHaveBeenCalled();
     // The router sends Hale's receipt for the swim plan, then stamps it.
     await replySent(planned, f);
 
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes'), deps);
     expect(result).toEqual({
       claimed: false,
       outcome: 'signup_unnamed',
@@ -1841,13 +1949,13 @@ describe('a plan ask and a one-shot ask, both live', () => {
     // after that question signs up for it.
     const named = await runAuthorizedSignup(
       db.database,
-      { ...turn(f, 'yes, sign her up for Gym Tots'), now: LATER },
+      { ...(await turn(f, 'yes, sign her up for Gym Tots')), now: LATER },
       deps,
     );
     expect(named).toMatchObject({ claimed: true, outcome: 'clarify' });
     expect((await offer(gymId)).status).toBe('pending');
     await replySent(named, f);
-    const signed = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
+    const signed = await runAuthorizedSignup(db.database, await turn(f, 'yes'), deps);
     expect(signed).toMatchObject({ claimed: true, outcome: 'browser_unavailable' });
     expect((await offer(gymId)).status).toBe('handed_back');
   });
@@ -1863,7 +1971,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const { planWriter, written } = fakes(null);
     const result = await runAuthorizedSignup(
       db.database,
-      turn(f, 'yes to the swim one, Sunday then Saturday, up to $105'),
+      await turn(f, 'yes to the swim one, Sunday then Saturday, up to $105'),
       { planReader, planWriter, consentReader, outcomeWriter: echoOutcomeWriter(), browser: null },
     );
 
@@ -1881,7 +1989,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     // Positive control: words that name the one-shot ask too still reach it.
     const both = await runAuthorizedSignup(
       db.database,
-      turn(f, 'yes to Gym Tots as well as the swim one'),
+      await turn(f, 'yes to Gym Tots as well as the swim one'),
       { planReader, planWriter, consentReader, outcomeWriter: echoOutcomeWriter(), browser: null },
     );
     expect(both).toMatchObject({ claimed: true, outcome: 'browser_unavailable' });
@@ -1937,7 +2045,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       }),
     };
     const { planWriter, written } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes please'), {
       planReader,
       planWriter,
       consentReader,
@@ -1970,7 +2078,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const deps = { planReader, planWriter, consentReader, outcomeWriter, browser: null };
     const asked = await runAuthorizedSignup(
       db.database,
-      turn(f, 'yes, sign her up for Gym Tots'),
+      await turn(f, 'yes, sign her up for Gym Tots'),
       deps,
     );
 
@@ -1984,7 +2092,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     await replySent(asked, f);
 
     // The answer to Hale's question about it is the gym ask's, bare.
-    const signed = await runAuthorizedSignup(db.database, turn(f, 'yes'), deps);
+    const signed = await runAuthorizedSignup(db.database, await turn(f, 'yes'), deps);
     expect(reads.slice(2)).toEqual(['one_shot:gym-tots']);
     expect(signed).toMatchObject({ claimed: true, outcome: 'browser_unavailable' });
     expect((await offer(gymId)).status).toBe('handed_back');
@@ -2001,7 +2109,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     const { planWriter, written } = fakes(null);
     const asked = await runAuthorizedSignup(
       db.database,
-      turn(f, 'yes to the swim one, Sunday then Saturday, up to $105'),
+      await turn(f, 'yes to the swim one, Sunday then Saturday, up to $105'),
       { planReader, planWriter, consentReader },
     );
 
@@ -2012,7 +2120,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     expect((await offer(gymId)).status).toBe('pending');
     await replySent(asked, f);
 
-    const approved = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const approved = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
       consentReader,
@@ -2040,7 +2148,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     };
     const result = await runAuthorizedSignup(
       db.database,
-      turn(f, 'can we do the later one?'),
+      await turn(f, 'can we do the later one?'),
       deps,
     );
 
@@ -2056,7 +2164,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     // Positive control: words that carry its name may be asked back.
     const named = await runAuthorizedSignup(
       db.database,
-      turn(f, 'can we do the later Gym Tots one?'),
+      await turn(f, 'can we do the later Gym Tots one?'),
       deps,
     );
     expect(named).toMatchObject({ claimed: true, outcome: 'clarify' });
@@ -2092,7 +2200,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       outcomeWriter: echoOutcomeWriter(),
       browser: null,
     };
-    const result = await runAuthorizedSignup(db.database, turn(f, 'cancel'), deps);
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'cancel'), deps);
 
     expect(reads).toEqual(['plan:Preschool Swim', 'one_shot:toddler-gym']);
     expect(result).toEqual({
@@ -2105,11 +2213,15 @@ describe('a plan ask and a one-shot ask, both live', () => {
 
     // Positive control: words that carry its name reach it: Hale asks about it, and the bare
     // no after that question hands it back.
-    const named = await runAuthorizedSignup(db.database, turn(f, 'cancel the toddler one'), deps);
+    const named = await runAuthorizedSignup(
+      db.database,
+      await turn(f, 'cancel the toddler one'),
+      deps,
+    );
     expect(named).toMatchObject({ claimed: true, outcome: 'clarify' });
     expect((await offer(older.id)).status).toBe('pending');
     await replySent(named, f);
-    const declined = await runAuthorizedSignup(db.database, turn(f, 'no'), deps);
+    const declined = await runAuthorizedSignup(db.database, await turn(f, 'no'), deps);
     expect(declined).toMatchObject({ claimed: true, outcome: 'declined' });
     expect((await offer(older.id)).status).toBe('handed_back');
     expect((await offer(f.offerId)).status).toBe('pending');
@@ -2123,7 +2235,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
       { verdict: 'consent', sessionId: 'gym-sat' },
     );
     const { planWriter } = fakes(null);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'yes please'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'yes please'), {
       planReader,
       planWriter,
       consentReader,
@@ -2167,7 +2279,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
     for (const [body, reading] of readings) {
       const { reads, planReader, consentReader } = readers({ verdict: 'unrelated' }, reading);
       const { planWriter } = fakes(null);
-      const result = await runAuthorizedSignup(db.database, turn(f, body), {
+      const result = await runAuthorizedSignup(db.database, await turn(f, body), {
         planReader,
         planWriter,
         consentReader,
@@ -2218,8 +2330,8 @@ describe('a plan ask and a one-shot ask, both live', () => {
       ),
     });
     // The production handler, as the router calls it: send the reply, then stamps it.
-    const handle = (body: string, consentReader: SignupConsentReader) => {
-      seq += 1;
+    const handle = async (body: string, consentReader: SignupConsentReader) => {
+      const inboundChannelMessageId = await oneToOneText(seeded, body);
       return authorizedSignupHandler({ consentReader, outcomeWriter: echoOutcomeWriter() }).handle(
         db.database,
         {
@@ -2233,7 +2345,7 @@ describe('a plan ask and a one-shot ask, both live', () => {
           },
           resolved: null,
           openQuestions: async () => [],
-          inboundChannelMessageId: `msg-${seq}`,
+          inboundChannelMessageId,
         },
       );
     };
@@ -2312,7 +2424,7 @@ describe('when the site options do not match', () => {
       read: vi.fn(async () => ({ verdict: 'waitlist' as const })),
     };
     const { planReader, planWriter } = fakes(APPROVE);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'join the waitlist'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'join the waitlist'), {
       planReader,
       planWriter,
       mismatchReader,
@@ -2328,7 +2440,10 @@ describe('when the site options do not match', () => {
       read: vi.fn(async () => ({ verdict: 'option' as const, choiceId: 'nov-21' })),
     };
     const { planWriter } = fakes(APPROVE);
-    await runAuthorizedSignup(db.database, turn(f, 'take Nov 21'), { planWriter, mismatchReader });
+    await runAuthorizedSignup(db.database, await turn(f, 'take Nov 21'), {
+      planWriter,
+      mismatchReader,
+    });
     expect((await offer(f.offerId)).planAvailability).toMatchObject({
       kind: 'take_option',
       choice: expect.objectContaining({ id: 'nov-21' }),
@@ -2339,7 +2454,7 @@ describe('when the site options do not match', () => {
     const f = await mismatched();
     const mismatchReader: MismatchReader = { read: vi.fn(async () => null) };
     const { planWriter, written } = fakes(APPROVE);
-    const result = await runAuthorizedSignup(db.database, turn(f, 'the 21st'), {
+    const result = await runAuthorizedSignup(db.database, await turn(f, 'the 21st'), {
       planWriter,
       mismatchReader,
     });
@@ -2355,7 +2470,7 @@ describe('when the site options do not match', () => {
       read: vi.fn(async () => ({ verdict: 'email' as const })),
     };
     const { planWriter } = fakes(APPROVE);
-    await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+    await runAuthorizedSignup(db.database, await turn(f, 'email them'), {
       planWriter,
       mismatchReader,
       sendProviderEmail,
@@ -2396,7 +2511,7 @@ describe('when the site options do not match', () => {
         atSend.push(await yesRows(f.offerId));
       });
       const { planWriter } = fakes(APPROVE);
-      const parentTurn = turn(f, 'email them');
+      const parentTurn = await turn(f, 'email them');
       await runAuthorizedSignup(db.database, parentTurn, {
         planWriter,
         mismatchReader: emailPick,
@@ -2439,7 +2554,7 @@ describe('when the site options do not match', () => {
       const { planWriter } = fakes(APPROVE);
       try {
         await expect(
-          runAuthorizedSignup(db.database, turn(f, 'email them'), {
+          runAuthorizedSignup(db.database, await turn(f, 'email them'), {
             planWriter,
             mismatchReader: emailPick,
             sendProviderEmail,
@@ -2460,16 +2575,16 @@ describe('when the site options do not match', () => {
       const f = await mismatched();
       const sendProviderEmail = vi.fn(async () => undefined);
       const { planWriter, written } = fakes(APPROVE);
-      await runAuthorizedSignup(
+      const result = await runAuthorizedSignup(
         db.database,
-        { ...turn(f, 'email them'), inboundChannelMessageId: null },
+        { ...(await turn(f, 'email them')), inboundChannelMessageId: null },
         { planWriter, mismatchReader: emailPick, sendProviderEmail },
       );
       expect(sendProviderEmail).not.toHaveBeenCalled();
       expect(await yesRows(f.offerId)).toEqual([]);
-      expect(written.map((facts) => [facts.moment, facts.refusal])).toEqual([
-        ['refused', 'not_stored'],
-      ]);
+      // A text Hale cannot place in the asker's own thread answers no ask (VIL-682).
+      expect(result).toMatchObject({ claimed: false, outcome: 'asks_held_for_private' });
+      expect(written).toEqual([]);
       expect((await offer(f.offerId)).planAvailability).toMatchObject({
         kind: 'options_mismatch',
       });
@@ -2480,7 +2595,7 @@ describe('when the site options do not match', () => {
       const f = await mismatched();
       const sendProviderEmail = vi.fn(async () => undefined);
       const { planWriter } = fakes(APPROVE);
-      await runAuthorizedSignup(db.database, turn(f, 'email them'), {
+      await runAuthorizedSignup(db.database, await turn(f, 'email them'), {
         planWriter,
         mismatchReader: emailPick,
         sendProviderEmail,
@@ -2500,7 +2615,7 @@ describe('when the site options do not match', () => {
     const { planWriter, written } = fakes(APPROVE);
     const result = await runAuthorizedSignup(
       db.database,
-      turn({ ...f, parentUserId: coParentUserId }, 'email them'),
+      await turn({ ...f, parentUserId: coParentUserId }, 'email them'),
       { planWriter, mismatchReader, sendProviderEmail },
     );
 
@@ -2522,7 +2637,7 @@ describe('when the site options do not match', () => {
     ];
     for (const pick of picks) {
       const mismatchReader: MismatchReader = { read: vi.fn(async () => pick) };
-      const result = await runAuthorizedSignup(db.database, turn(f, 'go with that'), {
+      const result = await runAuthorizedSignup(db.database, await turn(f, 'go with that'), {
         planWriter,
         mismatchReader,
         sendProviderEmail,
@@ -2566,7 +2681,11 @@ describe('when the site options do not match', () => {
     });
 
     const unclear = deps({ verdict: 'unclear', question: 'The Nov 21 start or the waitlist?' });
-    const asked = await runAuthorizedSignup(db.database, turn(f, 'which is better?'), unclear);
+    const asked = await runAuthorizedSignup(
+      db.database,
+      await turn(f, 'which is better?'),
+      unclear,
+    );
     expect(unclear.mismatchReader.read).toHaveBeenCalledTimes(1);
     expect(asked).toEqual({
       claimed: false,
@@ -2580,7 +2699,11 @@ describe('when the site options do not match', () => {
       { verdict: 'waitlist' },
     ];
     for (const pick of picks) {
-      const result = await runAuthorizedSignup(db.database, turn(f, 'go with that'), deps(pick));
+      const result = await runAuthorizedSignup(
+        db.database,
+        await turn(f, 'go with that'),
+        deps(pick),
+      );
       expect(result).toEqual({
         claimed: false,
         outcome: 'plan_unnamed',
@@ -2597,7 +2720,7 @@ describe('when the site options do not match', () => {
     // for it, emailing no one, and the pick after that question is its own.
     const named = await runAuthorizedSignup(
       db.database,
-      turn(f, 'email the swim people'),
+      await turn(f, 'email the swim people'),
       deps({ verdict: 'email' }),
     );
     expect(named.outcome).toBe('plan_clarify');
@@ -2607,7 +2730,7 @@ describe('when the site options do not match', () => {
     await replySent(named, f);
     const emailed = await runAuthorizedSignup(
       db.database,
-      turn(f, 'email them'),
+      await turn(f, 'email them'),
       deps({ verdict: 'email' }),
     );
     expect(emailed.outcome).toBe('plan_approved');
@@ -2661,7 +2784,7 @@ describe('when the site options do not match', () => {
 
     const asked = await runAuthorizedSignup(
       db.database,
-      turn(f, 'can the swim one wait for January?'),
+      await turn(f, 'can the swim one wait for January?'),
       {
         planReader: kickersReads('unrelated'),
         planWriter,
@@ -2676,7 +2799,7 @@ describe('when the site options do not match', () => {
 
     // The model's worst answer: the newer ask reads the bare yes as its go-ahead.
     const planReader = kickersReads('approve');
-    const picked = await runAuthorizedSignup(db.database, turn(f, 'yes'), {
+    const picked = await runAuthorizedSignup(db.database, await turn(f, 'yes'), {
       planReader,
       planWriter,
       mismatchReader: swimReads({

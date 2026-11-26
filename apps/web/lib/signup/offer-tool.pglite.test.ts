@@ -89,6 +89,65 @@ describe('offer_signup coach verb', () => {
     expect(recorded).toEqual([{ offerId: result.offerId, text: result.text }]);
   });
 
+  it('records nothing on a group turn, with the pre-flight flag unset; 1:1 it records', async () => {
+    const offerOn = async (audience: 'group' | 'direct') => {
+      const seeded = await seedFamily(db.database);
+      await seedChild(db.database, seeded.familyId, 'Ada', 36, undefined, NOW);
+      const writer = echoOfferWriter();
+      const recorded: RecordedSignupOffer[] = [];
+      const result = (await invokeTool(
+        offerSignupTool({
+          database: db.database,
+          familyId: seeded.familyId,
+          parentUserId: seeded.parentUserId,
+          now: NOW,
+          parentWords: `Ada's rec email has parent and tot swim Tuesday 4:30 at ${URL}`,
+          optOutUnread: false,
+          audience,
+          linksThisTurn: () => [],
+          writer,
+          onRecorded: (offer) => recorded.push(offer),
+        }),
+        {
+          child: 'Ada',
+          activity: 'Parent and Tot Swim',
+          source: 'chat',
+          registrationUrl: URL,
+          evidence: 'parent and tot swim Tuesday 4:30',
+          sessions: [
+            {
+              id: 'tue-1630',
+              label: 'Tue 4:30',
+              startsAt: '2026-11-03T20:30:00.000Z',
+              endsAt: '2026-11-03T21:15:00.000Z',
+              full: false,
+              priceCents: 4000,
+            },
+          ],
+          approvedPriceCents: 4000,
+        },
+        { familyId: seeded.familyId, actor: seeded.parentUserId },
+        { writeAudit: async () => {} },
+      )) as { recorded: boolean; reason?: string };
+      const rows = await db.database
+        .select({ id: schema.authorizedSignupOffers.id })
+        .from(schema.authorizedSignupOffers)
+        .where(eq(schema.authorizedSignupOffers.familyId, seeded.familyId));
+      return { result, rows: rows.length, recorded, writer };
+    };
+
+    const group = await offerOn('group');
+    expect(group.result).toEqual({ recorded: false, reason: 'terms_in_private' });
+    expect(group.rows).toBe(0);
+    expect(group.recorded).toEqual([]);
+
+    // Positive control: the same offer on the asker's 1:1 turn is recorded.
+    const direct = await offerOn('direct');
+    expect(direct.result.recorded).toBe(true);
+    expect(direct.rows).toBe(1);
+    expect(direct.recorded).toHaveLength(1);
+  });
+
   const GYM_URL = 'https://gym.example-rec.test/register/tots';
   const KICKERS_URL = 'https://kickers.example-sport.test/register/sat';
 

@@ -23,7 +23,6 @@ import {
   type SupersedeAsk,
   createSignupSupersedeReader,
 } from './supersede-reader';
-import { registrationPreflightEnabled } from './terms/flag';
 import { MAX_PAGE_QUOTE_CHARS, untrustedPageWords } from './terms/page-words';
 import type { ProgramTermsDeps } from './terms/read-page';
 import { offersWithTerms } from './terms/store';
@@ -202,7 +201,7 @@ export function offerSignupTool(ports: SignupOfferToolPorts): RegisteredTool {
         throw new Error("That family is not this turn's family.");
       }
       // Registration terms are the asker's to hear, and everyone in a group reads every line.
-      if (ports.audience === 'group' && registrationPreflightEnabled(ports.familyId)) {
+      if (ports.audience === 'group') {
         return { recorded: false as const, reason: 'terms_in_private' };
       }
       if (ports.optOutUnread || (await isParentHeld(ports.database, ports.parentUserId))) {
