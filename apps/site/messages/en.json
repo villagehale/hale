@@ -156,7 +156,21 @@
     "phoneInvalid": "Enter a Canadian or US number.",
     "confirm": "Confirm",
     "paymentEnded": "This payment is no longer active.",
-    "alreadyOnPlan": "This number is already on a plan."
+    "alreadyOnPlan": "This number is already on a plan.",
+    "memberPlus": "PLUS MEMBER",
+    "memberMax": "MAX MEMBER",
+    "welcomePlus": "Welcome to Hale Plus.",
+    "welcomeMax": "Welcome to Hale Max.",
+    "priceLocked": "Your price is locked in for as long as you’re a member.",
+    "verifyPrompt": "One quick step: confirm your number so Hale knows it’s you.",
+    "sayHi": "Say hi. Send a flyer or a screenshot and it keeps the dates.",
+    "inPlus": "What’s in Plus",
+    "inMax": "What’s in Max",
+    "knowsLine": "Remembers your family, season to season.",
+    "findsLine": "Real classes and plans near you, for your kids’ ages.",
+    "chatLine": "Add Hale to a chat with other families, and it gets everyone to a yes.",
+    "maxLimits": "Highest limits on searches",
+    "refund": "Changed your mind? Email {email} and we’ll refund you, any time."
   },
   "Jsonld": {
     "orgDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
