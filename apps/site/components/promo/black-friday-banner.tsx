@@ -1,6 +1,6 @@
 'use client';
 
-import { blackFridayCountdownRemainingMs } from '@hale/types';
+import { BLACK_FRIDAY_WINDOW_END_MS, blackFridayCountdownRemainingMs } from '@hale/types';
 import { useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
@@ -12,6 +12,21 @@ import { pricingCheckoutTarget } from './founding-checkout-link';
  * the server HTML and the first client paint match. Null once that Friday
  * has ended. The prices stay; only this sentence goes away.
  */
+/** A tab left open past the gate reloads onto the season bar. A preview pin does not. */
+function useRestoreWhenGateCloses(serverNow: number, pinned: boolean) {
+  useEffect(() => {
+    if (pinned) return;
+    const skew = serverNow - Date.now();
+    const remaining = BLACK_FRIDAY_WINDOW_END_MS - (Date.now() + skew);
+    if (remaining <= 0) {
+      window.location.reload();
+      return;
+    }
+    const id = window.setTimeout(() => window.location.reload(), remaining);
+    return () => window.clearTimeout(id);
+  }, [serverNow, pinned]);
+}
+
 export function useBlackFridayCountdownCopy(serverNow: number, locale: Locale): string | null {
   const [copy, setCopy] = useState<string | null>(null);
   useEffect(() => {
@@ -50,6 +65,7 @@ export function BlackFridayBanner({
   offer: BlackFridayOffer;
   locale: Locale;
 }) {
+  useRestoreWhenGateCloses(offer.serverNow, offer.checkoutQuery.length > 0);
   const sentence = blackFridaySentence(
     locale,
     offer.plus?.banner ?? null,

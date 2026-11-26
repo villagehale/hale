@@ -1,6 +1,7 @@
 import { PLUS_LIST_PRICE_DISPLAY } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import {
+  chargedAnnualLabel,
   foundingPromoOpen,
   isPromoPriceId,
   paidTierFromSku,
@@ -412,6 +413,21 @@ describe('resolveCheckoutPrice', () => {
     ).toEqual({ status: 'unavailable', reason: 'no_price' });
   });
 
+  it('keeps a preview caller on the season price while the holiday flag is off', () => {
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: new Date('2026-11-27T12:00:00.000Z'),
+        preview: true,
+        env: {
+          STRIPE_PRICE_PROMO_PLUS_ANNUAL_CAD: 'price_plus_cad',
+          STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
+        },
+      }),
+    ).toMatchObject({ price: { priceId: 'price_plus_cad', sku: 'promo_plus_annual' } });
+  });
+
   it('uses the BF yearly id only inside the gate, and falls back when it is missing', () => {
     const env = {
       ...PROMO,
@@ -455,6 +471,9 @@ describe('resolveCheckoutPrice', () => {
         tier: 'family',
       }),
     ).toMatchObject({ price: { priceId: 'price_bf_max_usd', sku: 'bf_max_annual' } });
+    expect(chargedAnnualLabel({ tier: 'plus', currency: 'USD', now: start, env })).toBe('$29/yr');
+    expect(chargedAnnualLabel({ tier: 'family', currency: 'CAD', now: last, env })).toBe('$59/yr');
+    expect(chargedAnnualLabel({ tier: 'plus', currency: 'USD', now: end, env })).toBe('$39/yr');
   });
 
   it('falls back to CAD list when USD list is unset after the window', () => {

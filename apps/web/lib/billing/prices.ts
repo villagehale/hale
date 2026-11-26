@@ -1,10 +1,12 @@
 import type { BillingCurrency, BillingPeriod } from '@hale/types';
 import {
+  BLACK_FRIDAY_PRICE_DISPLAY,
   isBlackFridayWindowOpen,
   isFoundingPromoWindowOpen,
   parseFoundingPromoEndsAt,
 } from '@hale/types';
 import { checkoutServerCurrencyEnabled, holidayPromoEnabled } from './flags.js';
+import { promoPriceLabel } from './price-display.js';
 import { stripePaymentLinkUrl } from './promo-preview.js';
 
 export type PaidTier = 'plus' | 'family';
@@ -435,8 +437,10 @@ export function resolveCheckoutPrice(input: {
     return { status: 'unavailable', reason: 'flag_off' };
   }
 
-  // Price gate [2026-11-27T05:00Z, 2026-11-28T08:00Z). A missing BF id falls through.
-  if (isBlackFridayWindowOpen(input.now)) {
+  // Price gate [2026-11-27T05:00Z, 2026-11-28T08:00Z). The holiday flag stays
+  // required, so a preview tester with the flag off keeps the season price.
+  // A missing BF id falls through.
+  if (holidayPromoEnabled(env) && isBlackFridayWindowOpen(input.now)) {
     const bf = bfSelection(tier, input.currency, env);
     if (bf) return { status: 'selected', price: bf };
   }
@@ -464,4 +468,23 @@ export function resolveCheckoutPrice(input: {
     if (cad) return { status: 'selected', price: cad };
   }
   return { status: 'unavailable', reason: 'no_price' };
+}
+
+/** The yearly label checkout will charge. The one-day price, or the season price. */
+export function chargedAnnualLabel(input: {
+  tier: PaidTier;
+  currency: BillingCurrency;
+  now: Date;
+  env?: Record<string, string | undefined>;
+  preview?: boolean;
+}): string {
+  const selected = resolveCheckoutPrice({ ...input, period: 'annual' });
+  if (
+    selected.status === 'selected' &&
+    (selected.price.sku === 'bf_plus_annual' || selected.price.sku === 'bf_max_annual')
+  ) {
+    const key = selected.price.sku === 'bf_max_annual' ? 'family' : 'plus';
+    return BLACK_FRIDAY_PRICE_DISPLAY[key][input.currency].perYear;
+  }
+  return promoPriceLabel(input.tier, input.currency);
 }

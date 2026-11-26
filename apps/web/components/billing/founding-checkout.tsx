@@ -25,6 +25,8 @@ interface Props {
   tier?: PaidTier;
   /** Set for the one-day price. Omitted, the season amount is shown. */
   annualAmount?: number;
+  /** The one-day price does not last until Dec 31. */
+  todayOnly?: boolean;
   /** Preview-only clock query, already rejected in production by the server. */
   checkoutSearch?: string;
 }
@@ -55,6 +57,7 @@ export function FoundingCheckout({
   cancelled = false,
   tier = 'plus',
   annualAmount,
+  todayOnly = false,
   checkoutSearch = '',
 }: Props) {
   const [busy, setBusy] = useState(false);
@@ -137,7 +140,9 @@ export function FoundingCheckout({
           <p className={styles.lede}>
             Your {planName} price, locked in for as long as you’re a member.
           </p>
-          <p className={styles.after}>Join by Dec 31. Refund anytime.</p>
+          <p className={styles.after}>
+            {todayOnly ? 'Today only. Refund anytime.' : 'Join by Dec 31. Refund anytime.'}
+          </p>
         </div>
         <div className={styles.summary}>
           {cancelled ? (

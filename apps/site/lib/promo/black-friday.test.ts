@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { PromoStickyCta } from '~/components/promo/holiday-promo';
 import {
   blackFridayCountdownCopy,
+  blackFridayDeadlineCopy,
   blackFridaySentence,
   resolveBlackFridayFromSearch,
   resolveBlackFridayOffer,
@@ -150,6 +151,16 @@ describe('resolveBlackFridayOffer', () => {
     expect(blackFridayCountdownCopy('en', 1)).toBe('Ends Friday at midnight');
     expect(blackFridayCountdownCopy('fr', 1)).toBe('Se termine vendredi à minuit');
     expect(blackFridayCountdownCopy('zh', 1)).toBe('周五午夜结束');
+    expect(
+      blackFridayDeadlineCopy({
+        plusToday: '$29/yr',
+        maxToday: '$49/yr',
+        plusSeason: '$39/yr',
+        maxSeason: '$79/yr',
+      }),
+    ).toBe(
+      'Plus is $29/yr and Max is $49/yr today. Join by Dec 31 and Plus is $39/yr, Max is $79/yr, for as long as you’re a member.',
+    );
   });
 });
 

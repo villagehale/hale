@@ -146,6 +146,25 @@ export function blackFridaySentence(
 }
 
 /**
+ * The Dec 31 sentence keeps the season amounts. Today's price is named on
+ * its own, so a later buyer is not told the one-day price lasts the month.
+ */
+export function blackFridayDeadlineCopy(input: {
+  plusToday: string | null;
+  maxToday: string | null;
+  plusSeason: string;
+  maxSeason: string;
+}): string {
+  const today = [
+    input.plusToday ? `Plus is ${input.plusToday}` : null,
+    input.maxToday ? `Max is ${input.maxToday}` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' and ');
+  return `${today} today. Join by Dec 31 and Plus is ${input.plusSeason}, Max is ${input.maxSeason}, for as long as you’re a member.`;
+}
+
+/**
  * The countdown sentence. Null once the visitor's Friday has ended, including
  * zero remaining. Callers must not substitute an "ended" line.
  */

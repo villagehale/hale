@@ -274,6 +274,7 @@ export function PromoSection({
 } & DoorProps) {
   const plusPrice = todayPlus ?? promo.plus;
   const maxPrice = todayMax ?? promo.max;
+  const oneDay = plusPrice.sale !== promo.plus.sale || maxPrice.sale !== promo.max.sale;
   return (
     <section
       className="hs promo-sec promo-notes"
@@ -298,8 +299,9 @@ export function PromoSection({
               <PriceLockup promo={promo} plus={plusPrice} max={maxPrice} />
               <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
               <p className="promo-lede">
-                Your price for the rest of the year, locked in for as long as you’re a member. Join
-                by Dec 31. Refund anytime.
+                {oneDay
+                  ? `Today only. Join by Dec 31 and your price (${promo.max.saleLabel} for Max, ${promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. Refund anytime.`
+                  : 'Your price for the rest of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.'}
               </p>
               <ul className="promo-chips">
                 {CHIPS.map((chip) => (
@@ -324,7 +326,9 @@ export function PromoSection({
                 </FoundingCheckoutLink>
               </div>
               <p className="promo-fine">
-                Billed once a year. Sale prices are for families who join by Dec 31, 2026.
+                {oneDay
+                  ? `Billed once a year. Today’s price is for today. Families who join by Dec 31, 2026 lock in ${promo.plus.saleLabel} for Plus and ${promo.max.saleLabel} for Max.`
+                  : 'Billed once a year. Sale prices are for families who join by Dec 31, 2026.'}
               </p>
             </div>
             <div className="promo-notes-aside" aria-hidden="true">

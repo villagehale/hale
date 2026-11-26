@@ -149,6 +149,7 @@ export default async function FoundingCheckoutPage({
             ? BLACK_FRIDAY_PRICE_DISPLAY.plus[currency].amount
             : undefined
         }
+        todayOnly={plus.status === 'selected' && plus.price.sku === 'bf_plus_annual'}
         checkoutSearch={checkoutSearch.toString()}
       />
       <FoundingCheckout
@@ -163,6 +164,7 @@ export default async function FoundingCheckoutPage({
             ? BLACK_FRIDAY_PRICE_DISPLAY.family[currency].amount
             : undefined
         }
+        todayOnly={max.status === 'selected' && max.price.sku === 'bf_max_annual'}
         checkoutSearch={checkoutSearch.toString()}
       />
     </div>
