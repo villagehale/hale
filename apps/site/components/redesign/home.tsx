@@ -440,8 +440,8 @@ export function RedesignHome({
     <h2>{`Max for ${promo.max.saleLabel}, locked in.`}</h2>
     <p className="hs-close-sub">{promo.saleName}. Plus is {promo.plus.saleLabel}. Join by Dec 31. Refund anytime.</p>
     </>) : (<>
-    <h2>{t("Start with a text.")}</h2>
-    <p className="hs-close-sub">{yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusCloseSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+    <h2>{blackFriday?.max ? `Max for ${blackFriday.max.saleLabel}, today.` : t("Start with a text.")}</h2>
+    <p className="hs-close-sub">{blackFriday ? blackFridaySentence(locale, blackFriday.plus?.banner ?? null, blackFriday.max?.banner ?? null) : yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusCloseSentence(currency)) : t(PAID_PLANS_LINE)}</p>
     </>)}
     <div className="hs-close-cta"><TextDoor className="btn btn-hero" placement="closing" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true"><path d="M8 2.5c3.3 0 6 2.2 6 4.9s-2.7 4.9-6 4.9c-.7 0-1.3-.1-1.9-.2L3 13.5l.9-2.5C2.7 10.1 2 8.8 2 7.4 2 4.7 4.7 2.5 8 2.5z" /></svg>{t("Text Hale")}</TextDoor></div>
     <p className="hs-close-terms">{t("You text first.")}</p>
