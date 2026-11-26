@@ -23,7 +23,7 @@ import { TextDoor } from './text-door';
 import { BlackFridayBanner } from '~/components/promo/black-friday-banner';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
-import { blackFridayDeadlineCopy, type BlackFridayOffer } from '~/lib/promo/black-friday';
+import { blackFridayDeadlineCopy, blackFridaySentence, type BlackFridayOffer } from '~/lib/promo/black-friday';
 import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
 
 /** The pricing hero type block. The success page reuses it, hidden, so the shore crop matches. */
@@ -52,17 +52,19 @@ export function PricingHeroCopy({
   const yearlyOnly = locale === 'fr' || locale === 'zh';
   const maxShown = blackFriday?.max?.saleLabel ?? promo?.max.saleLabel;
   const plusShown = blackFriday?.plus?.saleLabel ?? promo?.plus.saleLabel;
-  const headline = promo
-    ? blackFriday
-      ? `Black Friday: Max for ${maxShown}.`
-      : `${promo.saleName}: Max for ${maxShown}.`
-    : list || yearlyOnly
-      ? t('Plus, by the year.')
-      : t('What you pay.');
-  const lede = promo
-    ? blackFriday
-      ? `${blackFridayDeadlineCopy({ plusToday: blackFriday.plus?.saleLabel ?? null, maxToday: blackFriday.max?.saleLabel ?? null, plusSeason: promo.plus.saleLabel, maxSeason: promo.max.saleLabel })} For this year. ${FOUNDING_REFUND_LINE}`
-      : `Plus is ${plusShown}. Texting Hale costs nothing, no card. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}`
+  const headline = blackFriday?.max
+    ? `Black Friday: Max for ${blackFriday.max.saleLabel}.`
+    : promo
+      ? `${promo.saleName}: Max for ${maxShown}.`
+      : list || yearlyOnly
+        ? t('Plus, by the year.')
+        : t('What you pay.');
+  const lede = blackFriday && promo
+    ? `${blackFridayDeadlineCopy({ plusToday: blackFriday.plus?.saleLabel ?? null, maxToday: blackFriday.max?.saleLabel ?? null, plusSeason: promo.plus.saleLabel, maxSeason: promo.max.saleLabel })} For this year. ${FOUNDING_REFUND_LINE}`
+    : blackFriday
+      ? blackFridaySentence(locale, blackFriday.plus?.banner ?? null, blackFriday.max?.banner ?? null)
+      : promo
+        ? `Plus is ${plusShown}. Texting Hale costs nothing, no card. Join by Dec 31 and your price is locked in for as long as you’re a member. For this year. ${FOUNDING_REFUND_LINE}`
     : yearlyOnly
       ? t(paidPlansYearlyAnswer(currency))
       : list

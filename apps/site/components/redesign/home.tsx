@@ -32,7 +32,7 @@ import { TextDoor } from './text-door';
 import { BlackFridayBanner } from '~/components/promo/black-friday-banner';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
-import type { BlackFridayOffer } from '~/lib/promo/black-friday';
+import { blackFridaySentence, type BlackFridayOffer } from '~/lib/promo/black-friday';
 import type { HolidayPromo } from '~/lib/promo/holiday';
 import { localeHref } from '~/i18n/navigation';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
@@ -373,8 +373,8 @@ export function RedesignHome({
  <div className="hs-wrap">
   <div className="hs-head">
    <p className="hs-eyebrow">{t("Pricing")}</p>
-   <h2 className="hs-h2">{list || yearlyOnly ? t("Plus, by the year.") : t("What you pay.")}</h2>
-   <p className="hs-lede">{yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
+   <h2 className="hs-h2">{blackFriday?.max ? `Black Friday: Max for ${blackFriday.max.saleLabel}.` : list || yearlyOnly ? t("Plus, by the year.") : t("What you pay.")}</h2>
+   <p className="hs-lede">{blackFriday ? blackFridaySentence(locale, blackFriday.plus?.banner ?? null, blackFriday.max?.banner ?? null) : yearlyOnly ? t(paidPlansYearlyAnswer(currency)) : list ? t(plusPriceSentence(currency)) : t(PAID_PLANS_LINE)}</p>
   </div>
   <ol className="hs-tiers">
    <li className="hs-tier t-free">
