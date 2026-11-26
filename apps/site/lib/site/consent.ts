@@ -14,6 +14,54 @@
 
 export const CONSENT_STORAGE_KEY = 'hale-site-consent';
 
+/** Thrown away after a successful write check. Not a consent choice. */
+const PERSIST_PROBE_KEY = `${CONSENT_STORAGE_KEY}:probe`;
+
+/** This document turned measurement off after a write that did not stick. */
+let refusedHere = false;
+
+/** This document started PostHog or an ad tag. Other tabs cannot see that. */
+let startedHere = false;
+
+/** A successful probe is cached. A failed one is retried, so a full quota can clear. */
+let persistProbe: boolean | null = null;
+
+/** Test isolation. Production never needs to forget an in-document refusal. */
+export function resetConsentDocumentState(): void {
+  refusedHere = false;
+  startedHere = false;
+  persistProbe = null;
+}
+
+export function markMeasurementStarted(): void {
+  startedHere = true;
+}
+
+export function measurementStartedHere(): boolean {
+  return startedHere;
+}
+
+/** Stops the default-on path in this document when the refusal could not be stored. */
+export function refuseMeasurementHere(): void {
+  refusedHere = true;
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-consent', 'denied');
+  }
+}
+
+function canPersistConsent(): boolean {
+  if (persistProbe === true) return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(PERSIST_PROBE_KEY, '1');
+    window.localStorage.removeItem(PERSIST_PROBE_KEY);
+    persistProbe = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const CONSENT_EVENT = 'hale:consent';
 
 export const CONSENT_OPEN_EVENT = 'hale:consent-open';
@@ -51,13 +99,16 @@ export function browserGlobalPrivacyControl(): boolean {
  * refusal. `null` means nothing loads.
  */
 export function readConsent(): ConsentChoice | null {
+  if (refusedHere) return 'denied';
   const stored = readStoredConsent();
   if (stored.blocked) return null;
   if (stored.choice) return stored.choice;
   if (typeof document === 'undefined') return null;
   const root = document.documentElement;
   if (root.dataset.gpc === '1') return null;
-  if (root.dataset.consentMode === 'opt-out') return 'granted';
+  // Default-on only when a later Turn off can be stored. A read that works
+  // and a write that throws must not start measurement.
+  if (root.dataset.consentMode === 'opt-out' && canPersistConsent()) return 'granted';
   return null;
 }
 

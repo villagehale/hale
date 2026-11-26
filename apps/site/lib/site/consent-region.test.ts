@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
-import { readConsent, readStoredConsent, writeConsent } from './consent';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readConsent, readStoredConsent, resetConsentDocumentState, writeConsent } from './consent';
 import {
   CONSENT_GEO_HEADER,
   consentDecisionFromHeaders,
@@ -142,6 +142,8 @@ describe('stored opt-out survives a default-on region', () => {
     document.documentElement.removeAttribute('data-consent');
     document.documentElement.removeAttribute('data-consent-mode');
     document.documentElement.removeAttribute('data-gpc');
+    resetConsentDocumentState();
+    vi.restoreAllMocks();
   });
 
   it('does not load after Turn off, and does load with no choice in that region', () => {
@@ -162,6 +164,14 @@ describe('stored opt-out survives a default-on region', () => {
   });
 
   it('stays opt-in when the region was not set', () => {
+    expect(readConsent()).toBeNull();
+  });
+
+  it('does not grant the default when a refusal cannot be stored', () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
     expect(readConsent()).toBeNull();
   });
 });

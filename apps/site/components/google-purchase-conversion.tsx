@@ -6,6 +6,7 @@ import {
   type GooglePurchaseEvent,
   fireGooglePurchaseConversion,
 } from '~/lib/analytics/google-purchase';
+import { hasSecretQuery } from '~/lib/analytics/url-secrets';
 import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 
 /**
@@ -19,6 +20,7 @@ export function GooglePurchaseConversion(event: GooglePurchaseEvent): null {
   const { sendTo, value, currency, transactionId } = event;
   useEffect(() => {
     function send() {
+      if (hasSecretQuery(window.location.search) || hasSecretQuery(window.location.hash)) return;
       if (readConsent() !== 'granted') return;
       installGoogleAds();
       const gtag = (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;

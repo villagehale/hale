@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
-import { writeConsent } from '~/lib/site/consent';
+import { resetConsentDocumentState, writeConsent } from '~/lib/site/consent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,6 +41,8 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-consent');
   document.documentElement.removeAttribute('data-consent-mode');
   document.documentElement.removeAttribute('data-gpc');
+  resetConsentDocumentState();
+  window.history.replaceState(null, '', '/');
   vi.unstubAllGlobals();
 });
 
@@ -277,6 +279,26 @@ describe('purchase conversions across the pending state', () => {
       );
     });
     expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    await act(async () => root.unmount());
+  });
+
+  it('does not fire Purchase on a receipt whose address carries the session id', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    window.history.replaceState(null, '', '/checkout/success?session_id=cs_test_secret');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111',
+          transactionId: 'cs_test_secret',
+        }),
+      );
+    });
+    expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_secret')).toBeNull();
     await act(async () => root.unmount());
   });
 

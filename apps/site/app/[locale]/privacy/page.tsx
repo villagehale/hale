@@ -577,14 +577,15 @@ export default async function PrivacyPage({
             (app.villagehale.com) when conversions measurement is on. The product app does not show
             this banner, so that app pixel does not follow the regional choice on the public
             website. A paid checkout sends a Purchase event to Meta&rsquo;s Conversions API from
-            Hale&rsquo;s servers, using the Stripe Checkout Session id so a matching browser
-            Purchase can be deduplicated. That event may include a hashed email, a hashed phone
-            number, Meta click cookies, and the IP address and browser type saved at checkout. It
-            does not include family data, message content, or children&rsquo;s information. No child
-            data is sent. Hale still shows no advertising. On the public website the Pixel follows
-            the same measurement choice as Google Ads. Turn off or No thanks keeps it from loading
-            on later visits. Visitors can change that choice at any time with Cookie settings in the
-            site footer. Processed in the United States.
+            Hale&rsquo;s servers, using the Stripe Checkout Session id. The marketing site does not
+            load the Meta Pixel or Google Ads on that receipt, because the page address carries the
+            Checkout Session id. That event may include a hashed email, a hashed phone number, Meta
+            click cookies, and the IP address and browser type saved at checkout. It does not
+            include family data, message content, or children&rsquo;s information. No child data is
+            sent. Hale still shows no advertising. On the public website the Pixel follows the same
+            measurement choice as Google Ads. Turn off or No thanks keeps it from loading on later
+            visits. Visitors can change that choice at any time with Cookie settings in the site
+            footer. Processed in the United States.
           </li>
           <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
@@ -819,19 +820,21 @@ export default async function PrivacyPage({
             header or from the browser&rsquo;s globalPrivacyControl flag. We read the country and
             province from the hosting network&rsquo;s geolocation headers. Turn off or No thanks
             stores the refusal in this browser, and none of those tools load on later visits. Accept
-            stores a yes, and they load on later visits, including where the default is off.
-            Visitors can change their choice at any time with Cookie settings in the site footer.
-            When measurement is on, and the link that opened the site carried a campaign, an ad
-            click, or a source code, Hale stores that in a first-party cookie so a later checkout
-            can be tied to the visit. Turning measurement off removes that cookie. Vercel Speed
-            Insights runs without that choice. Vercel documents it as anonymous performance data: it
-            is not tied to a visitor or an IP address, and it does not store information that would
-            reconstruct a browsing session or identify someone. Strictly necessary storage, such as
-            the theme and language choice, needs no consent. Google Ads and the Meta Pixel may set
-            advertising cookies only while that measurement is on. Blocking third-party scripts in
-            your browser also stops that measurement and does not affect Hale over text. The product
-            app does not show this banner and does not load the Google Ads tag. The Meta Pixel may
-            load on the product app when conversions measurement is on.
+            stores a yes, and they load on later visits, including where the default is off. They do
+            not load on a page whose address carries a checkout session id, a sign-in token, or an
+            email address. Visitors can change their choice at any time with Cookie settings in the
+            site footer. When measurement is on, and the link that opened the site carried a
+            campaign, an ad click, or a source code, Hale stores that in a first-party cookie so a
+            later checkout can be tied to the visit. Turning measurement off removes that cookie.
+            Vercel Speed Insights runs without that choice. Vercel documents it as anonymous
+            performance data: it is not tied to a visitor or an IP address, and it does not store
+            information that would reconstruct a browsing session or identify someone. Strictly
+            necessary storage, such as the theme and language choice, needs no consent. Google Ads
+            and the Meta Pixel may set advertising cookies only while that measurement is on.
+            Blocking third-party scripts in your browser also stops that measurement and does not
+            affect Hale over text. The product app does not show this banner and does not load the
+            Google Ads tag. The Meta Pixel may load on the product app when conversions measurement
+            is on.
           </li>
         </ul>
       </LegalSectionBlock>

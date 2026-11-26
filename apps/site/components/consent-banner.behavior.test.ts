@@ -2,7 +2,7 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONSENT_STORAGE_KEY } from '~/lib/site/consent';
+import { CONSENT_STORAGE_KEY, resetConsentDocumentState } from '~/lib/site/consent';
 import type { ConsentMode } from '~/lib/site/consent-region';
 import { ConsentBanner } from './consent-banner';
 
@@ -69,7 +69,10 @@ afterEach(() => {
   w.dataLayer = undefined;
   w.__haleAds = undefined;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, 'globalPrivacyControl');
+  resetConsentDocumentState();
+  window.history.replaceState(null, '', '/');
 });
 
 async function render(node: ReturnType<typeof banner>) {
@@ -160,6 +163,60 @@ describe('consent banner region behavior', () => {
     await render(banner('opt-out'));
     expect(fbqQueue()).toEqual([]);
     expect(w.gtag).toBeUndefined();
+    expect(document.body.textContent).toContain('Nothing loads unless you say yes.');
+  });
+
+  it('reloads this document when another tab stores Turn off', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    await render(banner('opt-out'));
+    expect(fbqQueue().some(([method]) => method === 'init')).toBe(true);
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: CONSENT_STORAGE_KEY, newValue: 'denied' }),
+      );
+      await vi.dynamicImportSettled();
+    });
+    expect(reload).toHaveBeenCalled();
+    expect(fbqQueue().some(([method, state]) => method === 'consent' && state === 'revoke')).toBe(
+      true,
+    );
+  });
+
+  it('stops the tags without reloading when Turn off cannot be stored', async () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    await render(banner('opt-out'));
+    expect(fbqQueue().some(([method]) => method === 'init')).toBe(true);
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation((key: string) => {
+      if (key === CONSENT_STORAGE_KEY) throw new Error('quota');
+    });
+    const turnOff = [...document.body.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Turn off',
+    );
+    await act(async () => {
+      turnOff?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.dynamicImportSettled();
+    });
+    expect(reload).not.toHaveBeenCalled();
+    expect(localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
+    expect(fbqQueue().some(([method, state]) => method === 'consent' && state === 'revoke')).toBe(
+      true,
+    );
+  });
+
+  it('loads nothing in a default-on region when storage cannot store a refusal', async () => {
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    await render(banner('opt-out'));
+    expect(fbqQueue()).toEqual([]);
+    expect(document.body.textContent).toContain('Nothing loads unless you say yes.');
+  });
+
+  it('loads nothing on a page whose address carries a checkout session id', async () => {
+    window.history.replaceState(null, '', '/checkout/success?session_id=cs_test_secret');
+    await render(banner('opt-out'));
+    expect(fbqQueue()).toEqual([]);
+    expect((window as Window & { gtag?: unknown }).gtag).toBeUndefined();
     expect(document.body.textContent).toContain('Nothing loads unless you say yes.');
   });
 });

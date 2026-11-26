@@ -1,4 +1,5 @@
 import { GOOGLE_ADS_GTAG_SRC, GOOGLE_ADS_ID } from './google-ads';
+import { hasSecretQuery } from './url-secrets';
 
 const DENIED = {
   ad_storage: 'denied',
@@ -32,9 +33,16 @@ function adsWindow(): AdsWindow | null {
  * flips to granted, before js and config. A second call does not add a
  * second loader.
  */
+function pageCarriesSecret(): boolean {
+  if (typeof location === 'undefined') return false;
+  return hasSecretQuery(location.search) || hasSecretQuery(location.hash);
+}
+
 export function installGoogleAds(): void {
   const w = adsWindow();
-  if (!w || w.__haleAds) return;
+  // Same refusal as the pixel: gtag would send the page address, and a
+  // checkout receipt's address is the Checkout Session id.
+  if (!w || w.__haleAds || pageCarriesSecret()) return;
   // A nested function loses the narrowing on `w`, so the closure uses `win`.
   const win = w;
   win.__haleAds = true;

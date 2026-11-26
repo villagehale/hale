@@ -1,4 +1,5 @@
 import { parseMetaPixelIds } from './meta-pixel';
+import { hasSecretQuery } from './url-secrets';
 
 const PIXEL_SRC = 'https://connect.facebook.net/en_US/fbevents.js';
 
@@ -32,10 +33,17 @@ function pixelWindow(): PixelWindow | null {
  * Purchase is not fired here — the success page sends one Purchase with the
  * Checkout Session id as eventID, which reaches every initialized pixel.
  */
+function pageCarriesSecret(): boolean {
+  if (typeof location === 'undefined') return false;
+  return hasSecretQuery(location.search) || hasSecretQuery(location.hash);
+}
+
 export function installMetaPixel(pixelId: string | readonly string[]): void {
   const ids = parseMetaPixelIds(pixelId);
   const w = pixelWindow();
-  if (!w || ids.length === 0 || w.__haleMetaPixel) return;
+  // A checkout receipt's address is the Checkout Session id. The pixel's
+  // PageView would send that address. PostHog already refuses the same pages.
+  if (!w || ids.length === 0 || w.__haleMetaPixel || pageCarriesSecret()) return;
   w.__haleMetaPixel = true;
   const fbq = ((...args: unknown[]) => {
     if (fbq.callMethod) {

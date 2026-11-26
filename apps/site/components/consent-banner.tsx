@@ -12,12 +12,17 @@ import {
   denyMetaPixel,
   installMetaPixel,
 } from '~/lib/analytics/meta-pixel-client';
+import { hasSecretQuery } from '~/lib/analytics/url-secrets';
 import {
   CONSENT_OPEN_EVENT,
+  CONSENT_STORAGE_KEY,
   type ConsentChoice,
   browserGlobalPrivacyControl,
+  markMeasurementStarted,
+  measurementStartedHere,
   readConsent,
   readStoredConsent,
+  refuseMeasurementHere,
   writeConsent,
 } from '~/lib/site/consent';
 import type { ConsentMode } from '~/lib/site/consent-region';
@@ -35,6 +40,25 @@ function ConsentSentence({ text }: { text: string }): ReactNode {
       {text.slice(at + ZH_UNBROKEN.length)}
     </>
   );
+}
+
+function pageCarriesSecret(): boolean {
+  if (typeof window === 'undefined') return false;
+  return hasSecretQuery(window.location.search) || hasSecretQuery(window.location.hash);
+}
+
+function shutdownTrackers(reload: boolean): void {
+  denyGoogleAds();
+  clearGoogleClickCookies();
+  denyMetaPixel();
+  clearMetaClickCookies();
+  void import('posthog-js')
+    .then(({ default: posthog }) => {
+      if (posthog.__loaded) posthog.opt_out_capturing();
+    })
+    .finally(() => {
+      if (reload) window.location.reload();
+    });
 }
 
 function pixelIdsFromPropsOrEnv(pixelId: string | null | undefined): readonly string[] {
@@ -76,6 +100,8 @@ export function ConsentBanner({
   const [choice, setChoice] = useState<ConsentChoice | null>(null);
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [browserGpc, setBrowserGpc] = useState(false);
+  const [persistable, setPersistable] = useState(true);
+  const [pageBlocked, setPageBlocked] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.consentMode = mode;
@@ -86,14 +112,29 @@ export function ConsentBanner({
     const stored = readStoredConsent();
     setStorageBlocked(stored.blocked);
     setChoice(stored.choice);
+    const secret = pageCarriesSecret();
+    setPageBlocked(secret);
+    const allowed = readConsent() === 'granted';
+    setPersistable(allowed || readStoredConsent().choice === 'granted');
     const ids = pixelIdsFromPropsOrEnv(pixelId);
-    if (readConsent() === 'granted') {
+    if (allowed && !secret) {
       installGoogleAds();
       if (ids.length > 0) installMetaPixel(ids);
+      markMeasurementStarted();
     }
     const onOpen = () => setOpen(true);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== CONSENT_STORAGE_KEY || event.newValue !== 'denied') return;
+      if (!measurementStartedHere()) return;
+      setChoice('denied');
+      shutdownTrackers(true);
+    };
     window.addEventListener(CONSENT_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(CONSENT_OPEN_EVENT, onOpen);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(CONSENT_OPEN_EVENT, onOpen);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [pixelId, mode, gpc]);
 
   function accept() {
@@ -109,26 +150,29 @@ export function ConsentBanner({
   }
 
   function reject() {
-    const previous = readConsent();
-    if (!writeConsent('denied')) return;
+    // This document may already be measuring while another tab stored the
+    // refusal. The shared value is then `denied`, so the decision to stop
+    // follows what this document started, not that stored value.
+    const measuring = readConsent() === 'granted' || measurementStartedHere();
+    const saved = writeConsent('denied');
+    if (!saved) {
+      if (!measuring) return;
+      refuseMeasurementHere();
+      setChoice('denied');
+      setOpen(false);
+      shutdownTrackers(false);
+      return;
+    }
     setChoice('denied');
     setOpen(false);
-    if (previous !== 'granted') return;
-    denyGoogleAds();
-    clearGoogleClickCookies();
-    denyMetaPixel();
-    clearMetaClickCookies();
-    void import('posthog-js')
-      .then(({ default: posthog }) => {
-        if (posthog.__loaded) posthog.opt_out_capturing();
-      })
-      .finally(() => {
-        window.location.reload();
-      });
+    if (!measuring) return;
+    shutdownTrackers(true);
   }
 
   const measuring =
     !storageBlocked &&
+    persistable &&
+    !pageBlocked &&
     (choice === 'granted' || (choice === null && mode === 'opt-out' && !gpc && !browserGpc));
 
   return (
