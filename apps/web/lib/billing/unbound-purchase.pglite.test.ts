@@ -1,4 +1,5 @@
 import { schema } from '@hale/db';
+import { checkoutPersonId } from '@hale/types';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createFakeFunnelSender } from '~/lib/analytics/funnel.testkit';
@@ -98,10 +99,12 @@ describe('deliverUnboundCheckoutPurchase', () => {
     });
     expect(second).toEqual({ status: 'skipped', reason: 'duplicate' });
     expect(otherEvent).toEqual({ status: 'skipped', reason: 'duplicate' });
+    const person = checkoutPersonId('cs_test_unbound_1');
+    expect(person).toMatch(/^cs:[a-f0-9]{64}$/);
     expect(seen).toEqual([
       {
         event: 'purchase',
-        distinctId: 'cs:cs_test_unbound_1',
+        distinctId: person,
         properties: {
           currency: 'CAD',
           value: 59,
@@ -118,7 +121,7 @@ describe('deliverUnboundCheckoutPurchase', () => {
     expect(funnel.sent).toHaveLength(1);
     expect(funnel.sent[0]).toMatchObject({
       event: 'checkout_completed',
-      distinctId: 'cs:cs_test_unbound_1',
+      distinctId: person,
       properties: {
         sku: 'promo_plus_annual',
         value: 59,

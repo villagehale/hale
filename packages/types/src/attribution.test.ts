@@ -70,8 +70,10 @@ describe('analyticsDistinctId', () => {
 });
 
 describe('checkoutPersonId', () => {
-  it('prefixes a Checkout Session id and refuses anything else', () => {
-    expect(checkoutPersonId('cs_test_abc')).toBe('cs:cs_test_abc');
+  it('hashes a Checkout Session id and refuses anything else', () => {
+    const person = checkoutPersonId('cs_test_abc');
+    expect(person).toBe('cs:5de34a3d92b2fa97543cd2d091ea4b39502ec92253d8659be67e67cadb1e9b67');
+    expect(person).not.toContain('cs_test_abc');
     expect(checkoutPersonId('evt_1')).toBeNull();
     expect(checkoutPersonId('cs_test_abc parent@example.com')).toBeNull();
   });

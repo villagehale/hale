@@ -42,6 +42,27 @@ function eventIdOk(name: SiteMetaEventName, eventId: string): boolean {
   return LEAD_EVENT_ID.test(eventId);
 }
 
+/**
+ * Page URL for a website Conversions API event. Query and fragment are dropped
+ * so a checkout session id in the referrer does not leave this server.
+ * Only Hale's own https pages are accepted.
+ */
+export function metaEventSourceUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== 'villagehale.com' && !host.endsWith('.villagehale.com')) return null;
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 export function metaCapiUserData(ads: AdsCheckoutContext | undefined): Record<string, string> {
   const userData: Record<string, string> = {};
   if (ads?.fbp) userData.fbp = ads.fbp;
@@ -54,6 +75,7 @@ export function metaCapiUserData(ads: AdsCheckoutContext | undefined): Record<st
 export async function sendSiteMetaCapi(input: {
   eventName: SiteMetaEventName;
   eventId: string;
+  sourceUrl?: string | null;
   value?: number;
   currency?: string | null;
   ads?: AdsCheckoutContext;
@@ -63,6 +85,8 @@ export async function sendSiteMetaCapi(input: {
   const env = input.env ?? process.env;
   if (env.META_CAPI_ENABLED !== 'true') return 'flag_off';
   if (!eventIdOk(input.eventName, input.eventId)) return 'refused';
+  const sourceUrl = metaEventSourceUrl(input.sourceUrl);
+  if (!sourceUrl) return 'refused';
   const currency = input.currency == null ? null : adsCurrency(input.currency);
   if (input.eventName === 'InitiateCheckout') {
     if (!currency) return 'refused';
@@ -89,6 +113,7 @@ export async function sendSiteMetaCapi(input: {
         event_name: input.eventName,
         event_time: Math.floor(Date.now() / 1000),
         event_id: input.eventId,
+        event_source_url: sourceUrl,
         action_source: 'website',
         user_data: metaCapiUserData(input.ads),
         ...(Object.keys(customData).length > 0 ? { custom_data: customData } : {}),

@@ -1,6 +1,6 @@
 import { ANALYTICS_DISTINCT_ID_KEY } from '@hale/types';
 import { NextResponse } from 'next/server';
-import { adsCurrency, sendSiteMetaCapi } from '~/lib/analytics/meta-capi';
+import { adsCurrency, metaEventSourceUrl, sendSiteMetaCapi } from '~/lib/analytics/meta-capi';
 import { captureSiteCheckoutStarted } from '~/lib/analytics/server-capture';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 import { CHECKOUT_JSON_HEADER } from '~/lib/billing/checkout-client';
@@ -139,15 +139,25 @@ export async function GET(request: Request): Promise<Response> {
         'pricing checkout',
       );
     }
-    if (checkoutCurrency && checkoutValue !== null) {
+    const consentedCheckout = request.headers.get(CHECKOUT_JSON_HEADER) === 'json';
+    if (consentedCheckout && checkoutCurrency && checkoutValue !== null) {
       try {
-        await sendSiteMetaCapi({
-          eventName: 'InitiateCheckout',
-          eventId: sessionId,
-          value: checkoutValue,
-          currency: checkoutCurrency,
-          ads,
-        });
+        const sourceUrl = metaEventSourceUrl(request.headers.get('referer'));
+        if (!sourceUrl) {
+          console.info('analytics: meta capi skipped', {
+            reason: 'no_source',
+            event: 'InitiateCheckout',
+          });
+        } else {
+          await sendSiteMetaCapi({
+            eventName: 'InitiateCheckout',
+            eventId: sessionId,
+            sourceUrl,
+            value: checkoutValue,
+            currency: checkoutCurrency,
+            ads,
+          });
+        }
       } catch (err) {
         console.warn(
           {

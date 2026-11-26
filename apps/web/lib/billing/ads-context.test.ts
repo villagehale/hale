@@ -17,11 +17,11 @@ describe('adsContextFromRequest', () => {
       cookieHeader: '_fbp=fb.1.1.cookie; other=x',
       headers,
       fbclid: 'ClickFace',
-      nowSeconds: 1_700_000_000,
+      nowMs: 1_700_000_000_000,
     });
     expect(context).toEqual({
       fbp: 'fb.1.1.cookie',
-      fbc: 'fb.1.1700000000.ClickFace',
+      fbc: 'fb.1.1700000000000.ClickFace',
       clientIp: '203.0.113.9',
       clientUserAgent: 'Mozilla/5.0 HaleTest',
     });
@@ -41,7 +41,7 @@ describe('adsContextFromRequest', () => {
     const context = adsContextFromRequest({
       cookieHeader: '_fbc=fb.1.1.fromcookie',
       fbclid: 'ClickFace',
-      nowSeconds: 1,
+      nowMs: 1,
     });
     expect(context.fbc).toBe('fb.1.1.fromcookie');
   });
@@ -56,7 +56,7 @@ describe('clientIpFromHeaders', () => {
 });
 
 describe('fbcFromFbclid', () => {
-  it('matches Meta’s fb.1.<unix>.<fbclid> form', () => {
-    expect(fbcFromFbclid('AbC', 42)).toBe('fb.1.42.AbC');
+  it('matches Meta’s fb.1.<milliseconds>.<fbclid> form', () => {
+    expect(fbcFromFbclid('AbC', 1_700_000_000_000)).toBe('fb.1.1700000000000.AbC');
   });
 });

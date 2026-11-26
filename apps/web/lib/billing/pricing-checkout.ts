@@ -586,7 +586,7 @@ async function onboardPaidFamily(
     subscriptionId: string | null;
     now: Date;
   },
-): Promise<{ familyId: string; duplicate: boolean }> {
+): Promise<{ familyId: string; duplicate: boolean; created: boolean }> {
   const [channel] = await tx
     .select({
       familyId: schema.parentChannels.familyId,
@@ -610,7 +610,7 @@ async function onboardPaidFamily(
       actor: channel.userId,
       duplicate,
     });
-    return { familyId: channel.familyId, duplicate };
+    return { familyId: channel.familyId, duplicate, created: false };
   }
 
   const externalAuthId = smsExternalAuthId(input.phoneHash);
@@ -647,7 +647,7 @@ async function onboardPaidFamily(
       actor: userId,
       duplicate,
     });
-    return { familyId: membership.familyId, duplicate };
+    return { familyId: membership.familyId, duplicate, created: false };
   }
 
   const [family] = await tx
@@ -666,7 +666,7 @@ async function onboardPaidFamily(
     role: 'primary_parent',
   });
   await writeBindAudit(tx, { ...input, familyId: family.id, actor: userId, duplicate: false });
-  return { familyId: family.id, duplicate: false };
+  return { familyId: family.id, duplicate: false, created: true };
 }
 
 async function attemptTotal(
@@ -834,7 +834,7 @@ export async function verifyPricingCheckoutCode(
           tier: fresh.tier,
           attribution: parseAttribution(fresh.attribution ?? undefined),
           analyticsDistinctId: analyticsDistinctId(fresh.analyticsDistinctId),
-          signup: !onboarded.duplicate,
+          signup: onboarded.created,
           now,
         },
       };

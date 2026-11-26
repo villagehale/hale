@@ -655,6 +655,36 @@ describe('pricing checkout codes', () => {
     expect((await payment(id))?.boundAt).not.toBeNull();
   });
 
+  it('does not count an existing family upgrade as a new signup', async () => {
+    const phone = '+14165552021';
+    const seeded = await seedFamily(db.database, 'Already here');
+    await db.database.insert(schema.parentChannels).values({
+      userId: seeded.parentUserId,
+      familyId: seeded.familyId,
+      kind: 'sms',
+      phoneE164Encrypted: encryptString(phone),
+      phoneE164Hash: phoneBlindIndex(phone),
+      verifiedAt: NOW,
+    });
+    const before = await familyCount();
+    const { id, sender } = await pay(phone);
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    const signups: boolean[] = [];
+    const verified = await verifyPricingCheckoutCode(
+      db.database,
+      { sessionId: id, code: sender.sent[0]?.code ?? '', now: NOW },
+      {
+        onBound: async (bound) => {
+          signups.push(bound.signup);
+        },
+      },
+    );
+    expect(verified.status).toBe('verified');
+    expect(signups).toEqual([false]);
+    expect(await familyCount()).toBe(before);
+    expect((await payment(id))?.boundFamilyId).toBe(seeded.familyId);
+  });
+
   it('names a missing sender and stores no code', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { id } = await pay('+14165552018');

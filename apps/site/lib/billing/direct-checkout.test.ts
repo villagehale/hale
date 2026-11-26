@@ -1,4 +1,4 @@
-import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import { PROMO_PRICE_DISPLAY, checkoutPersonId } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '../../app/api/checkout/route';
 import { directCheckoutForm, selectDirectCheckoutPrice } from './direct-checkout';
@@ -263,7 +263,8 @@ describe('GET /api/checkout', () => {
       );
     const started = captures.find((call) => call.event === 'checkout_started');
     const alias = captures.find((call) => call.event === '$create_alias');
-    expect(started?.distinct_id).toBe('cs:cs_test_attr');
+    expect(started?.distinct_id).toBe(checkoutPersonId('cs_test_attr'));
+    expect(started?.distinct_id).not.toContain('cs_test_attr');
     expect(started?.properties).toMatchObject({
       sku: 'promo_plus_annual',
       currency: 'CAD',
@@ -273,7 +274,7 @@ describe('GET /api/checkout', () => {
     expect(JSON.stringify(started)).not.toContain('ph_distinct_id');
     expect(JSON.stringify(started)).not.toContain('@');
     expect(alias?.distinct_id).toBe('0123456789abcdef');
-    expect(alias?.properties).toMatchObject({ alias: 'cs:cs_test_attr' });
+    expect(alias?.properties).toMatchObject({ alias: checkoutPersonId('cs_test_attr') });
   });
 
   it('stores fbp and fbc on the session and sends InitiateCheckout with that session id', async () => {
@@ -303,6 +304,7 @@ describe('GET /api/checkout', () => {
       'x-vercel-ip-country': 'CA',
       'x-hale-checkout': 'json',
       cookie: '_fbp=fb.1.1.cookie; _fbc=fb.1.9.fromcookie',
+      referer: 'https://www.villagehale.com/pricing?tier=plus',
       'user-agent': 'Mozilla/5.0 HaleTest',
       'x-forwarded-for': '203.0.113.9',
     });
@@ -332,6 +334,7 @@ describe('GET /api/checkout', () => {
       data: Array<{
         event_name: string;
         event_id: string;
+        event_source_url: string;
         user_data: Record<string, string>;
         custom_data: { value: number; currency: string };
       }>;
@@ -339,6 +342,7 @@ describe('GET /api/checkout', () => {
     expect(body.data[0]).toMatchObject({
       event_name: 'InitiateCheckout',
       event_id: 'cs_test_ads',
+      event_source_url: 'https://www.villagehale.com/pricing',
       custom_data: { value: 59, currency: 'CAD' },
       user_data: {
         fbp: 'fb.1.1.cookie',
@@ -385,17 +389,6 @@ describe('GET /api/checkout', () => {
     );
     expect(stripe.get('metadata[fbc]')).toMatch(/^fb\.1\.\d+\.ClickFace$/);
     expect(stripe.get('metadata[fbp]')).toBeNull();
-    const capi = JSON.parse(
-      calls.find((call) => call.url.includes('graph.facebook.com'))?.body ?? '{}',
-    ) as {
-      data: Array<{
-        event_id: string;
-        custom_data: { currency: string; value: number };
-        user_data: { fbc: string };
-      }>;
-    };
-    expect(capi.data[0]?.event_id).toBe('cs_test_fbclid');
-    expect(capi.data[0]?.custom_data).toEqual({ currency: 'USD', value: 39 });
-    expect(capi.data[0]?.user_data.fbc).toBe(stripe.get('metadata[fbc]'));
+    expect(calls.some((call) => call.url.includes('graph.facebook.com'))).toBe(false);
   });
 });

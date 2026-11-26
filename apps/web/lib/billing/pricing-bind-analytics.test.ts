@@ -1,3 +1,4 @@
+import { checkoutPersonId } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { createFakeFunnelSender } from '~/lib/analytics/funnel.testkit';
 import { hashFamilyId } from '~/lib/analytics/server-capture';
@@ -29,8 +30,10 @@ describe('recordPricingBindAnalytics', () => {
       },
     );
     const family = hashFamilyId(FAMILY);
+    const checkoutId = checkoutPersonId('cs_test_bind');
+    expect(checkoutId).not.toContain('cs_test_bind');
     expect(aliases).toEqual([
-      ['cs:cs_test_bind', family],
+      [checkoutId, family],
       ['0123456789abcdef', family],
     ]);
     expect(funnel.sent).toEqual([
@@ -70,7 +73,7 @@ describe('recordPricingBindAnalytics', () => {
         sender: funnel.sender,
       },
     );
-    expect(aliases).toEqual(['cs:cs_test_bind']);
+    expect(aliases).toEqual([checkoutPersonId('cs_test_bind')]);
     expect(funnel.sent).toEqual([]);
   });
 

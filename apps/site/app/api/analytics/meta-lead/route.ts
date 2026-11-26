@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sendSiteMetaCapi } from '~/lib/analytics/meta-capi';
+import { metaEventSourceUrl, sendSiteMetaCapi } from '~/lib/analytics/meta-capi';
 import { adsContextFromRequest } from '~/lib/billing/ads-context';
 
 export const dynamic = 'force-dynamic';
@@ -33,10 +33,14 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400, headers: { 'cache-control': 'no-store' } },
     );
   }
+  const sourceUrl = metaEventSourceUrl(request.headers.get('referer'));
   const ads = adsContextFromRequest({
     cookieHeader: request.headers.get('cookie'),
     headers: request.headers,
   });
-  const status = await sendSiteMetaCapi({ eventName: 'Lead', eventId, ads });
+  if (!sourceUrl || !ads.fbp) {
+    return NextResponse.json({ status: 'refused' }, { headers: { 'cache-control': 'no-store' } });
+  }
+  const status = await sendSiteMetaCapi({ eventName: 'Lead', eventId, sourceUrl, ads });
   return NextResponse.json({ status }, { headers: { 'cache-control': 'no-store' } });
 }
