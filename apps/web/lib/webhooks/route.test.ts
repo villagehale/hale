@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const sendMock = vi.fn();
 const applyMock = vi.fn();
 const reportMock = vi.fn();
+const unboundMock = vi.fn();
 const recordNoticeMock = vi.fn();
 vi.mock('~/lib/db', () => ({ db: () => ({}) }));
 vi.mock('~/lib/queue', () => ({ getQueue: async () => ({ send: sendMock }) }));
@@ -18,6 +19,7 @@ vi.mock('~/lib/webhooks/stripe-billing-apply', () => ({
 }));
 vi.mock('~/lib/billing/conversions', () => ({
   reportBillingPurchase: (...args: unknown[]) => reportMock(...args),
+  deliverUnboundCheckoutPurchase: (...args: unknown[]) => unboundMock(...args),
 }));
 vi.mock('~/lib/billing/notices/record', () => ({
   recordBillingNoticeIntent: (...args: unknown[]) => recordNoticeMock(...args),
@@ -52,6 +54,8 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     applyMock.mockReset();
     reportMock.mockReset();
     reportMock.mockResolvedValue({ status: 'skipped', reason: 'not_a_purchase' });
+    unboundMock.mockReset();
+    unboundMock.mockResolvedValue({ status: 'skipped', reason: 'flag_off' });
     recordNoticeMock.mockReset();
     recordNoticeMock.mockResolvedValue('dark');
   });
@@ -188,7 +192,21 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(await res.json()).toEqual({ status: 'applied' });
     expect(applyMock).toHaveBeenCalledWith({ id: 'evt_1', type: 'checkout.session.completed' });
     expect(reportMock).toHaveBeenCalledWith({ id: 'evt_1', type: 'checkout.session.completed' });
+    expect(unboundMock).not.toHaveBeenCalled();
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('reports an unbound checkout on the session person, not as a family purchase', async () => {
+    const { body, signature } = signedStripeEvent('evt_unbound_1');
+    applyMock.mockResolvedValue({ status: 'unbound' });
+
+    const res = await callPost('stripe', body, { 'stripe-signature': signature });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'unbound' });
+    expect(reportMock).not.toHaveBeenCalled();
+    expect(unboundMock).toHaveBeenCalledTimes(1);
+    expect(unboundMock.mock.calls[0]?.[1]).toEqual(JSON.parse(body));
   });
 
   it('answers 503 on retry so Stripe redelivers, and reports no conversion', async () => {
@@ -231,6 +249,7 @@ describe('POST /api/webhooks/:provider — registry dispatch', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'duplicate' });
     expect(reportMock).not.toHaveBeenCalled();
+    expect(unboundMock).not.toHaveBeenCalled();
   });
 
   it('VIL-735 records the notice intent after apply and conversions, with the apply result', async () => {

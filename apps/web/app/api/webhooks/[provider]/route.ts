@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse, after } from 'next/server';
-import { reportBillingPurchase } from '~/lib/billing/conversions';
+import { deliverUnboundCheckoutPurchase, reportBillingPurchase } from '~/lib/billing/conversions';
 import { recordBillingNoticeIntent } from '~/lib/billing/notices/record';
 import { HOT_QUEUE_EXPIRE_SECONDS } from '~/lib/cron/drain';
 import { kickDrain } from '~/lib/cron/kick-drain';
@@ -66,6 +66,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
           err: err instanceof Error ? err.name : 'unknown',
         });
       }
+    }
+    // No family yet. The claim lives inside the deliver function. A database
+    // error propagates so Stripe retries; a send error does not.
+    if (applied.status === 'unbound') {
+      await deliverUnboundCheckoutPurchase(db(), billingEvent);
     }
     if (applied.status === 'retry') {
       return NextResponse.json({ status: 'retry', reason: applied.reason }, { status: 503 });

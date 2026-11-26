@@ -44,27 +44,25 @@ function clip(value: string | undefined, max: number): string | undefined {
 export function clientIpFromHeaders(headers: {
   get(name: string): string | null;
 }): string | undefined {
-  const forwarded =
-    headers.get('x-vercel-forwarded-for') ?? headers.get('x-forwarded-for');
+  const forwarded = headers.get('x-vercel-forwarded-for') ?? headers.get('x-forwarded-for');
   const first = forwarded?.split(',')[0]?.trim();
   return clip(first ?? headers.get('x-real-ip') ?? undefined, MAX_IP);
 }
 
-export function fbcFromFbclid(fbclid: string, nowSeconds: number = Math.floor(Date.now() / 1000)): string {
-  return `fb.1.${nowSeconds}.${fbclid.trim()}`;
+export function fbcFromFbclid(fbclid: string, nowMs: number = Date.now()): string {
+  return `fb.1.${nowMs}.${fbclid.trim()}`;
 }
 
 export function adsContextFromRequest(input: {
   cookieHeader?: string | null;
   headers?: { get(name: string): string | null };
   fbclid?: string | null;
-  nowSeconds?: number;
+  nowMs?: number;
 }): AdsCheckoutContext {
   const fbp = clip(cookieValue(input.cookieHeader, '_fbp'), MAX_COOKIE);
   const fbcCookie = clip(cookieValue(input.cookieHeader, '_fbc'), MAX_COOKIE);
   const fbclid = input.fbclid?.trim();
-  const fbc =
-    fbcCookie ?? (fbclid ? fbcFromFbclid(fbclid, input.nowSeconds) : undefined);
+  const fbc = fbcCookie ?? (fbclid ? fbcFromFbclid(fbclid, input.nowMs) : undefined);
   const clientIp = input.headers ? clientIpFromHeaders(input.headers) : undefined;
   const clientUserAgent = input.headers
     ? clip(input.headers.get('user-agent') ?? undefined, MAX_UA)
@@ -94,9 +92,11 @@ export function adsContextFromStripeMetadata(
     const value = metadata[key];
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   };
+  const fbclid = typeof metadata.fbclid === 'string' ? metadata.fbclid.trim() : '';
+  const fbc = read('fbc') ?? (fbclid ? fbcFromFbclid(fbclid) : undefined);
   return {
     ...(read('fbp') ? { fbp: read('fbp') } : {}),
-    ...(read('fbc') ? { fbc: read('fbc') } : {}),
+    ...(fbc ? { fbc } : {}),
     ...(read('client_ip') ? { clientIp: read('client_ip') } : {}),
     ...(read('client_ua') ? { clientUserAgent: read('client_ua') } : {}),
   };

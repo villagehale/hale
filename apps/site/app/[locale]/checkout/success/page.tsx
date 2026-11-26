@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { CheckoutState } from '~/components/checkout/checkout-state';
 import { PricingCheckoutVerify } from '~/components/checkout/pricing-verify';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
+import { LandingCta } from '~/components/landing-cta';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
 import { PricingHeroCopy } from '~/components/redesign/pricing';
 import { ShoreArt } from '~/components/redesign/shore-hero';
@@ -227,7 +228,16 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
                       {t('lede')}
                     </p>
                     <p className="hs-p" style={successCopyStyle}>
-                      {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
+                      {textHref ? (
+                        <LandingCta
+                          event="cta_text_click"
+                          placement="checkout_success"
+                          channel="sms"
+                          href={textHref}
+                        >
+                          {t('textHale')}
+                        </LandingCta>
+                      ) : null}
                       {textHref ? ' · ' : null}
                       <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
                     </p>

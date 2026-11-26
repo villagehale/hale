@@ -78,7 +78,13 @@ export type AnalyticsEvent =
   | 'promo_cta_click'
   // The web funnel's first step after the landing: one per arrival on /pricing in any
   // locale (lib/analytics/funnel-views.ts). Carries the provider's attribution keys.
-  | 'pricing_viewed';
+  | 'pricing_viewed'
+  // Server-only, from /api/checkout, after Stripe returns a session id.
+  // Distinct id is `cs:` plus that id. Dark unless FUNNEL_ATTRIBUTION_ENABLED.
+  | 'checkout_started'
+  // Cookieless count of the banner choice. Distinct id is the constant `consent`,
+  // not a visitor. No cookie is set. Dark unless FUNNEL_ATTRIBUTION_ENABLED.
+  | 'consent_choice';
 
 /**
  * PostHog's own pageview. Not ours to name, but it goes through the same gate as
@@ -102,6 +108,8 @@ const ATTRIBUTION_PROPERTY_KEYS = new Set([
   'utm_content',
   'gclid',
   'fbclid',
+  'msclkid',
+  'source_code',
 ]);
 
 const FORBIDDEN_KEY_FRAGMENTS = [

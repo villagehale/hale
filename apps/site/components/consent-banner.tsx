@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, useEffect, useId, useState } from 'react';
+import { reportConsentChoice } from '~/lib/analytics/consent-choice';
 import {
   clearGoogleClickCookies,
   denyGoogleAds,
@@ -143,6 +144,7 @@ export function ConsentBanner({
     setChoice('granted');
     setOpen(false);
     if (previous !== 'granted') {
+      reportConsentChoice('granted');
       installGoogleAds();
       const ids = pixelIdsFromPropsOrEnv(pixelId);
       if (ids.length > 0) installMetaPixel(ids);
@@ -153,7 +155,8 @@ export function ConsentBanner({
     // This document may already be measuring while another tab stored the
     // refusal. The shared value is then `denied`, so the decision to stop
     // follows what this document started, not that stored value.
-    const measuring = readConsent() === 'granted' || measurementStartedHere();
+    const previous = readConsent();
+    const measuring = previous === 'granted' || measurementStartedHere();
     const saved = writeConsent('denied');
     if (!saved) {
       if (!measuring) return;
@@ -165,6 +168,7 @@ export function ConsentBanner({
     }
     setChoice('denied');
     setOpen(false);
+    if (previous !== 'denied') reportConsentChoice('denied');
     if (!measuring) return;
     shutdownTrackers(true);
   }

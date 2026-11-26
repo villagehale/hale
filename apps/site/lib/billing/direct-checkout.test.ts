@@ -1,4 +1,4 @@
-import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import { PROMO_PRICE_DISPLAY, checkoutPersonId } from '@hale/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET } from '../../app/api/checkout/route';
 import { directCheckoutForm, selectDirectCheckoutPrice } from './direct-checkout';
@@ -107,6 +107,38 @@ describe('direct checkout price', () => {
     expect(form.get('success_url')).toContain('/checkout/success?session_id={CHECKOUT_SESSION_ID}');
     expect(form.get('cancel_url')).toContain('/pricing?checkout=cancelled');
   });
+
+  it('puts msclkid on the session always, and source_code plus the consented id only with the funnel flag', () => {
+    const shared = {
+      priceId: 'price_plus_cad',
+      tier: 'plus' as const,
+      sku: 'promo_plus_annual' as const,
+      currency: 'CAD' as const,
+      successUrl: 'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: 'https://www.villagehale.com/pricing?checkout=cancelled',
+      attribution: { msclkid: 'msclk', source_code: 'poster-oakville', gclid: 'click' },
+      analyticsDistinctId: '0123456789abcdef',
+    };
+    const dark = directCheckoutForm({ ...shared, env: {} });
+    expect(dark.get('metadata[msclkid]')).toBe('msclk');
+    expect(dark.get('subscription_data[metadata][msclkid]')).toBe('msclk');
+    expect(dark.get('metadata[source_code]')).toBeNull();
+    expect(dark.get('metadata[ph_distinct_id]')).toBeNull();
+
+    const lit = directCheckoutForm({ ...shared, env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' } });
+    expect(lit.get('metadata[msclkid]')).toBe('msclk');
+    expect(lit.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(lit.get('subscription_data[metadata][source_code]')).toBe('poster-oakville');
+    expect(lit.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    expect(lit.get('subscription_data[metadata][ph_distinct_id]')).toBeNull();
+
+    const email = directCheckoutForm({
+      ...shared,
+      analyticsDistinctId: 'parent@example.com',
+      env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' },
+    });
+    expect(email.get('metadata[ph_distinct_id]')).toBeNull();
+  });
 });
 
 describe('GET /api/checkout', () => {
@@ -184,5 +216,179 @@ describe('GET /api/checkout', () => {
     const missing = await GET(request('plus', 'CA'));
     expect(missing.status).toBe(501);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('passes source_code and msclkid into Stripe metadata and records checkout_started on the session', async () => {
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'ph_test_key');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url: String(url), body: String(init.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_attr',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_attr',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('ok', { status: 200 });
+      }),
+    );
+    const headers = new Headers({ 'x-vercel-ip-country': 'CA' });
+    const res = await GET(
+      new Request(
+        'https://preview.villagehale.com/api/checkout?tier=plus&msclkid=msclk&source_code=poster-oakville&ph_distinct_id=0123456789abcdef',
+        { headers },
+      ),
+    );
+    expect(res.status).toBe(303);
+    const stripe = calls.find((call) => call.url.includes('api.stripe.com'));
+    const form = new URLSearchParams(stripe?.body);
+    expect(form.get('metadata[msclkid]')).toBe('msclk');
+    expect(form.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(form.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    const captures = calls
+      .filter((call) => call.url.includes('/capture/'))
+      .map(
+        (call) =>
+          JSON.parse(call.body) as {
+            event?: string;
+            distinct_id?: string;
+            properties?: Record<string, unknown>;
+          },
+      );
+    const started = captures.find((call) => call.event === 'checkout_started');
+    const alias = captures.find((call) => call.event === '$create_alias');
+    expect(started?.distinct_id).toBe(checkoutPersonId('cs_test_attr'));
+    expect(started?.distinct_id).not.toContain('cs_test_attr');
+    expect(started?.properties).toMatchObject({
+      sku: 'promo_plus_annual',
+      currency: 'CAD',
+      msclkid: 'msclk',
+      source_code: 'poster-oakville',
+    });
+    expect(JSON.stringify(started)).not.toContain('ph_distinct_id');
+    expect(JSON.stringify(started)).not.toContain('@');
+    expect(alias?.distinct_id).toBe('0123456789abcdef');
+    expect(alias?.properties).toMatchObject({ alias: checkoutPersonId('cs_test_attr') });
+  });
+
+  it('stores fbp and fbc on the session and sends InitiateCheckout with that session id', async () => {
+    vi.stubEnv('META_CAPI_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_META_PIXEL_ID', '2041301346827688');
+    vi.stubEnv('META_CAPI_ACCESS_TOKEN', 'token');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_ads',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_ads',
+              amount_total: 5900,
+              currency: 'cad',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const headers = new Headers({
+      'x-vercel-ip-country': 'CA',
+      'x-hale-checkout': 'json',
+      cookie: '_fbp=fb.1.1.cookie; _fbc=fb.1.9.fromcookie',
+      referer: 'https://www.villagehale.com/pricing?tier=plus',
+      'user-agent': 'Mozilla/5.0 HaleTest',
+      'x-forwarded-for': '203.0.113.9',
+    });
+    const res = await GET(
+      new Request('https://preview.villagehale.com/api/checkout?tier=plus&fbclid=ClickFace', {
+        headers,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      url: 'https://checkout.stripe.com/c/pay/cs_test_ads',
+      sessionId: 'cs_test_ads',
+      value: 59,
+      currency: 'CAD',
+    });
+    const stripe = new URLSearchParams(
+      calls.find((call) => call.url.includes('api.stripe.com'))?.body,
+    );
+    expect(stripe.get('metadata[fbp]')).toBe('fb.1.1.cookie');
+    expect(stripe.get('metadata[fbc]')).toBe('fb.1.9.fromcookie');
+    expect(stripe.get('metadata[fbclid]')).toBe('ClickFace');
+    expect(stripe.get('metadata[client_ip]')).toBe('203.0.113.9');
+    expect(stripe.get('subscription_data[metadata][fbp]')).toBeNull();
+    expect(stripe.get('subscription_data[metadata][fbc]')).toBeNull();
+    const capi = calls.find((call) => call.url.includes('graph.facebook.com'));
+    const body = JSON.parse(capi?.body ?? '{}') as {
+      data: Array<{
+        event_name: string;
+        event_id: string;
+        event_source_url: string;
+        user_data: Record<string, string>;
+        custom_data: { value: number; currency: string };
+      }>;
+    };
+    expect(body.data[0]).toMatchObject({
+      event_name: 'InitiateCheckout',
+      event_id: 'cs_test_ads',
+      event_source_url: 'https://www.villagehale.com/pricing',
+      custom_data: { value: 59, currency: 'CAD' },
+      user_data: {
+        fbp: 'fb.1.1.cookie',
+        fbc: 'fb.1.9.fromcookie',
+        client_ip_address: '203.0.113.9',
+        client_user_agent: 'Mozilla/5.0 HaleTest',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('@');
+    expect(body.data[0]?.user_data).not.toHaveProperty('em');
+  });
+
+  it('builds fbc from fbclid when the click cookie is missing', async () => {
+    vi.stubEnv('META_CAPI_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_META_PIXEL_ID', '2041301346827688');
+    vi.stubEnv('META_CAPI_ACCESS_TOKEN', 'token');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url: String(url), body: String(init?.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_fbclid',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_fbclid',
+              amount_total: 3900,
+              currency: 'usd',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const res = await GET(
+      new Request('https://preview.villagehale.com/api/checkout?tier=plus&fbclid=ClickFace', {
+        headers: { 'x-vercel-ip-country': 'US' },
+      }),
+    );
+    expect(res.status).toBe(303);
+    const stripe = new URLSearchParams(
+      calls.find((call) => call.url.includes('api.stripe.com'))?.body,
+    );
+    expect(stripe.get('metadata[fbc]')).toMatch(/^fb\.1\.\d+\.ClickFace$/);
+    expect(stripe.get('metadata[fbp]')).toBeNull();
+    expect(calls.some((call) => call.url.includes('graph.facebook.com'))).toBe(false);
   });
 });

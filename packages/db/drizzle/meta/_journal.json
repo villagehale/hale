@@ -1730,6 +1730,13 @@
       "when": 1795641144086,
       "tag": "0268_pricing_checkout_ended",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1795720000000,
+      "tag": "0269_pricing_checkout_attribution",
+      "breakpoints": true
     }
   ]
 }

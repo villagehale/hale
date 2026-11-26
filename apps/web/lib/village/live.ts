@@ -42,7 +42,7 @@ export function activityRecommendationKey(pick: {
   }
   source.hash = '';
   for (const key of [...source.searchParams.keys()]) {
-    if (/^utm_|^(gclid|fbclid)$/i.test(key)) source.searchParams.delete(key);
+    if (/^utm_|^(gclid|fbclid|msclkid)$/i.test(key)) source.searchParams.delete(key);
   }
   source.searchParams.sort();
   const normalized = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');

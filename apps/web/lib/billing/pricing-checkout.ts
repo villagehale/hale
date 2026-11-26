@@ -1,7 +1,18 @@
 import { type Database, schema } from '@hale/db';
+import {
+  type Attribution,
+  analyticsDistinctId,
+  attributionIsEmpty,
+  parseAttribution,
+  serializeAttribution,
+} from '@hale/types';
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { familyAlreadySubscribed } from '~/lib/billing/already-subscribed';
 import { smsExternalAuthId } from '~/lib/billing/new-visitor-join';
+import {
+  type PricingBindInput,
+  recordPricingBindAnalytics,
+} from '~/lib/billing/pricing-bind-analytics';
 import { PreviewCaptureRefused } from '~/lib/channel/preview-capture-transport';
 import {
   OTP_MAX_ATTEMPTS,
@@ -47,6 +58,8 @@ export type DirectCheckoutSnapshot = {
   phoneE164: string | null;
   customerId: string | null;
   subscriptionId: string | null;
+  attribution: Attribution;
+  analyticsDistinctId: string | null;
 };
 
 export type PricingSendStatus =
@@ -88,6 +101,8 @@ export type PricingVerifyResult = {
   customerId?: string | null;
   subscriptionId?: string | null;
 };
+
+type VerifyOutcome = PricingVerifyResult & { bind?: PricingBindInput };
 
 type PaymentRow = typeof schema.pricingCheckoutPayments.$inferSelect;
 type CodeRow = typeof schema.pricingCheckoutCodes.$inferSelect;
@@ -143,6 +158,8 @@ export function snapshotFromStripeSession(payload: unknown): DirectCheckoutSnaps
     phoneE164: phone ? normalizePhoneE164(phone) : null,
     customerId: stripeId(payload.customer),
     subscriptionId: stripeId(payload.subscription),
+    attribution: parseAttribution(metadata),
+    analyticsDistinctId: analyticsDistinctId(metadata.ph_distinct_id),
   };
 }
 
@@ -157,6 +174,11 @@ function isStorable(snapshot: DirectCheckoutSnapshot): snapshot is DirectCheckou
   tier: PaidTier;
 } {
   return snapshot.paid && snapshot.source === 'pricing_direct' && snapshot.tier !== null;
+}
+
+function storedAttribution(attribution: Attribution): string | null {
+  if (attributionIsEmpty(attribution)) return null;
+  return serializeAttribution(attribution).slice(0, 2000);
 }
 
 /**
@@ -190,6 +212,8 @@ export async function storePricingSnapshot(
       phoneE164Hash: phone ? phoneBlindIndex(phone) : null,
       stripeCustomerId: snapshot.customerId,
       stripeSubscriptionId: snapshot.subscriptionId,
+      attribution: storedAttribution(snapshot.attribution),
+      analyticsDistinctId: snapshot.analyticsDistinctId,
     })
     .onConflictDoNothing()
     .returning({ id: schema.pricingCheckoutPayments.id });
@@ -562,7 +586,7 @@ async function onboardPaidFamily(
     subscriptionId: string | null;
     now: Date;
   },
-): Promise<{ familyId: string; duplicate: boolean }> {
+): Promise<{ familyId: string; duplicate: boolean; created: boolean }> {
   const [channel] = await tx
     .select({
       familyId: schema.parentChannels.familyId,
@@ -586,7 +610,7 @@ async function onboardPaidFamily(
       actor: channel.userId,
       duplicate,
     });
-    return { familyId: channel.familyId, duplicate };
+    return { familyId: channel.familyId, duplicate, created: false };
   }
 
   const externalAuthId = smsExternalAuthId(input.phoneHash);
@@ -623,7 +647,7 @@ async function onboardPaidFamily(
       actor: userId,
       duplicate,
     });
-    return { familyId: membership.familyId, duplicate };
+    return { familyId: membership.familyId, duplicate, created: false };
   }
 
   const [family] = await tx
@@ -642,7 +666,7 @@ async function onboardPaidFamily(
     role: 'primary_parent',
   });
   await writeBindAudit(tx, { ...input, familyId: family.id, actor: userId, duplicate: false });
-  return { familyId: family.id, duplicate: false };
+  return { familyId: family.id, duplicate: false, created: true };
 }
 
 async function attemptTotal(
@@ -670,6 +694,7 @@ function attemptsLeft(attemptCount: number, spent: number): number {
 export async function verifyPricingCheckoutCode(
   database: Database,
   input: { sessionId: string; code: string; now?: Date },
+  deps: { onBound?: (bound: PricingBindInput) => Promise<void> } = {},
 ): Promise<PricingVerifyResult> {
   const now = input.now ?? new Date();
   const sessionId = pricingCheckoutSessionId(input.sessionId);
@@ -680,29 +705,87 @@ export async function verifyPricingCheckoutCode(
   if (payment.boundAt) return { status: 'already_bound' };
 
   const code = input.code.trim();
-  return database.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as Database;
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${`pricing-session:${sessionId}`}))`,
-    );
-    const [fresh] = await tx
-      .select()
-      .from(schema.pricingCheckoutPayments)
-      .where(eq(schema.pricingCheckoutPayments.id, payment.id))
-      .limit(1);
-    if (!fresh) return { status: 'no_payment' };
-    if (fresh.endedAt) return { status: 'payment_ended' };
-    if (fresh.boundAt) return { status: 'already_bound' };
+  const outcome: VerifyOutcome = await database.transaction(
+    async (rawTx): Promise<VerifyOutcome> => {
+      const tx = rawTx as unknown as Database;
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${`pricing-session:${sessionId}`}))`,
+      );
+      const [fresh] = await tx
+        .select()
+        .from(schema.pricingCheckoutPayments)
+        .where(eq(schema.pricingCheckoutPayments.id, payment.id))
+        .limit(1);
+      if (!fresh) return { status: 'no_payment' };
+      if (fresh.endedAt) return { status: 'payment_ended' };
+      if (fresh.boundAt) return { status: 'already_bound' };
 
-    const codes = await sessionCodes(tx, sessionId);
-    const live = codes.find((row) => row.consumedAt === null) ?? null;
-    if (!live) return { status: 'no_pending' };
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtext(${`pricing-phone:${live.phoneE164Hash}`}))`,
-    );
+      const codes = await sessionCodes(tx, sessionId);
+      const live = codes.find((row) => row.consumedAt === null) ?? null;
+      if (!live) return { status: 'no_pending' };
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${`pricing-phone:${live.phoneE164Hash}`}))`,
+      );
 
-    if (isOtpExpired(live.expiresAt, now)) {
-      await tx
+      if (isOtpExpired(live.expiresAt, now)) {
+        await tx
+          .update(schema.pricingCheckoutCodes)
+          .set({ consumedAt: now })
+          .where(
+            and(
+              eq(schema.pricingCheckoutCodes.id, live.id),
+              isNull(schema.pricingCheckoutCodes.consumedAt),
+            ),
+          );
+        return { status: 'expired' };
+      }
+
+      const spent = await attemptTotal(tx, sessionId, live.phoneE164Hash);
+      if (spent >= PRICING_ATTEMPT_CAP || isOtpLockedOut(live.attemptCount)) {
+        return {
+          status: spent >= PRICING_ATTEMPT_CAP ? 'attempts_limited' : 'locked',
+          attemptsRemaining: 0,
+        };
+      }
+
+      if (
+        codes.some(
+          (row) =>
+            row.id !== live.id && row.consumedAt !== null && verifyOtpCode(code, row.codeHash),
+        )
+      ) {
+        return { status: 'wrong_code', attemptsRemaining: attemptsLeft(live.attemptCount, spent) };
+      }
+
+      if (!verifyOtpCode(code, live.codeHash)) {
+        const nextCount = live.attemptCount + 1;
+        const bumped = await tx
+          .update(schema.pricingCheckoutCodes)
+          .set({ attemptCount: nextCount })
+          .where(
+            and(
+              eq(schema.pricingCheckoutCodes.id, live.id),
+              isNull(schema.pricingCheckoutCodes.consumedAt),
+              eq(schema.pricingCheckoutCodes.attemptCount, live.attemptCount),
+            ),
+          )
+          .returning({ attemptCount: schema.pricingCheckoutCodes.attemptCount });
+        if (bumped.length === 0) return { status: 'locked', attemptsRemaining: 0 };
+        const total = spent + 1;
+        if (total >= PRICING_ATTEMPT_CAP)
+          return { status: 'attempts_limited', attemptsRemaining: 0 };
+        if (isOtpLockedOut(nextCount)) return { status: 'locked', attemptsRemaining: 0 };
+        return { status: 'wrong_code', attemptsRemaining: attemptsLeft(nextCount, total) };
+      }
+
+      let phone = '';
+      try {
+        phone = decryptString(live.phoneE164Encrypted);
+      } catch {
+        return { status: 'no_pending' };
+      }
+      const phoneHash = phoneBlindIndex(phone);
+      const [stillLive] = await tx
         .update(schema.pricingCheckoutCodes)
         .set({ consumedAt: now })
         .where(
@@ -710,98 +793,69 @@ export async function verifyPricingCheckoutCode(
             eq(schema.pricingCheckoutCodes.id, live.id),
             isNull(schema.pricingCheckoutCodes.consumedAt),
           ),
-        );
-      return { status: 'expired' };
-    }
+        )
+        .returning({ id: schema.pricingCheckoutCodes.id });
+      if (!stillLive) return { status: 'no_pending' };
 
-    const spent = await attemptTotal(tx, sessionId, live.phoneE164Hash);
-    if (spent >= PRICING_ATTEMPT_CAP || isOtpLockedOut(live.attemptCount)) {
-      return {
-        status: spent >= PRICING_ATTEMPT_CAP ? 'attempts_limited' : 'locked',
-        attemptsRemaining: 0,
-      };
-    }
-
-    if (
-      codes.some(
-        (row) => row.id !== live.id && row.consumedAt !== null && verifyOtpCode(code, row.codeHash),
-      )
-    ) {
-      return { status: 'wrong_code', attemptsRemaining: attemptsLeft(live.attemptCount, spent) };
-    }
-
-    if (!verifyOtpCode(code, live.codeHash)) {
-      const nextCount = live.attemptCount + 1;
-      const bumped = await tx
-        .update(schema.pricingCheckoutCodes)
-        .set({ attemptCount: nextCount })
+      const [claimed] = await tx
+        .update(schema.pricingCheckoutPayments)
+        .set({ boundAt: now, boundPhoneE164Hash: phoneHash })
         .where(
           and(
-            eq(schema.pricingCheckoutCodes.id, live.id),
-            isNull(schema.pricingCheckoutCodes.consumedAt),
-            eq(schema.pricingCheckoutCodes.attemptCount, live.attemptCount),
+            eq(schema.pricingCheckoutPayments.id, fresh.id),
+            isNull(schema.pricingCheckoutPayments.boundAt),
+            isNull(schema.pricingCheckoutPayments.endedAt),
           ),
         )
-        .returning({ attemptCount: schema.pricingCheckoutCodes.attemptCount });
-      if (bumped.length === 0) return { status: 'locked', attemptsRemaining: 0 };
-      const total = spent + 1;
-      if (total >= PRICING_ATTEMPT_CAP) return { status: 'attempts_limited', attemptsRemaining: 0 };
-      if (isOtpLockedOut(nextCount)) return { status: 'locked', attemptsRemaining: 0 };
-      return { status: 'wrong_code', attemptsRemaining: attemptsLeft(nextCount, total) };
-    }
+        .returning({ id: schema.pricingCheckoutPayments.id });
+      if (!claimed) return { status: 'already_bound' };
 
-    let phone = '';
+      const onboarded = await onboardPaidFamily(tx, {
+        phoneE164: phone,
+        phoneHash,
+        tier: fresh.tier,
+        currency: fresh.currency,
+        sessionId,
+        subscriptionId: fresh.stripeSubscriptionId,
+        now,
+      });
+      await tx
+        .update(schema.pricingCheckoutPayments)
+        .set({ boundFamilyId: onboarded.familyId })
+        .where(eq(schema.pricingCheckoutPayments.id, fresh.id));
+      return {
+        status: onboarded.duplicate ? 'already_subscribed' : 'verified',
+        familyId: onboarded.familyId,
+        customerId: fresh.stripeCustomerId,
+        subscriptionId: fresh.stripeSubscriptionId,
+        bind: {
+          sessionId,
+          familyId: onboarded.familyId,
+          tier: fresh.tier,
+          attribution: parseAttribution(fresh.attribution ?? undefined),
+          analyticsDistinctId: analyticsDistinctId(fresh.analyticsDistinctId),
+          signup: onboarded.created,
+          now,
+        },
+      };
+    },
+  );
+  if (outcome.bind) {
+    const notify = deps.onBound ?? recordPricingBindAnalytics;
     try {
-      phone = decryptString(live.phoneE164Encrypted);
-    } catch {
-      return { status: 'no_pending' };
+      await notify(outcome.bind);
+    } catch (err) {
+      console.warn(
+        {
+          event: 'pricing_checkout_bind_analytics_failed',
+          name: err instanceof Error ? err.name : 'unknown',
+        },
+        'pricing checkout',
+      );
     }
-    const phoneHash = phoneBlindIndex(phone);
-    const [stillLive] = await tx
-      .update(schema.pricingCheckoutCodes)
-      .set({ consumedAt: now })
-      .where(
-        and(
-          eq(schema.pricingCheckoutCodes.id, live.id),
-          isNull(schema.pricingCheckoutCodes.consumedAt),
-        ),
-      )
-      .returning({ id: schema.pricingCheckoutCodes.id });
-    if (!stillLive) return { status: 'no_pending' };
-
-    const [claimed] = await tx
-      .update(schema.pricingCheckoutPayments)
-      .set({ boundAt: now, boundPhoneE164Hash: phoneHash })
-      .where(
-        and(
-          eq(schema.pricingCheckoutPayments.id, fresh.id),
-          isNull(schema.pricingCheckoutPayments.boundAt),
-          isNull(schema.pricingCheckoutPayments.endedAt),
-        ),
-      )
-      .returning({ id: schema.pricingCheckoutPayments.id });
-    if (!claimed) return { status: 'already_bound' };
-
-    const onboarded = await onboardPaidFamily(tx, {
-      phoneE164: phone,
-      phoneHash,
-      tier: fresh.tier,
-      currency: fresh.currency,
-      sessionId,
-      subscriptionId: fresh.stripeSubscriptionId,
-      now,
-    });
-    await tx
-      .update(schema.pricingCheckoutPayments)
-      .set({ boundFamilyId: onboarded.familyId })
-      .where(eq(schema.pricingCheckoutPayments.id, fresh.id));
-    return {
-      status: onboarded.duplicate ? 'already_subscribed' : 'verified',
-      familyId: onboarded.familyId,
-      customerId: fresh.stripeCustomerId,
-      subscriptionId: fresh.stripeSubscriptionId,
-    };
-  });
+  }
+  const { bind: _bound, ...result } = outcome;
+  return result;
 }
 
 /** Best-effort. A unique customer already on another family must not undo the bind. */

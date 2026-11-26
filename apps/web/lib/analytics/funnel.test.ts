@@ -86,6 +86,48 @@ describe('captureFunnelEvent', () => {
     },
   );
 
+  it('keys a checkout with no family on the caller distinct id', async () => {
+    const fake = createFakeFunnelSender();
+    const outcome = await captureFunnelEvent(
+      {
+        event: 'checkout_completed',
+        distinctId: 'cs:cs_test_1',
+        attribution: { msclkid: 'ms', source_code: 'poster-oakville' },
+        properties: { sku: 'promo_plus_annual', value: 59, currency: 'CAD', tier: 'plus' },
+      },
+      { sender: fake.sender, env: ON },
+    );
+    expect(outcome).toBe('sent');
+    expect(fake.sent).toEqual([
+      {
+        event: 'checkout_completed',
+        distinctId: 'cs:cs_test_1',
+        properties: {
+          sku: 'promo_plus_annual',
+          value: 59,
+          currency: 'CAD',
+          tier: 'plus',
+          msclkid: 'ms',
+          source_code: 'poster-oakville',
+        },
+      },
+    ]);
+  });
+
+  it('refuses a distinct id that is an email address', async () => {
+    const fake = createFakeFunnelSender();
+    const outcome = await captureFunnelEvent(
+      {
+        event: 'checkout_completed',
+        distinctId: 'parent@example.com',
+        attribution: {},
+      },
+      { sender: fake.sender, env: ON },
+    );
+    expect(outcome).toBe('refused_identifying');
+    expect(fake.sent).toEqual([]);
+  });
+
   it('names a sender that is not configured instead of reporting sent', async () => {
     const fake = createFakeFunnelSender('not_configured');
     const outcome = await captureFunnelEvent(
