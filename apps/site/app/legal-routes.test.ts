@@ -115,7 +115,7 @@ describe('legal pages (long-form shell)', () => {
   it('dates both policies on the Toronto day the text was last edited', async () => {
     // Hard-coded calendar day, formatted in America/Toronto, so a UTC day
     // boundary cannot move it to the day before.
-    expect(privacyHtml).toContain('Last updated November 21, 2026');
+    expect(privacyHtml).toContain('Last updated November 26, 2026');
     expect(termsHtml).toContain('Last updated November 21, 2026');
     expect(termsHtml).not.toContain('November 20, 2026');
     const fr = { params: Promise.resolve({ locale: 'fr' as const }) };
@@ -124,10 +124,10 @@ describe('legal pages (long-form shell)', () => {
     const frTerms = renderToStaticMarkup(await TermsPage(fr));
     const zhPrivacy = renderToStaticMarkup(await PrivacyPage(zh));
     const zhTerms = renderToStaticMarkup(await TermsPage(zh));
-    expect(frPrivacy).toContain('Dernière mise à jour le 21 novembre 2026');
+    expect(frPrivacy).toContain('Dernière mise à jour le 26 novembre 2026');
     expect(frTerms).toContain('Dernière mise à jour le 21 novembre 2026');
     expect(frTerms).not.toContain('20 novembre 2026');
-    expect(zhPrivacy).toContain('最后更新于 2026年11月21日');
+    expect(zhPrivacy).toContain('最后更新于 2026年11月26日');
     expect(zhTerms).toContain('最后更新于 2026年11月21日');
     expect(zhTerms).not.toContain('11月20日');
   });
@@ -252,8 +252,10 @@ describe('privacy (migrated verbatim, plus the SMS-transit disclosure)', () => {
   });
 
   it('gates marketing analytics on the cookie banner and does not call Speed Insights cookieless', () => {
-    expect(privacyHtml).toContain('taps Accept in the cookie banner');
+    expect(privacyHtml).toContain('Turn off');
     expect(privacyHtml).toContain('No thanks');
+    expect(privacyHtml).toContain('Global Privacy Control');
+    expect(privacyHtml).toContain('does not show this banner');
     expect(privacyHtml).toContain('Cookie settings');
     expect(privacyHtml).toContain('Strictly necessary storage');
     expect(privacyHtml).toContain(

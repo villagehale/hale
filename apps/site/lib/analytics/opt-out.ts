@@ -1,7 +1,8 @@
 /**
  * Extra opt-out on top of the cookie banner and DNT. Same cookie/query as the
- * portal so a choice on one Hale origin can be mirrored by the visitor; the
- * marketing site still also requires an explicit Accept before PostHog loads.
+ * portal so a choice on one Hale origin can be mirrored by the visitor. PostHog
+ * on the marketing site still waits for readConsent() === 'granted', which is
+ * a stored Accept or a default-on region with no refusal and no Global Privacy Control.
  *
  * No privacy-page UI here (VIL-428).
  */

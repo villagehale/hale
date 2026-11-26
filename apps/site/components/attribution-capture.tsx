@@ -12,8 +12,8 @@ import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
 
 /**
  * Persists first-touch UTMs / gclid / fbclid into sessionStorage (every visit)
- * and a first-party cookie after Accept, so checkout on the app subdomain can
- * read them. No parent-facing copy.
+ * and a first-party cookie when measurement is allowed, so checkout on the app
+ * subdomain can read them. No parent-facing copy.
  */
 export function AttributionCapture(): null {
   useEffect(() => {

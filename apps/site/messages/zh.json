@@ -45,7 +45,9 @@
   },
   "Consent": {
     "text": "Hale 用 Cookie 衡量广告效果，看看大家怎么用这个网站。你点同意之前，什么都不会加载。",
+    "notice": "Hale 用 Cookie 衡量广告效果，看看大家怎么用这个网站。这项测量已经打开，你可以关掉。",
     "reject": "不用了",
+    "turnOff": "关掉",
     "accept": "同意",
     "region": "Cookie"
   },

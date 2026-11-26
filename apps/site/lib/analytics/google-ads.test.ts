@@ -3,12 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Google Ads on the MARKETING site loads only after the visitor taps Accept.
+ * Google Ads on the MARKETING site loads when measurement is allowed.
  *
  * The tag is not in the server HTML. A client loader injects gtag.js and sets
  * Consent Mode v2 (default denied, then granted) before config. The product
  * app still does not ship it. The privacy policy names the tag, because it
- * writes advertising cookies once the visitor has agreed.
+ * may write advertising cookies while measurement is on.
  */
 
 const ADS_ID = 'AW-18412881223';

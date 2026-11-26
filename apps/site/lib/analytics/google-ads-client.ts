@@ -1,4 +1,4 @@
-import { GOOGLE_ADS_ID, GOOGLE_ADS_GTAG_SRC } from './google-ads';
+import { GOOGLE_ADS_GTAG_SRC, GOOGLE_ADS_ID } from './google-ads';
 
 const DENIED = {
   ad_storage: 'denied',
@@ -28,7 +28,7 @@ function adsWindow(): AdsWindow | null {
 }
 
 /**
- * Injects gtag.js only after Accept. Consent Mode v2 starts denied, then
+ * Injects gtag.js once measurement is allowed. Consent Mode v2 starts denied, then
  * flips to granted, before js and config. A second call does not add a
  * second loader.
  */
@@ -56,7 +56,7 @@ export function installGoogleAds(): void {
   document.head.appendChild(script);
 }
 
-/** Updates Consent Mode when a visitor who had accepted changes to No thanks. */
+/** Updates Consent Mode when a visitor turns measurement off. */
 export function denyGoogleAds(): void {
   const w = adsWindow();
   if (!w?.gtag) return;

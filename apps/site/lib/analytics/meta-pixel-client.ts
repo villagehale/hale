@@ -25,7 +25,7 @@ function pixelWindow(): PixelWindow | null {
 }
 
 /**
- * Meta Pixel base snippet after Accept. Inits every dataset id, then tracks
+ * Meta Pixel base snippet once measurement is allowed. Inits every dataset id, then tracks
  * PageView once. `fbq('track')` sends that event to each initialized pixel, so
  * one track is one PageView per pixel. A second track, or `trackSingle` beside
  * it, would count the event twice. A second call does not add a second loader.

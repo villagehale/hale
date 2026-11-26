@@ -48,6 +48,12 @@ import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
  * where the code or a confirmed fact supports them (message retention, consent records,
  * Google Drive read-only, PostHog replay).
  *
+ * 2026-11-26: Region-aware measurement on the public website. Outside Quebec and
+ * outside the EU, the EEA, the UK, and Switzerland, Google Ads, the Meta Pixel,
+ * and PostHog load on the first visit and the banner offers Turn off. Those
+ * places, an unknown country, Canada with no province, and Global Privacy
+ * Control stay opt-in until Accept. The product app does not show this banner.
+ *
  * 2026-11-21: The Purchase sentence now says "A paid checkout". Wording only:
  * reportBillingPurchase already reports every paid Checkout Session.
  *
@@ -60,9 +66,8 @@ import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
  * matches the Google verification submission (VIL-556).
  *
  * The public "last updated" line is the Toronto calendar day the text was last
- * edited (2026-10-07), not the UTC day. A later merge should bump that line to
- * the merge date. The Canada hosting sentence, the cookie banner, and the Speed
- * Insights wording all landed in that same edit. Counsel should read the diff.
+ * edited (2026-11-26). A later merge should bump that line to the merge date.
+ * Counsel should read the diff.
  *
  * app.villagehale.com/privacy is the signed-in data-rights page (VIL-432), which
  * links here, so this is the only copy of the policy. Still noindexed by choice — whether a privacy policy should be
@@ -138,15 +143,15 @@ export default async function PrivacyPage({
       locale={locale}
       source={await pageSource(searchParams)}
       title="Privacy Policy"
-      lastUpdatedIso="2026-11-21"
+      lastUpdatedIso="2026-11-26"
       intro={
         <p>
-          Hale knows your family, finds what fits, and runs group
-          chats you add it to, so it handles information about children. We
-          treat that responsibility as the centre of the product, not an afterthought. This policy
-          explains, in plain language, what we collect, why, who it is ever shared with, and the
-          control you keep over it. Village Hale Technologies Inc. is a Canadian company, and this
-          policy is written to meet Canada&rsquo;s PIPEDA, Quebec&rsquo;s Law 25 and CASL.
+          Hale knows your family, finds what fits, and runs group chats you add it to, so it handles
+          information about children. We treat that responsibility as the centre of the product, not
+          an afterthought. This policy explains, in plain language, what we collect, why, who it is
+          ever shared with, and the control you keep over it. Village Hale Technologies Inc. is a
+          Canadian company, and this policy is written to meet Canada&rsquo;s PIPEDA, Quebec&rsquo;s
+          Law 25 and CASL.
         </p>
       }
       sections={SECTIONS}
@@ -155,17 +160,17 @@ export default async function PrivacyPage({
     >
       <LegalSectionBlock id="who-we-are" title="Who we are">
         <p>
-          Hale is a family assistant you reach by iMessage or text message. It knows your family, finds
-          what fits, can join a group chat you already have, and reads Gmail and calendar when you
-          connect them. Starting Dec 1, with your ok, it may sign them up. Today Hale does not book
-          or register on your behalf. If we later offer a feature that acts on your instruction (for
-          example, completing a sign-up), it will only act after you confirm that specific action,
-          and we will update this policy first. You (a parent or legal guardian) text the number and tell
-          Hale about your children. There is no account you must create, though you may sign in to
-          the web app, and you may optionally connect tools you already use. Hale is operated by
-          Village Hale Technologies Inc., a corporation incorporated in Ontario, Canada (corporation
-          no. 1001656484), which is the organization responsible for your family&rsquo;s data under
-          PIPEDA; see{' '}
+          Hale is a family assistant you reach by iMessage or text message. It knows your family,
+          finds what fits, can join a group chat you already have, and reads Gmail and calendar when
+          you connect them. Starting Dec 1, with your ok, it may sign them up. Today Hale does not
+          book or register on your behalf. If we later offer a feature that acts on your instruction
+          (for example, completing a sign-up), it will only act after you confirm that specific
+          action, and we will update this policy first. You (a parent or legal guardian) text the
+          number and tell Hale about your children. There is no account you must create, though you
+          may sign in to the web app, and you may optionally connect tools you already use. Hale is
+          operated by Village Hale Technologies Inc., a corporation incorporated in Ontario, Canada
+          (corporation no. 1001656484), which is the organization responsible for your
+          family&rsquo;s data under PIPEDA; see{' '}
           <a href="#contact" className="link">
             How to reach us
           </a>
@@ -284,12 +289,15 @@ export default async function PrivacyPage({
           <a href="#sub-processors" className="link">
             Sub-processors
           </a>
-          . On the public website, Google Ads and the Meta Pixel measure a visit only after the
-          visitor taps Accept in the cookie banner, so we can tell whether an advertisement led them
-          there. If they choose No thanks, or make no choice, that measurement does not run. It does
-          not include family data or children&rsquo;s information. We do not buy personal
-          information about your family from data brokers, and we do not collect it from social
-          media or other public sources.
+          . On the public website, Google Ads, the Meta Pixel, and PostHog measure a visit when that
+          measurement is allowed, so we can tell whether an advertisement led them there.
+          Measurement is on by default outside Quebec and outside the European Union, the European
+          Economic Area, the United Kingdom, and Switzerland, and the banner lets the visitor turn
+          it off. It stays off until the visitor taps Accept in those places, when we cannot tell
+          the country, when the visitor is in Canada and we cannot tell the province, and when the
+          browser sends Global Privacy Control. It does not include family data or children&rsquo;s
+          information. We do not buy personal information about your family from data brokers, and
+          we do not collect it from social media or other public sources.
         </p>
       </LegalSectionBlock>
 
@@ -387,10 +395,10 @@ export default async function PrivacyPage({
           Hale would show a parent on its own surfaces — the actual text of a message or post Hale
           observes — is <strong>redacted from parents by default</strong>. Parents see only a
           category or short summary. That is the web app, the texts Hale sends, and the calendar
-          feeds, exports, and connected tools. A group chat is different: messages in a chat
-          Hale is part of, including a child&rsquo;s, are visible to the members of that chat. Hale
-          does not hide them from the people already in it. When Hale writes into that chat, it does
-          not name a child aged 13 or older, or that child&rsquo;s events.
+          feeds, exports, and connected tools. A group chat is different: messages in a chat Hale is
+          part of, including a child&rsquo;s, are visible to the members of that chat. Hale does not
+          hide them from the people already in it. When Hale writes into that chat, it does not name
+          a child aged 13 or older, or that child&rsquo;s events.
         </p>
         <p>
           A parent can ask to see it. Asking reveals nothing on its own: we record what was asked
@@ -538,14 +546,14 @@ export default async function PrivacyPage({
             <strong>PostHog</strong> — product analytics, session replay, and error tracking. Event
             data is coarse and non-identifying (no child data, no message content) — we capture only
             a few key product steps. Session replay runs only on the marketing site
-            (villagehale.com), only after the visitor taps Accept in the cookie banner, and every
-            typed value is <strong>masked</strong> before the recording leaves the browser. The Hale
-            app at app.villagehale.com does not record session replays. Product analytics and
-            session replay are kept for 30 days. Error tracking captures unhandled errors (a stack
-            trace, not your data) so we can fix them. Autocapture stays off, and we identify you by
-            an opaque account id, never your name or email. Processed in the United States. On the
-            public website, PostHog analytics and session replay load only after the visitor taps
-            Accept in the cookie banner. If they choose No thanks, or make no choice, neither loads.
+            (villagehale.com), only when measurement is allowed on that visit, and every typed value
+            is <strong>masked</strong> before the recording leaves the browser. The Hale app at
+            app.villagehale.com does not record session replays. Product analytics and session
+            replay are kept for 30 days. Error tracking captures unhandled errors (a stack trace,
+            not your data) so we can fix them. Autocapture stays off, and we identify you by an
+            opaque account id, never your name or email. Processed in the United States. On the
+            public website, PostHog analytics and session replay follow the same measurement choice
+            as Google Ads and the Meta Pixel, described under Cookies on the public website.
             Visitors can change that choice at any time with Cookie settings in the site footer.{' '}
             {'On the marketing site, PostHog is configured to write nothing to your device.'}
           </li>
@@ -553,25 +561,30 @@ export default async function PrivacyPage({
             <strong>Google Ads</strong> — advertising measurement on the marketing site
             (villagehale.com) only. Google&rsquo;s gtag (AW-18412881223) records that a visitor
             reached a landing page after seeing an advertisement. It may set advertising cookies on
-            that visit. On the public website it loads only after the visitor taps Accept in the
-            cookie banner. If they choose No thanks, or make no choice, it does not load. Visitors
-            can change that choice at any time with Cookie settings in the site footer. It does not
-            run on the product app, does not receive family data, message content, or
-            children&rsquo;s information, and Hale still shows no advertising. Processed in the
-            United States.
+            that visit. On the public website it loads by default for a visitor outside Quebec and
+            outside the European Union, the European Economic Area, the United Kingdom, and
+            Switzerland. It does not load until the visitor taps Accept in those places, when we
+            cannot tell the country, when the visitor is in Canada and we cannot tell the province,
+            or when the browser sends Global Privacy Control. Turn off or No thanks stores a refusal
+            in this browser, and then it does not load on later visits. Visitors can change that
+            choice at any time with Cookie settings in the site footer. It does not run on the
+            product app, does not receive family data, message content, or children&rsquo;s
+            information, and Hale still shows no advertising. Processed in the United States.
           </li>
           <li>
             <strong>Meta</strong> — advertising measurement. The Meta Pixel records a PageView on
-            the marketing site (villagehale.com) after the visitor taps Accept in the cookie banner,
-            and on the product app (app.villagehale.com) when conversions measurement is on. A paid
-            checkout sends a Purchase event to Meta&rsquo;s Conversions API from Hale&rsquo;s
-            servers, using the Stripe Checkout Session id so a matching browser Purchase can be
-            deduplicated. That event may include a hashed email, a hashed phone number, Meta click
-            cookies, and the IP address and browser type saved at checkout. It does not include
-            family data, message content, or children&rsquo;s information. No child data is sent.
-            Hale still shows no advertising. If they choose No thanks on the public website, or make
-            no choice, the Pixel does not load there. Visitors can change that choice at any time
-            with Cookie settings in the site footer. Processed in the United States.
+            the marketing site (villagehale.com) when measurement is allowed, and on the product app
+            (app.villagehale.com) when conversions measurement is on. The product app does not show
+            this banner, so that app pixel does not follow the regional choice on the public
+            website. A paid checkout sends a Purchase event to Meta&rsquo;s Conversions API from
+            Hale&rsquo;s servers, using the Stripe Checkout Session id so a matching browser
+            Purchase can be deduplicated. That event may include a hashed email, a hashed phone
+            number, Meta click cookies, and the IP address and browser type saved at checkout. It
+            does not include family data, message content, or children&rsquo;s information. No child
+            data is sent. Hale still shows no advertising. On the public website the Pixel follows
+            the same measurement choice as Google Ads. Turn off or No thanks keeps it from loading
+            on later visits. Visitors can change that choice at any time with Cookie settings in the
+            site footer. Processed in the United States.
           </li>
           <li>
             <strong>Linq</strong> — delivery of iMessage and SMS. The content of those messages
@@ -699,10 +712,9 @@ export default async function PrivacyPage({
         <p>
           Message content, including messages from other members of a group chat Hale is in and from
           people who are not Hale users, is deleted or redacted 12 months after it was sent, and
-          sooner if you or they ask. Disconnecting Gmail or Calendar stops Hale reading that account.
-          The details already
-          saved from it are deleted when your account is deleted, and message content within them is
-          deleted or redacted on the same 12-month schedule.
+          sooner if you or they ask. Disconnecting Gmail or Calendar stops Hale reading that
+          account. The details already saved from it are deleted when your account is deleted, and
+          message content within them is deleted or redacted on the same 12-month schedule.
         </p>
         <p>
           We keep a record of your consents and approvals, without the text of the messages, until
@@ -797,17 +809,29 @@ export default async function PrivacyPage({
           </li>
           <li>
             <strong>Cookies on the public website.</strong> On villagehale.com, Google Ads, the Meta
-            Pixel, and PostHog (analytics and session replay) load only after the visitor taps
-            Accept in the cookie banner. If they choose No thanks, or make no choice, none of them
-            load. Visitors can change their choice at any time with Cookie settings in the site
-            footer. Vercel Speed Insights runs without that choice. Vercel documents it as anonymous
-            performance data: it is not tied to a visitor or an IP address, and it does not store
-            information that would reconstruct a browsing session or identify someone. Strictly
-            necessary storage, such as the theme and language choice, needs no consent. Google Ads
-            and the Meta Pixel may set advertising cookies only after Accept. Blocking third-party
-            scripts in your browser also stops that measurement and does not affect Hale over text.
-            The product app does not load the Google Ads tag. The Meta Pixel may load on the product
-            app when conversions measurement is on.
+            Pixel, and PostHog (analytics and session replay) load by default for a visitor outside
+            Quebec and outside the European Union, the European Economic Area, the United Kingdom,
+            and Switzerland. The banner on that visit says the measurement is on and offers Turn
+            off. They stay off until the visitor taps Accept in Quebec, in the European Union, the
+            European Economic Area, the United Kingdom, or Switzerland, when we cannot tell the
+            country, when the visitor is in Canada and we cannot tell the province, and when the
+            browser sends Global Privacy Control. We read that signal from a Sec-GPC: 1 request
+            header or from the browser&rsquo;s globalPrivacyControl flag. We read the country and
+            province from the hosting network&rsquo;s geolocation headers. Turn off or No thanks
+            stores the refusal in this browser, and none of those tools load on later visits. Accept
+            stores a yes, and they load on later visits, including where the default is off.
+            Visitors can change their choice at any time with Cookie settings in the site footer.
+            When measurement is on, and the link that opened the site carried a campaign, an ad
+            click, or a source code, Hale stores that in a first-party cookie so a later checkout
+            can be tied to the visit. Turning measurement off removes that cookie. Vercel Speed
+            Insights runs without that choice. Vercel documents it as anonymous performance data: it
+            is not tied to a visitor or an IP address, and it does not store information that would
+            reconstruct a browsing session or identify someone. Strictly necessary storage, such as
+            the theme and language choice, needs no consent. Google Ads and the Meta Pixel may set
+            advertising cookies only while that measurement is on. Blocking third-party scripts in
+            your browser also stops that measurement and does not affect Hale over text. The product
+            app does not show this banner and does not load the Google Ads tag. The Meta Pixel may
+            load on the product app when conversions measurement is on.
           </li>
         </ul>
       </LegalSectionBlock>

@@ -45,7 +45,9 @@
   },
   "Consent": {
     "text": "Hale uses cookies to measure ads and see how the site is used. Nothing loads unless you say yes.",
+    "notice": "Hale uses cookies to measure ads and see how the site is used. This is on, and you can turn it off.",
     "reject": "No thanks",
+    "turnOff": "Turn off",
     "accept": "Accept",
     "region": "Cookies"
   },

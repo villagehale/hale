@@ -45,7 +45,9 @@
   },
   "Consent": {
     "text": "Hale utilise des témoins pour mesurer ses pubs et voir comment le site est utilisé. Rien ne se charge tant que tu n’as pas dit oui.",
+    "notice": "Hale utilise des témoins pour mesurer ses pubs et voir comment le site est utilisé. C’est en marche, et tu peux l’éteindre.",
     "reject": "Non merci",
+    "turnOff": "Éteindre",
     "accept": "Accepter",
     "region": "Témoins"
   },
