@@ -38,12 +38,12 @@ export const BLACK_FRIDAY_PRICE_DISPLAY: Record<
   Record<BillingCurrency, { amount: number; banner: string; perYear: string }>
 > = {
   plus: {
-    CAD: { amount: 39, banner: 'C$39', perYear: '$39/yr' },
-    USD: { amount: 29, banner: 'US$29', perYear: '$29/yr' },
+    CAD: { amount: 39, banner: '$39', perYear: '$39/yr' },
+    USD: { amount: 29, banner: '$29', perYear: '$29/yr' },
   },
   family: {
-    CAD: { amount: 59, banner: 'C$59', perYear: '$59/yr' },
-    USD: { amount: 49, banner: 'US$49', perYear: '$49/yr' },
+    CAD: { amount: 59, banner: '$59', perYear: '$59/yr' },
+    USD: { amount: 49, banner: '$49', perYear: '$49/yr' },
   },
 };
 
@@ -134,4 +134,18 @@ export function blackFridayVisitorCountdownEndMs(timeZone: string): number {
 /** Milliseconds until the visitor countdown hides. Zero or less means hide it. */
 export function blackFridayCountdownRemainingMs(nowMs: number, timeZone: string): number {
   return blackFridayVisitorCountdownEndMs(timeZone) - nowMs;
+}
+
+/**
+ * Remaining time as `HH:MM:SS`. Hours are not folded into days, so a Thursday
+ * visitor can see more than 24. Zero and anything already past are `00:00:00`.
+ */
+export function blackFridayCountdownClock(remainingMs: number): string {
+  const totalSeconds =
+    Number.isFinite(remainingMs) && remainingMs > 0 ? Math.floor(remainingMs / 1000) : 0;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }

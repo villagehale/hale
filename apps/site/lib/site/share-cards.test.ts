@@ -151,11 +151,11 @@ describe('share card query', () => {
     expect(shareCardUrl('pricing', open)).not.toContain('bf24');
     const cad = paintShareCard('home', open);
     expect(cad.flag).toBe('Ends Friday at midnight');
-    expect(cad.prices).toBe('Plus C$39/yr · Max C$59/yr');
+    expect(cad.prices).toBe('Plus $39/yr · Max $59/yr');
     expect(cad.headline).toBe(HOME_SLOGAN.en.plain);
     expect(cad.flag).not.toMatch(/PT|ET|time zone/i);
     const usd = shareCardQueryFrom({ locale: 'en', now: inside, country: 'US', env: BF_ENV });
-    expect(paintShareCard('home', usd).prices).toBe('Plus US$29/yr · Max US$49/yr');
+    expect(paintShareCard('home', usd).prices).toBe('Plus $29/yr · Max $49/yr');
     expect(paintShareCard('home', shut).flag).toBe('Black Friday Sale');
     expect(paintShareCard('home', shut).prices).toBe('Max C$99/yr · Plus C$59/yr');
     expect(paintShareCard('pricing', open).headline).toBe('Black Friday Sale: Max for C$99/yr.');
@@ -182,7 +182,7 @@ describe('share card query', () => {
       env: { ...BF_ENV, VERCEL_ENV: 'preview' },
     });
     expect(shareCardUrl('home', preview)).toContain('&bf24=1&bf=1');
-    expect(paintShareCard('home', preview).prices).toBe('Plus US$29/yr · Max US$49/yr');
+    expect(paintShareCard('home', preview).prices).toBe('Plus $29/yr · Max $49/yr');
     const hidden = shareCardQueryFrom({
       locale: 'en',
       now,
@@ -205,7 +205,7 @@ describe('share card query', () => {
       `${SITE_URL}/og/home?v=${SHARE_CARD_VERSION}&locale=en&phase=black_friday&cc=CAD&offer=1&paid=0&bf=1&bf24=1`,
     );
     const forced = shareCardQueryFromUrl(image, now, { ...BF_ENV, VERCEL_ENV: 'preview' });
-    expect(paintShareCard('home', forced).prices).toBe('Plus C$39/yr · Max C$59/yr');
+    expect(paintShareCard('home', forced).prices).toBe('Plus $39/yr · Max $59/yr');
     const ignored = shareCardQueryFromUrl(image, now, BF_ENV);
     expect(ignored.bf24).toBe(false);
     expect(paintShareCard('home', ignored).prices).toBe('Max C$99/yr · Plus C$59/yr');

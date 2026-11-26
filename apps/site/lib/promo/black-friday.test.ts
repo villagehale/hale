@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { PromoStickyCta } from '~/components/promo/holiday-promo';
 import {
   blackFridayCountdownCopy,
+  blackFridayCountdownPair,
   blackFridayDeadlineCopy,
+  blackFridayEndsInCopy,
   blackFridaySentence,
   resolveBlackFridayFromSearch,
   resolveBlackFridayOffer,
@@ -59,16 +61,16 @@ describe('resolveBlackFridayOffer', () => {
     });
     expect(before).toBeNull();
     expect(after).toBeNull();
-    expect(start?.plus?.banner).toBe('US$29');
-    expect(start?.max?.banner).toBe('US$49');
+    expect(start?.plus?.banner).toBe('$29');
+    expect(start?.max?.banner).toBe('$49');
     expect(start?.plus).toMatchObject({
       regular: 39,
       sale: 29,
       regularLabel: '$39/yr',
       saleLabel: '$29/yr',
     });
-    expect(last?.plus?.banner).toBe('C$39');
-    expect(last?.max?.banner).toBe('C$59');
+    expect(last?.plus?.banner).toBe('$39');
+    expect(last?.max?.banner).toBe('$59');
     expect(last?.max).toMatchObject({
       regular: 99,
       sale: 59,
@@ -90,7 +92,7 @@ describe('resolveBlackFridayOffer', () => {
       country: 'CA',
       env: { HOLIDAY_PROMO_ENABLED: 'true', STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad' },
     });
-    expect(plusOnly?.plus?.banner).toBe('C$39');
+    expect(plusOnly?.plus?.banner).toBe('$39');
     expect(plusOnly?.max).toBeNull();
   });
 
@@ -118,7 +120,7 @@ describe('resolveBlackFridayOffer', () => {
       env,
       search: { bf: '1' },
     });
-    expect(forced?.plus?.banner).toBe('C$39');
+    expect(forced?.plus?.banner).toBe('$39');
     expect(forced?.checkoutQuery).toBe('bf=1');
     const pinned = resolveBlackFridayFromSearch({
       now: new Date('2026-11-26T18:00:00.000Z'),
@@ -126,7 +128,7 @@ describe('resolveBlackFridayOffer', () => {
       env,
       search: { bf_now: '2026-11-28T07:59:59.000Z' },
     });
-    expect(pinned?.max?.banner).toBe('US$49');
+    expect(pinned?.max?.banner).toBe('$49');
     expect(
       resolveBlackFridayFromSearch({
         now: new Date('2026-11-26T18:00:00.000Z'),
@@ -140,8 +142,8 @@ describe('resolveBlackFridayOffer', () => {
   it('keeps BF prices after an ET Friday ends, and hides the midnight sentence', () => {
     const at = new Date('2026-11-28T04:59:59.000Z');
     const offer = resolveBlackFridayOffer({ now: at, country: 'US', env: IDS });
-    expect(offer?.plus?.banner).toBe('US$29');
-    expect(offer?.max?.banner).toBe('US$49');
+    expect(offer?.plus?.banner).toBe('$29');
+    expect(offer?.max?.banner).toBe('$49');
     const remaining = blackFridayCountdownRemainingMs(at.getTime(), 'America/New_York');
     expect(remaining).toBe(0);
     expect(blackFridayCountdownCopy('en', remaining)).toBeNull();
@@ -151,6 +153,13 @@ describe('resolveBlackFridayOffer', () => {
     expect(blackFridayCountdownCopy('en', 1)).toBe('Ends Friday at midnight');
     expect(blackFridayCountdownCopy('fr', 1)).toBe('Se termine vendredi à minuit');
     expect(blackFridayCountdownCopy('zh', 1)).toBe('周五午夜结束');
+    expect(blackFridayCountdownPair('en', 0)).toBeNull();
+    expect(blackFridayCountdownPair('fr', (26 * 3600 + 60 + 1) * 1000)).toEqual({
+      when: 'Se termine vendredi à minuit',
+      left: 'Se termine dans 26:01:01',
+    });
+    expect(blackFridayEndsInCopy('zh', '00:00:00')).toBe('剩余 00:00:00');
+    expect(blackFridayEndsInCopy('en', '01:02:03')).toBe('Ends in 01:02:03');
     expect(
       blackFridayDeadlineCopy({
         plusToday: '$29/yr',
@@ -193,33 +202,33 @@ describe('sticky promo bar', () => {
     expect(before).toContain('Black Friday Sale');
     expect(before).toContain('Max $79/yr, Plus $39/yr');
     expect(before).toContain('Join by Dec 31');
-    expect(before).not.toContain('US$29');
+    expect(before).not.toContain('Plus $29');
 
     const start = bar('2026-11-27T05:00:00.000Z', 'US');
-    expect(start).toContain('Plus US$29');
-    expect(start).toContain('Max US$49');
-    expect(start).not.toContain('Ends Friday');
+    expect(start).toContain('Plus $29');
+    expect(start).toContain('Max $49');
+    expect(start).toContain('88:88:88');
     expect(start).not.toContain('ended');
     expect(start).not.toContain('expired');
     expect(start).not.toContain('Join by Dec 31');
     expect(start).not.toContain('$79/yr');
 
     const canadaStart = bar('2026-11-27T05:00:00.000Z', 'CA');
-    expect(canadaStart).toContain('Plus C$39');
-    expect(canadaStart).toContain('Max C$59');
+    expect(canadaStart).toContain('Plus $39');
+    expect(canadaStart).toContain('Max $59');
     expect(canadaStart).not.toContain('$99/yr');
+    expect(canadaStart).not.toMatch(/C\$|US\$/);
 
     const afterEtMidnight = bar('2026-11-28T04:59:59.000Z', 'US');
-    expect(afterEtMidnight).toContain('Plus US$29');
-    expect(afterEtMidnight).toContain('Max US$49');
-    expect(afterEtMidnight).not.toContain('Ends Friday');
+    expect(afterEtMidnight).toContain('Plus $29');
+    expect(afterEtMidnight).toContain('Max $49');
     expect(afterEtMidnight).not.toContain('ended');
     expect(afterEtMidnight).not.toContain('Join by Dec 31');
 
     const after = bar('2026-11-28T08:00:00.000Z', 'US');
     expect(after).toContain('Max $79/yr, Plus $39/yr');
     expect(after).toContain('Join by Dec 31');
-    expect(after).not.toContain('US$29');
+    expect(after).not.toContain('Plus $29');
   });
 
   it('lets ?bf=1 replace the bar on Preview and ignores it in production', () => {
@@ -229,8 +238,8 @@ describe('sticky promo bar', () => {
       { bf: '1' },
       { ...IDS, VERCEL_ENV: 'preview' },
     );
-    expect(forced).toContain('Plus C$39');
-    expect(forced).toContain('Max C$59');
+    expect(forced).toContain('Plus $39');
+    expect(forced).toContain('Max $59');
     expect(forced).not.toContain('Join by Dec 31');
 
     const hidden = bar(
@@ -239,8 +248,8 @@ describe('sticky promo bar', () => {
       { bf: '1', bf_now: '2026-11-28T06:00:00.000Z' },
       { ...IDS, VERCEL_ENV: 'preview' },
     );
-    expect(hidden).toContain('Plus US$29');
-    expect(hidden).toContain('Max US$49');
+    expect(hidden).toContain('Plus $29');
+    expect(hidden).toContain('Max $49');
     expect(
       blackFridayCountdownCopy(
         'en',
@@ -258,15 +267,15 @@ describe('sticky promo bar', () => {
     );
     expect(production).toContain('Max $79/yr, Plus $39/yr');
     expect(production).toContain('Join by Dec 31');
-    expect(production).not.toContain('US$29');
+    expect(production).not.toContain('Plus $29');
   });
 
   it('uses the visitor region and stays quiet about a price it cannot charge', () => {
-    expect(blackFridaySentence('en', 'C$39', 'C$59')).toBe(
-      'Black Friday: yearly Plus C$39 and Max C$59, today only.',
+    expect(blackFridaySentence('en', '$39', '$59')).toBe(
+      'Black Friday: yearly Plus $39 and Max $59, today only.',
     );
-    expect(blackFridaySentence('fr', 'C$39', 'C$59')).toContain("aujourd'hui seulement");
-    expect(blackFridaySentence('zh', 'US$29', 'US$49')).toContain('仅限今日');
-    expect(blackFridaySentence('en', 'C$39', 'C$59')).not.toMatch(/founding|first\s100/i);
+    expect(blackFridaySentence('fr', '$39', '$59')).toContain("aujourd'hui seulement");
+    expect(blackFridaySentence('zh', '$29', '$49')).toContain('仅限今日');
+    expect(blackFridaySentence('en', '$39', '$59')).not.toMatch(/C\$|US\$|founding|first\s100/i);
   });
 });

@@ -1,17 +1,22 @@
 'use client';
 
-import { BLACK_FRIDAY_WINDOW_END_MS, blackFridayCountdownRemainingMs } from '@hale/types';
+import {
+  BLACK_FRIDAY_WINDOW_END_MS,
+  blackFridayCountdownClock,
+  blackFridayCountdownRemainingMs,
+} from '@hale/types';
 import { useEffect, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
-import { blackFridayCountdownCopy, blackFridaySentence } from '~/lib/promo/black-friday';
+import {
+  BLACK_FRIDAY_COUNTDOWN_HOLD,
+  blackFridayCountdownCopy,
+  blackFridayCountdownPair,
+  blackFridayEndsInLabel,
+  blackFridaySentence,
+} from '~/lib/promo/black-friday';
 import { FoundingCheckoutLink } from './founding-checkout-link';
 
-/**
- * "Ends Friday at midnight" in the visitor's zone, filled in after mount so
- * the server HTML and the first client paint match. Null once that Friday
- * has ended. The prices stay; only this sentence goes away.
- */
 /** A tab left open past the gate reloads onto the season bar. A preview pin does not. */
 function useRestoreWhenGateCloses(serverNow: number, pinned: boolean) {
   useEffect(() => {
@@ -27,28 +32,46 @@ function useRestoreWhenGateCloses(serverNow: number, pinned: boolean) {
   }, [serverNow, pinned]);
 }
 
-export function useBlackFridayCountdownCopy(serverNow: number, locale: Locale): string | null {
-  const [copy, setCopy] = useState<string | null>(null);
+/**
+ * Null until mount, then the remaining milliseconds. The first paint matches
+ * the server: a hidden placeholder of the same width, then the real clock.
+ */
+function useBlackFridayCountdownRemaining(serverNow: number): number | null {
+  const [remaining, setRemaining] = useState<number | null>(null);
   useEffect(() => {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const skew = serverNow - Date.now();
     const tick = () => {
-      const now = Date.now() + skew;
-      setCopy(blackFridayCountdownCopy(locale, blackFridayCountdownRemainingMs(now, timeZone)));
+      setRemaining(blackFridayCountdownRemainingMs(Date.now() + skew, timeZone));
     };
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [serverNow, locale]);
-  return copy;
+  }, [serverNow]);
+  return remaining;
 }
 
+/**
+ * The midnight sentence and "Ends in HH:MM:SS", side by side. The server HTML
+ * is a hidden placeholder of the same width. Both lines go away together once
+ * the visitor's Friday ends. The prices stay.
+ */
 export function BlackFridayCountdown({ serverNow, locale }: { serverNow: number; locale: Locale }) {
-  const copy = useBlackFridayCountdownCopy(serverNow, locale);
-  if (!copy) return null;
+  const remaining = useBlackFridayCountdownRemaining(serverNow);
+  const pair = remaining === null ? null : blackFridayCountdownPair(locale, remaining);
+  if (remaining !== null && !pair) return null;
+  const when = pair?.when ?? blackFridayCountdownCopy(locale, 1);
+  const clock = pair ? blackFridayCountdownClock(remaining ?? 0) : BLACK_FRIDAY_COUNTDOWN_HOLD;
   return (
-    <span className="bf-count" data-bf-countdown="1">
-      {copy}
+    <span
+      className={pair ? 'bf-count' : 'bf-count is-hold'}
+      data-bf-countdown="1"
+      aria-hidden={pair ? undefined : true}
+    >
+      <span className="bf-count-when">{when}</span>
+      <span className="bf-count-left">
+        {blackFridayEndsInLabel(locale)} <span className="bf-count-time">{clock}</span>
+      </span>
     </span>
   );
 }

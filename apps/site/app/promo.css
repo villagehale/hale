@@ -1395,10 +1395,24 @@
   text-align: center;
 }
 .rd .bf-count {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.4em;
+  max-width: 100%;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+.rd .bf-count.is-hold {
+  visibility: hidden;
+}
+.rd .bf-count-time {
+  display: inline-block;
+  min-width: 8ch;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
 }
 .rd .bf-banner-actions {
   display: flex;
@@ -1415,10 +1429,40 @@
 .rd [data-bf-sticky="1"] {
   min-width: 0;
 }
-.rd [data-bf-sticky="1"] span {
+.rd [data-bf-sticky="1"] > span {
   overflow-wrap: anywhere;
 }
+.rd [data-bf-sticky="1"] small {
+  max-width: 100%;
+  white-space: nowrap;
+}
+.rd [data-bf-sticky="1"] small:not(:has(.bf-count)) {
+  display: none;
+}
+.rd.promo-sticky[data-promo-phase="black_friday"] .promo-sticky-btn {
+  padding: 0 14px;
+}
+.rd [data-bf-sticky="1"] .bf-count,
+.rd [data-bf-sticky="1"] .bf-count span {
+  gap: 0.3em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
 @media (max-width: 640px) {
+  .rd.bf-banner .bf-count {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.15em;
+    white-space: normal;
+  }
+  .rd.bf-banner .bf-count-when,
+  .rd.bf-banner .bf-count-left {
+    white-space: nowrap;
+  }
   .rd.bf-banner {
     padding: 8px 12px;
   }

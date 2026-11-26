@@ -3,6 +3,7 @@ import {
   BLACK_FRIDAY_WINDOW_END_MS,
   type BillingCurrency,
   PROMO_PRICE_DISPLAY,
+  blackFridayCountdownClock,
   currencyFromIpCountry,
   isBlackFridayWindowOpen,
   resolveBlackFridayNow,
@@ -24,7 +25,7 @@ type Env = Record<string, string | undefined>;
 type Search = Record<string, string | string[] | undefined>;
 
 export interface BlackFridayTier extends PromoTierPrice {
-  /** "C$39" or "US$29". The cards keep the plain "$39/yr" labels. */
+  /** Plain dollars, "$39". The cards and buttons use "$39/yr". */
   banner: string;
 }
 
@@ -211,4 +212,28 @@ export function blackFridayCountdownCopy(
   if (locale === 'fr') return 'Se termine vendredi à minuit';
   if (locale === 'zh') return '周五午夜结束';
   return 'Ends Friday at midnight';
+}
+
+/** Width reserved for the ticking clock before the visitor's zone is known. */
+export const BLACK_FRIDAY_COUNTDOWN_HOLD = '88:88:88';
+
+/** Words in front of the clock. The digits sit in their own tabular span. */
+export function blackFridayEndsInLabel(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return 'Se termine dans';
+  if (locale === 'zh') return '剩余';
+  return 'Ends in';
+}
+
+/** The clock line beside the midnight sentence. Hidden with that sentence at zero. */
+export function blackFridayEndsInCopy(locale: 'en' | 'fr' | 'zh', clock: string): string {
+  return `${blackFridayEndsInLabel(locale)} ${clock}`;
+}
+
+export function blackFridayCountdownPair(
+  locale: 'en' | 'fr' | 'zh',
+  remainingMs: number,
+): { when: string; left: string } | null {
+  const when = blackFridayCountdownCopy(locale, remainingMs);
+  if (!when) return null;
+  return { when, left: blackFridayEndsInCopy(locale, blackFridayCountdownClock(remainingMs)) };
 }

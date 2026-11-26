@@ -4,6 +4,7 @@ import {
   BLACK_FRIDAY_WINDOW_END_ISO,
   BLACK_FRIDAY_WINDOW_END_MS,
   BLACK_FRIDAY_WINDOW_START_ISO,
+  blackFridayCountdownClock,
   blackFridayCountdownRemainingMs,
   blackFridayVisitorCountdownEndMs,
   isBlackFridayWindowOpen,
@@ -29,6 +30,16 @@ describe('Black Friday window', () => {
     expect(blackFridayCountdownRemainingMs(at, 'America/New_York')).toBe(0);
     expect(blackFridayCountdownRemainingMs(at - 1000, 'America/New_York')).toBe(1000);
     expect(isBlackFridayWindowOpen(new Date(at))).toBe(true);
+  });
+
+  it('formats the countdown as HH:MM:SS, including more than a day and zero', () => {
+    expect(blackFridayCountdownClock(0)).toBe('00:00:00');
+    expect(blackFridayCountdownClock(-1)).toBe('00:00:00');
+    expect(blackFridayCountdownClock((1 * 3600 + 2 * 60 + 3) * 1000 + 999)).toBe('01:02:03');
+    const thursdayNoonToronto = Date.parse('2026-11-26T17:00:00.000Z');
+    const remaining = blackFridayCountdownRemainingMs(thursdayNoonToronto, 'America/Toronto');
+    expect(remaining).toBeGreaterThan(24 * 60 * 60 * 1000);
+    expect(blackFridayCountdownClock(remaining)).toBe('35:59:59');
   });
 
   it('caps a Hawaii countdown at the gate end', () => {
