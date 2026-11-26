@@ -40,7 +40,7 @@ describe('/checkout/success', () => {
 
   it('renders a neutral unpaid state without a purchase claim or conversion', async () => {
     const html = renderToStaticMarkup(await CheckoutSuccessPage(EN));
-    expect(html).not.toContain('You&#x27;re in.');
+    expect(html).not.toContain('You’re in.');
     expect(html).toContain('Checkout');
     expect(html).toContain('This page confirms a payment after Stripe has taken it.');
     expect(html).toContain('Open Hale');
@@ -69,7 +69,7 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_1' }),
       }),
     );
-    expect(html).toContain('You&#x27;re in.');
+    expect(html).toContain('You’re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('sms:+16462352164');
   });
@@ -145,7 +145,7 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_unpaid' }),
       }),
     );
-    expect(html).not.toContain('You&#x27;re in.');
+    expect(html).not.toContain('You’re in.');
     expect(html).toContain('Checkout');
     expect(html).not.toContain('Text Hale');
     expect(html).not.toContain('GooglePurchaseConversion');
@@ -231,7 +231,7 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_bound' }),
       }),
     );
-    expect(html).toContain('You&#x27;re in.');
+    expect(html).toContain('You’re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('href="/text"');
     expect(html).toContain('data-cta-placement="checkout_success"');
@@ -391,7 +391,7 @@ function bundle(locale: Locale): Record<string, string> {
 
 describe('with the flag off', () => {
   it.each([
-    ['en', 'You&#x27;re in.', 'Text Hale to start.'],
+    ['en', 'You’re in.', 'Text Hale to start.'],
     ['fr', 'C’est fait.', 'Texte Hale pour commencer.'],
     ['zh', '已经完成。', '给 Hale 发条 iMessage 就能开始。'],
   ] as const)(
@@ -520,7 +520,7 @@ describe('with the flag on', () => {
       withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You&#x27;re in.</h1>');
+      expect(main).toContain('<h1 class="sp-h1">You’re in.</h1>');
       expect(main).toContain('<p class="sp-lede">Text Hale to start.</p>');
       expect(main).toContain('data-cta-placement="checkout_success"');
       expect(main).toContain('Hale’s number: (555) 555-0100');
@@ -535,7 +535,7 @@ describe('with the flag on', () => {
       if (ua) withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You&#x27;re in.</h1>');
+      expect(main).toContain('<h1 class="sp-h1">You’re in.</h1>');
       expect(main).toContain('Text Hale from your phone to start.');
       expect(main).toContain('<svg');
       expect(main).toContain('Hale’s number: (555) 555-0100');
@@ -626,7 +626,7 @@ describe('with the flag on', () => {
   it('keeps paid sessions on today’s page when hale-web sends no view', async () => {
     stubFacts(undefined);
     const main = mainOf(await renderPage());
-    expect(main).toContain('You&#x27;re in.');
+    expect(main).toContain('You’re in.');
     expect(main).toContain('You’re on Plus.');
     expect(main).toContain('Text Hale to start.');
   });
@@ -687,9 +687,9 @@ describe('with the flag on', () => {
       stubFacts(view, over);
       return (await generateMetadata(pageInput('en'))).title;
     };
-    expect(await titleFor({ state: 'plan_active' })).toBe("You're in · Hale");
-    expect(await titleFor({ state: 'upgraded' })).toBe("You're in · Hale");
-    expect(await titleFor({ state: 'new_visitor' })).toBe("You're in · Hale");
+    expect(await titleFor({ state: 'plan_active' })).toBe('You’re in · Hale');
+    expect(await titleFor({ state: 'upgraded' })).toBe('You’re in · Hale');
+    expect(await titleFor({ state: 'new_visitor' })).toBe('You’re in · Hale');
     for (const state of [
       'already_on_plan',
       'pending',

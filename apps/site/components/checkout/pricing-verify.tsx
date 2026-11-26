@@ -139,93 +139,97 @@ export function PricingCheckoutVerify({
 
   if (bound) {
     return (
-      <>
-        <h1 className="sp-h1">{copy.heading}</h1>
-        {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
-        <p className="sp-lede">{onPlan ? copy.alreadyOnPlan : copy.lede}</p>
-        <div className="sp-cta">
-          <TextDoor
-            className="btn btn-hero"
-            placement="checkout_success"
-            locale={locale}
-            smsNumber={smsNumber}
-            prefill={prefill}
-            mode="sms"
-          >
-            {copy.textHale}
-          </TextDoor>
+      <div className="sp-grid">
+        <div className="sp-copy sp-checkout">
+          <h1 className="sp-h1">{copy.heading}</h1>
+          {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
+          <p className="sp-lede">{onPlan ? copy.alreadyOnPlan : copy.lede}</p>
+          <div className="sp-cta">
+            <TextDoor
+              className="btn btn-hero"
+              placement="checkout_success"
+              locale={locale}
+              smsNumber={smsNumber}
+              prefill={prefill}
+              mode="sms"
+            >
+              {copy.textHale}
+            </TextDoor>
+          </div>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <h1 className="sp-h1">{copy.heading}</h1>
-      {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
-      <p className="sp-lede">{note}</p>
-      {status === 'sent' ? <p className="sp-lede">{copy.codeHint}</p> : null}
-      <form className="sp-verify" onSubmit={confirm}>
-        <label htmlFor="pricing-phone">
-          {copy.phoneLabel}
-          <input
-            id="pricing-phone"
-            className="ph-mask"
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            inputMode="tel"
-            value={phone}
-            readOnly={!editing}
-            onChange={(event) => setPhone(event.target.value)}
-          />
-        </label>
-        {editing ? (
-          <button
-            className="btn btn-hero"
-            type="button"
-            disabled={pending || phone.trim() === ''}
-            onClick={() => send(phone, true)}
-          >
-            {copy.saveNumber}
-          </button>
-        ) : (
-          <>
-            <label htmlFor="pricing-code">
-              {copy.codeLabel}
-              <input
-                id="pricing-code"
-                className="ph-mask"
-                name="code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-              />
-            </label>
-            <div className="sp-cta">
-              <button
-                className="btn btn-hero"
-                type="submit"
-                disabled={pending || code.trim() === ''}
-              >
-                {copy.confirm}
-              </button>
-              <button
-                className="sp-btn2"
-                type="button"
-                disabled={pending}
-                onClick={() => send(null, true)}
-              >
-                {copy.resend}
-              </button>
-              <button className="sp-btn2" type="button" onClick={() => setEditing(true)}>
-                {copy.editNumber}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-    </>
+    <div className="sp-grid">
+      <div className="sp-copy sp-checkout">
+        <h1 className="sp-h1">{copy.heading}</h1>
+        {copy.plan ? <p className="sp-lede">{copy.plan}</p> : null}
+        <p className="sp-lede">{note}</p>
+        {status === 'sent' ? <p className="sp-lede">{copy.codeHint}</p> : null}
+        <form className="sp-verify" onSubmit={confirm}>
+          <label htmlFor="pricing-phone">
+            {copy.phoneLabel}
+            <input
+              id="pricing-phone"
+              className="ph-mask"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="tel"
+              value={phone}
+              readOnly={!editing}
+              onChange={(event) => setPhone(event.target.value)}
+            />
+          </label>
+          {editing ? (
+            <button
+              className="btn btn-hero"
+              type="button"
+              disabled={pending || phone.trim() === ''}
+              onClick={() => send(phone, true)}
+            >
+              {copy.saveNumber}
+            </button>
+          ) : (
+            <>
+              <label htmlFor="pricing-code">
+                {copy.codeLabel}
+                <input
+                  id="pricing-code"
+                  className="ph-mask"
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                />
+              </label>
+              <div className="sp-cta">
+                <button
+                  className="btn btn-hero"
+                  type="submit"
+                  disabled={pending || code.trim() === ''}
+                >
+                  {copy.confirm}
+                </button>
+                <button
+                  className="sp-btn2"
+                  type="button"
+                  disabled={pending}
+                  onClick={() => send(null, true)}
+                >
+                  {copy.resend}
+                </button>
+                <button className="sp-btn2" type="button" onClick={() => setEditing(true)}>
+                  {copy.editNumber}
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    </div>
   );
 }

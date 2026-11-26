@@ -158,7 +158,7 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
             />
           ) : view ? (
             <div className="sp-grid">
-              <div className="sp-copy">
+              <div className="sp-copy sp-checkout">
                 <CheckoutState
                   view={view}
                   locale={locale}
@@ -169,24 +169,26 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
               </div>
             </div>
           ) : (
-            <>
-              <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
-              {paid ? (
-                <>
-                  {planName ? <p className="sp-lede">{t('plan', { plan: planName })}</p> : null}
-                  <p className="sp-lede">{t('lede')}</p>
+            <div className="sp-grid">
+              <div className="sp-copy sp-checkout">
+                <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
+                {paid ? (
+                  <>
+                    {planName ? <p className="sp-lede">{t('plan', { plan: planName })}</p> : null}
+                    <p className="sp-lede">{t('lede')}</p>
+                    <p className="sp-lede">
+                      {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
+                      {textHref ? ' · ' : null}
+                      <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+                    </p>
+                  </>
+                ) : (
                   <p className="sp-lede">
-                    {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
-                    {textHref ? ' · ' : null}
-                    <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+                    {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
                   </p>
-                </>
-              ) : (
-                <p className="sp-lede">
-                  {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
-                </p>
-              )}
-            </>
+                )}
+              </div>
+            </div>
           )}
         </main>
       </div>

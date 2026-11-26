@@ -145,13 +145,13 @@
     "saveNumber": "Envoyer un code à ce numéro",
     "wrongCode": "Ce code ne correspond pas.",
     "expired": "Ce code a expiré. Envoie-en un autre.",
-    "locked": "Trop d'essais. Envoie un autre code.",
-    "limited": "C'est le maximum de codes pour le moment.",
+    "locked": "Trop d’essais. Envoie un autre code.",
+    "limited": "C’est le maximum de codes pour le moment.",
     "cooldown": "Attends un moment, puis renvoie.",
-    "notSent": "Nous n'avons pas pu envoyer de code.",
+    "notSent": "Nous n’avons pas pu envoyer de code.",
     "phoneInvalid": "Entre un numéro du Canada ou des États-Unis.",
     "confirm": "Confirmer",
-    "paymentEnded": "Ce paiement n'est plus actif.",
+    "paymentEnded": "Ce paiement n’est plus actif.",
     "alreadyOnPlan": "Ce numéro a déjà un forfait."
   },
   "Text": {
