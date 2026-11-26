@@ -69,6 +69,8 @@ describe('captureConsentChoice', () => {
 
 describe('POST /api/analytics/consent', () => {
   it('returns the named skip and does not call PostHog while the flag is off', async () => {
+    // The flags-on CI job forces FUNNEL_ATTRIBUTION_ENABLED, so pin the dark path.
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', '');
     const fetchImpl = vi.fn();
     vi.stubGlobal('fetch', fetchImpl);
     const res = await POST(
@@ -79,6 +81,24 @@ describe('POST /api/analytics/consent', () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'flag_off' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('names not_configured and does not call PostHog when the flag is on and no key is set', async () => {
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', '');
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
+    const fetchImpl = vi.fn();
+    vi.stubGlobal('fetch', fetchImpl);
+    const res = await POST(
+      new Request('https://www.villagehale.com/api/analytics/consent', {
+        method: 'POST',
+        body: JSON.stringify({ choice: 'granted' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'not_configured' });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(res.headers.get('set-cookie')).toBeNull();
   });
