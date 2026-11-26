@@ -1,4 +1,5 @@
 import { APP_URL } from '~/lib/app-url';
+import { vercelProtectionBypassHeaders } from './checkout-success';
 
 /**
  * What the success page needs from hale-web. The browser never calls the app.
@@ -44,7 +45,7 @@ export async function openPricingCheckout(
   try {
     const res = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...vercelProtectionBypassHeaders() },
       body: JSON.stringify({ sessionId }),
       cache: 'no-store',
     });

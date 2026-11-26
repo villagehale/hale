@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type CheckoutSessionFacts,
   billingThreadNoticesEnabled,
@@ -14,7 +14,9 @@ import {
   googlePurchaseFromPaidSession,
   metaPixelIdFromEnv,
   metaPurchaseFromPaidSession,
+  vercelProtectionBypassHeaders,
 } from './checkout-success.js';
+import { openPricingCheckout } from './pricing-checkout-open';
 
 const PAID = {
   transactionId: 'cs_test_1',
@@ -128,6 +130,47 @@ describe('conversions flag and send_to', () => {
         pixelId: 'nope, ',
       }),
     ).toBeNull();
+  });
+});
+
+describe('the Preview bypass on calls to hale-web', () => {
+  const ok = () => new Response(JSON.stringify(PAID), { status: 200 });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('sends the bypass header only when the secret is set', async () => {
+    expect(vercelProtectionBypassHeaders({})).toEqual({});
+    expect(vercelProtectionBypassHeaders({ VERCEL_AUTOMATION_BYPASS_SECRET: '  ' })).toEqual({});
+    expect(
+      vercelProtectionBypassHeaders({ VERCEL_AUTOMATION_BYPASS_SECRET: 'bypass-secret' }),
+    ).toEqual({ 'x-vercel-protection-bypass': 'bypass-secret' });
+
+    const fetchImpl = vi.fn().mockResolvedValue(ok());
+    vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', '');
+    await fetchCheckoutSessionFacts('cs_test_1', 'https://app.villagehale.com', fetchImpl);
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).headers).toBeUndefined();
+
+    vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', 'bypass-secret');
+    await fetchCheckoutSessionFacts('cs_test_1', 'https://app.villagehale.com', fetchImpl);
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).headers).toEqual({
+      'x-vercel-protection-bypass': 'bypass-secret',
+    });
+
+    fetchImpl.mockClear();
+    vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', '');
+    await openPricingCheckout('cs_test_1', 'https://app.villagehale.com', fetchImpl);
+    expect((fetchImpl.mock.calls[0]?.[1] as RequestInit).headers).toEqual({
+      'content-type': 'application/json',
+    });
+
+    vi.stubEnv('VERCEL_AUTOMATION_BYPASS_SECRET', 'bypass-secret');
+    await openPricingCheckout('cs_test_1', 'https://app.villagehale.com', fetchImpl);
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).headers).toEqual({
+      'content-type': 'application/json',
+      'x-vercel-protection-bypass': 'bypass-secret',
+    });
   });
 });
 
