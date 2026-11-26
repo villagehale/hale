@@ -2,10 +2,11 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { CheckoutState } from '~/components/checkout/checkout-state';
 import { PricingCheckoutVerify } from '~/components/checkout/pricing-verify';
-import { shoreSrc } from '~/components/redesign/assets';
-import { tx } from '~/components/redesign/tx';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
+import { PricingHeroCopy } from '~/components/redesign/pricing';
+import { ShoreArt } from '~/components/redesign/shore-hero';
+import { tx } from '~/components/redesign/tx';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { absolutePageUrl } from '~/i18n/metadata';
@@ -26,10 +27,13 @@ import {
   paidPlanName,
 } from '~/lib/billing/checkout-success';
 import { openPricingCheckout } from '~/lib/billing/pricing-checkout-open';
+import { sitePriceSurface } from '~/lib/billing/site-price-surface';
+import { visitorCheckoutCurrency } from '~/lib/billing/visitor-currency';
 import { type Platform, platformFromUa } from '~/lib/chooser';
 import { intakePrefill } from '~/lib/intake-prefill';
-import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
+import { requestHolidayPromo } from '~/lib/promo/server';
 import { PLUS_SIGNUP_LINE, REFUND_EMAIL } from '~/lib/site/narrative';
+import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { buildSmsHref, readSmsNumber } from '~/lib/text-entry';
 
 interface PageProps {
@@ -122,112 +126,121 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
         : null;
   const view = direct ? null : checkoutViewForPage(sessionId, facts);
   const platform = view ? await requestPlatform() : 'unknown';
+  const promo = await requestHolidayPromo(locale, search);
+  const currency = (await visitorCheckoutCurrency()) ?? 'CAD';
 
   return (
     <>
       <SiteHeader locale={locale} />
-      <div className="rd">
-        <div className="stage sp-stage">
-          <img className="shore-art" src={shoreSrc} alt="" aria-hidden="true" />
-          <span className="shore-drift sky" aria-hidden="true" />
-          <span className="shore-drift sea" aria-hidden="true" />
-          <span className="shore-scrim" aria-hidden="true" />
-          <main id="main" className="sp-hero">
-            {direct && sessionId ? (
-              <PricingCheckoutVerify
-                sessionId={sessionId}
-                initialPhone={direct.phone}
-                initialStatus={direct.status}
-                initialBound={direct.bound}
-                tier={direct.tier}
+      <div className="rd checkout-band">
+        <div className="stage sp-stage" aria-hidden="true">
+          <ShoreArt />
+          <div className="sp-hero">
+            <div className="checkout-sizer">
+              <PricingHeroCopy
                 locale={locale}
-                smsNumber={smsNumber ?? ''}
-                prefill={intakePrefill(locale)}
-                refundEmail={REFUND_EMAIL}
-                copy={{
-                  memberPlus: t('memberPlus'),
-                  memberMax: t('memberMax'),
-                  welcomePlus: t('welcomePlus'),
-                  welcomeMax: t('welcomeMax'),
-                  priceLocked: t('priceLocked'),
-                  verifyPrompt: t('verifyPrompt'),
-                  sayHi: t('sayHi'),
-                  inPlus: t('inPlus'),
-                  inMax: t('inMax'),
-                  knowsTitle: tx(locale, 'Knows your family'),
-                  knowsLine: t('knowsLine'),
-                  findsTitle: tx(locale, 'Finds what fits'),
-                  findsLine: t('findsLine'),
-                  chatTitle: tx(locale, 'Runs the group chat'),
-                  chatLine: t('chatLine'),
-                  spotTitle: tx(locale, 'Gets the spot'),
-                  spotLine: tx(locale, PLUS_SIGNUP_LINE),
-                  maxEverything: tx(locale, 'Everything in Plus'),
-                  maxLimits: t('maxLimits'),
-                  maxSupport: tx(locale, 'Priority support'),
-                  refund: t.raw('refund'),
-                  codeSent: t('codeSent'),
-                  codeHint: t('codeHint'),
-                  phoneLabel: t('phoneLabel'),
-                  codeLabel: t('codeLabel'),
-                  resend: t('resend'),
-                  editNumber: t('editNumber'),
-                  saveNumber: t('saveNumber'),
-                  wrongCode: t('wrongCode'),
-                  expired: t('expired'),
-                  locked: t('locked'),
-                  limited: t('limited'),
-                  cooldown: t('cooldown'),
-                  notSent: t('notSent'),
-                  phoneInvalid: t('phoneInvalid'),
-                  confirm: t('confirm'),
-                  paymentEnded: t('paymentEnded'),
-                  alreadyOnPlan: t('alreadyOnPlan'),
-                  textHale: t('textHale'),
-                }}
+                promo={promo}
+                priceSurface={sitePriceSurface()}
+                currency={currency}
+                decorative
               />
-            ) : view ? (
-              <div className="sp-grid">
-                <div className="hs-glass sp-card sp-aside">
-                  <CheckoutState
-                    view={view}
-                    locale={locale}
-                    sessionId={sessionId}
-                    smsNumber={smsNumber}
-                    platform={platform}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="sp-grid">
-                <div className="hs-glass sp-card sp-aside">
-                  <h1 className="hs-h2">{paid ? t('heading') : t('unpaidHeading')}</h1>
-                  {paid ? (
-                    <>
-                      {planName ? (
-                        <p className="hs-p" style={successCopyStyle}>
-                          {t('plan', { plan: planName })}
-                        </p>
-                      ) : null}
-                      <p className="hs-p" style={successCopyStyle}>
-                        {t('lede')}
-                      </p>
-                      <p className="hs-p" style={successCopyStyle}>
-                        {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
-                        {textHref ? ' · ' : null}
-                        <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
-                      </p>
-                    </>
-                  ) : (
-                    <p className="hs-p" style={successCopyStyle}>
-                      {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </main>
+            </div>
+          </div>
         </div>
+        <main id="main" className="checkout-over">
+          {direct && sessionId ? (
+            <PricingCheckoutVerify
+              sessionId={sessionId}
+              initialPhone={direct.phone}
+              initialStatus={direct.status}
+              initialBound={direct.bound}
+              tier={direct.tier}
+              locale={locale}
+              smsNumber={smsNumber ?? ''}
+              prefill={intakePrefill(locale)}
+              refundEmail={REFUND_EMAIL}
+              copy={{
+                memberPlus: t('memberPlus'),
+                memberMax: t('memberMax'),
+                welcomePlus: t('welcomePlus'),
+                welcomeMax: t('welcomeMax'),
+                priceLocked: t('priceLocked'),
+                verifyPrompt: t('verifyPrompt'),
+                sayHi: t('sayHi'),
+                inPlus: t('inPlus'),
+                inMax: t('inMax'),
+                knowsTitle: tx(locale, 'Knows your family'),
+                knowsLine: t('knowsLine'),
+                findsTitle: tx(locale, 'Finds what fits'),
+                findsLine: t('findsLine'),
+                chatTitle: tx(locale, 'Runs the group chat'),
+                chatLine: t('chatLine'),
+                spotTitle: tx(locale, 'Gets the spot'),
+                spotLine: tx(locale, PLUS_SIGNUP_LINE),
+                maxEverything: tx(locale, 'Everything in Plus'),
+                maxLimits: t('maxLimits'),
+                maxSupport: tx(locale, 'Priority support'),
+                refund: t.raw('refund'),
+                codeSent: t('codeSent'),
+                phoneLabel: t('phoneLabel'),
+                codeLabel: t('codeLabel'),
+                resend: t('resend'),
+                editNumber: t('editNumber'),
+                saveNumber: t('saveNumber'),
+                wrongCode: t('wrongCode'),
+                expired: t('expired'),
+                locked: t('locked'),
+                limited: t('limited'),
+                cooldown: t('cooldown'),
+                notSent: t('notSent'),
+                phoneInvalid: t('phoneInvalid'),
+                confirm: t('confirm'),
+                paymentEnded: t('paymentEnded'),
+                alreadyOnPlan: t('alreadyOnPlan'),
+                textHale: t('textHale'),
+              }}
+            />
+          ) : view ? (
+            <div className="sp-grid">
+              <div className="hs-glass sp-card sp-aside">
+                <CheckoutState
+                  view={view}
+                  locale={locale}
+                  sessionId={sessionId}
+                  smsNumber={smsNumber}
+                  platform={platform}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="sp-grid">
+              <div className="hs-glass sp-card sp-aside">
+                <h1 className="hs-h2">{paid ? t('heading') : t('unpaidHeading')}</h1>
+                {paid ? (
+                  <>
+                    {planName ? (
+                      <p className="hs-p" style={successCopyStyle}>
+                        {t('plan', { plan: planName })}
+                      </p>
+                    ) : null}
+                    <p className="hs-p" style={successCopyStyle}>
+                      {t('lede')}
+                    </p>
+                    <p className="hs-p" style={successCopyStyle}>
+                      {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
+                      {textHref ? ' · ' : null}
+                      <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+                    </p>
+                  </>
+                ) : (
+                  <p className="hs-p" style={successCopyStyle}>
+                    {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
       </div>
       <SiteFooter locale={locale} />
       {googlePurchase ? <GooglePurchaseConversion {...googlePurchase} /> : null}

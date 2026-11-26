@@ -188,6 +188,17 @@ describe('/checkout/success', () => {
     );
     const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
     expect(main).toContain('We sent a code to this number.');
+    expect(main).toContain('One quick step: confirm your number so Hale knows it’s you.');
+    expect(main).not.toContain('Enter it here.');
+    expect(html).not.toContain('Enter it here.');
+    expect(html).not.toContain('Entre-le ici.');
+    expect(html).not.toContain('在这里输入。');
+    expect(html).toContain('checkout-band');
+    expect(html).toContain('checkout-sizer');
+    expect(html).toContain('sp-h1');
+    expect(main).not.toContain('sp-h1');
+    expect(main).toContain('hs-tier-cta');
+    expect(main).not.toContain('sp-cta');
     expect(main).toContain('+14165550100');
     expect(main).toContain('Confirm');
     expect(main).toContain('Send again');
@@ -285,6 +296,9 @@ describe('/checkout/success', () => {
     );
     expect(html).toContain('Welcome to Hale Plus.');
     expect(html).toContain('Say hi. Send a flyer or a screenshot and it keeps the dates.');
+    expect(html).toContain('btn btn-hero');
+    expect(html).toContain('hs-tier-cta');
+    expect(html).not.toContain('sp-cta');
     expect(html).not.toContain('You’re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('href="/text"');
@@ -845,6 +859,14 @@ describe('the CheckoutSuccess copy', () => {
     }
     for (const locale of LOCALES) {
       expect(bundle(locale).refund).toContain('{email}');
+    }
+  });
+
+  it('drops the extra code-entry line in every language', () => {
+    for (const locale of LOCALES) {
+      const copy = bundle(locale);
+      expect(copy.codeHint).toBeUndefined();
+      expect(Object.values(copy).join('\n')).not.toMatch(/Enter it here|Entre-le ici|在这里输入/);
     }
   });
 

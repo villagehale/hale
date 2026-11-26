@@ -27,7 +27,6 @@ export type PricingVerifyCopy = {
   maxSupport: string;
   refund: string;
   codeSent: string;
-  codeHint: string;
   phoneLabel: string;
   codeLabel: string;
   resend: string;
@@ -47,6 +46,15 @@ export type PricingVerifyCopy = {
 };
 
 const copyStyle = { fontFamily: 'var(--font-ui)', color: 'var(--navy)' } as const;
+const titleStyle = {
+  display: 'block',
+  fontFamily: 'var(--font-ui)',
+  fontWeight: 600,
+  color: 'var(--navy)',
+} as const;
+/** Pricing-card CTAs sit at the start of the card. `hs-tier-cta` pins to the
+ * bottom of a tier card; here it only supplies that left alignment. */
+const leftCta = { marginTop: 'var(--s5)', paddingTop: 0 } as const;
 
 type CodeResponse = {
   status?: string;
@@ -99,9 +107,9 @@ function Benefit({ title, line }: { title: string; line?: string }) {
   return (
     <li>
       <Check />
-      <span style={copyStyle}>
-        <b style={{ display: 'block' }}>{title}</b>
-        {line ? <span style={{ fontWeight: 400 }}>{line}</span> : null}
+      <span>
+        <b style={titleStyle}>{title}</b>
+        {line ?? null}
       </span>
     </li>
   );
@@ -156,7 +164,7 @@ export function PricingCheckoutVerify({
   const [phone, setPhone] = useState(initialPhone ?? '');
   const [editing, setEditing] = useState(initialStatus === 'invalid_phone' || !initialPhone);
   const [code, setCode] = useState('');
-  const [status, setStatus] = useState(initialStatus);
+  const [_status, setStatus] = useState(initialStatus);
   const [note, setNote] = useState(messageFor(initialStatus, copy));
   const [bound, setBound] = useState(initialBound);
   const [onPlan, setOnPlan] = useState(false);
@@ -252,7 +260,7 @@ export function PricingCheckoutVerify({
             {copy.alreadyOnPlan}
           </p>
         ) : null}
-        <div className="sp-cta">
+        <div className="hs-tier-cta" style={leftCta}>
           <TextDoor
             className="btn btn-hero"
             placement="checkout_success"
@@ -267,10 +275,7 @@ export function PricingCheckoutVerify({
             {copy.textHale}
           </TextDoor>
         </div>
-        <p
-          className="hs-meta"
-          style={{ ...copyStyle, marginTop: 'var(--s3)', textAlign: 'center' }}
-        >
+        <p className="hs-meta" style={{ ...copyStyle, marginTop: 'var(--s3)' }}>
           {copy.sayHi}
         </p>
       </>,
@@ -285,11 +290,6 @@ export function PricingCheckoutVerify({
       <p className="hs-p" style={copyStyle}>
         {note}
       </p>
-      {status === 'sent' ? (
-        <p className="hs-p" style={copyStyle}>
-          {copy.codeHint}
-        </p>
-      ) : null}
       <form onSubmit={confirm}>
         <div className="sp-verify" style={{ margin: 'var(--s4) auto 0', width: '100%' }}>
           <label htmlFor="pricing-phone">
@@ -321,7 +321,7 @@ export function PricingCheckoutVerify({
             </label>
           )}
         </div>
-        <div className="sp-cta" style={{ flexDirection: 'column' }}>
+        <div className="hs-tier-cta" style={leftCta}>
           {editing ? (
             <button
               className="btn btn-hero"
@@ -336,22 +336,32 @@ export function PricingCheckoutVerify({
               {copy.confirm}
             </button>
           )}
-          {editing ? null : (
-            <div className="sp-cta" style={{ marginTop: 0, width: '100%' }}>
-              <button
-                className="rd-textlink"
-                type="button"
-                disabled={pending}
-                onClick={() => send(null, true)}
-              >
-                <span>{copy.resend}</span>
-              </button>
-              <button className="rd-textlink" type="button" onClick={() => setEditing(true)}>
-                <span>{copy.editNumber}</span>
-              </button>
-            </div>
-          )}
         </div>
+        {editing ? null : (
+          <div
+            className="hs-tier-cta"
+            style={{
+              ...leftCta,
+              marginTop: 'var(--s4)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-start',
+              gap: 'var(--s5)',
+            }}
+          >
+            <button
+              className="rd-textlink"
+              type="button"
+              disabled={pending}
+              onClick={() => send(null, true)}
+            >
+              <span>{copy.resend}</span>
+            </button>
+            <button className="rd-textlink" type="button" onClick={() => setEditing(true)}>
+              <span>{copy.editNumber}</span>
+            </button>
+          </div>
+        )}
       </form>
     </div>,
   );
