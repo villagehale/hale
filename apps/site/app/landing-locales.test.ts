@@ -35,7 +35,10 @@ describe('every locale renders the redesign', () => {
   });
 
   it('opens on the approved H1 in each language', () => {
-    expect(HTML.en).toContain('Every family has a default parent.<br/>Now it’s Hale.');
+    expect(HTML.en).toContain('class="h1-lead"');
+    expect(HTML.en).toContain('Every family has a default parent.');
+    expect(HTML.en).toContain('class="h1-name"');
+    expect(HTML.en).toContain('Now it’s Hale.');
     expect(HTML.en).toContain('The AI agent for family life');
     expect(HTML.en).toContain('It knows your kids, finds what fits');
     expect(HTML.en).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');

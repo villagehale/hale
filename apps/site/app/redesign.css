@@ -212,6 +212,31 @@
 /* Approved two-line H1. These sizes keep each line on one row. French stays on h1-fr. */
 .rd .hero h1:lang(en) { font-size: 81px; }
 .rd .hero h1:lang(zh) { font-size: 80px; }
+/* Variant A. Line 1 is the same face at 60% and a lighter weight. Line 2 stays
+   the full headline size, bold, in brand navy, and does not wrap. */
+.rd .hero h1 .h1-lead,
+.rd .hero h1 .h1-name { display: block; }
+.rd .hero h1 .h1-lead {
+  font-size: 0.6em;
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.rd .hero h1 .h1-name {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+/* French line 2 is the long one. Full size until a narrow phone, then scale to fit. */
+.rd .hero h1.h1-fr .h1-name { font-size: clamp(22px, 8.5vw, 1em); }
+/* Chinese line 1 otherwise splits 一 off 位 on a phone. One line stays intact. */
+@media (max-width: 640px) {
+  .rd .hero h1:lang(zh) .h1-lead { font-size: clamp(20px, 6.6vw, 0.6em); }
+}
 .rd h1 {
   margin-top: var(--s5);
   font-family: var(--font-display);
