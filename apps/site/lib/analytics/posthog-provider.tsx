@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import type { PostHog } from 'posthog-js';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { Locale } from '~/i18n/routing';
-import { CONSENT_EVENT, readConsent } from '~/lib/site/consent';
+import { CONSENT_EVENT, markMeasurementStarted, readConsent } from '~/lib/site/consent';
 import { readFirstTouchAttribution } from './attribution';
 import { type CapturedEvent, type EventProperties, PAGEVIEW, buildEvent } from './events';
 import { posthogReplayEnabled, posthogWebEnabled } from './flags';
@@ -208,6 +208,7 @@ export function PostHogProvider({
           // super properties. The switch is a URL change, so history_change counts it.
           posthog.register(buildEvent(PAGEVIEW, base).properties);
         }
+        markMeasurementStarted();
         if (hasAnalyticsOptOut()) {
           posthog.opt_out_capturing();
           return;

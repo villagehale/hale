@@ -6,7 +6,7 @@ import { CONSENT_STORAGE_KEY } from '~/lib/site/consent';
 
 /**
  * VIL-483: the public landing page is the ONE place Hale records a session, and
- * only after cookie consent, with inputs masked. The portal side, where nothing
+ * only when measurement is allowed, with inputs masked. The portal side, where nothing
  * records, is apps/web/lib/analytics/posthog-replay.test.ts.
  *
  * Each case boots the REAL posthog-js through the real PostHogProvider on the
@@ -109,6 +109,9 @@ describe('the landing page records, masked, after consent (VIL-483)', () => {
     document.body.innerHTML = '';
     window.localStorage.clear();
     window.sessionStorage.clear();
+    document.documentElement.removeAttribute('data-consent');
+    document.documentElement.removeAttribute('data-consent-mode');
+    document.documentElement.removeAttribute('data-gpc');
     // posthog-js keeps its lazy loaders and remote config on window, which outlive
     // vi.resetModules; a stale copy would make the next fresh client skip its boot.
     const w = window as unknown as Record<string, unknown>;
@@ -135,6 +138,21 @@ describe('the landing page records, masked, after consent (VIL-483)', () => {
     expect(boot.recordingStatus).not.toBe('disabled');
     expect(boot.maskAllInputs).toBe(true);
     expect(boot.persistence).toBe('memory');
+  });
+
+  it('starts in a default-on region with no stored choice', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    const boot = await bootLanding();
+    expect(boot.posthogRequests).toBeGreaterThan(0);
+    expect(boot.persistence).toBe('memory');
+  });
+
+  it('loads nothing when Global Privacy Control is set, even in a default-on region', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    document.documentElement.dataset.gpc = '1';
+    const boot = await bootLanding();
+    expect(boot.posthogRequests).toBe(0);
+    expect(boot.recorderRequested).toBe(false);
   });
 
   it('loads nothing, recorder included, before the visitor has chosen', async () => {

@@ -2,6 +2,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata, Viewport } from 'next';
 import { hasLocale } from 'next-intl';
 import localFont from 'next/font/local';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { AttributionCapture } from '~/components/attribution-capture';
 import { ConsentBanner } from '~/components/consent-banner';
@@ -12,6 +13,7 @@ import { metaPixelIdsWhenConversionsEnabled } from '~/lib/analytics/meta-pixel';
 import { PostHogProvider } from '~/lib/analytics/posthog-provider';
 import { MESSAGES_NO_FLASH_SCRIPT } from '~/lib/chooser';
 import { CONSENT_NO_FLASH_SCRIPT } from '~/lib/site/consent';
+import { consentDecisionFromHeaders } from '~/lib/site/consent-region';
 import { homeMetadata } from '~/lib/site/home-meta';
 import { shareQueryForRequest } from '~/lib/site/share-cards';
 import { NO_FLASH_SCRIPT, THEME_COLOR } from '~/lib/site/theme';
@@ -78,6 +80,11 @@ export function generateStaticParams(): { locale: Locale }[] {
   return routing.locales.map((locale) => ({ locale }));
 }
 
+// The banner copy depends on the request's geo headers. A static shell would
+// bake one region's notice into every visitor's HTML. Unknown geo stays opt-in
+// inside consentDecisionFromHeaders; this export keeps the render on the request.
+export const dynamic = 'force-dynamic';
+
 // No title template on this layout. Page titles are already full
 // "… · Hale" strings, and a template would suffix them twice.
 export async function generateMetadata({
@@ -114,10 +121,13 @@ export default async function RootLayout({
   const consent = getTranslator(locale, 'Consent');
   const footer = getTranslator(locale, 'Footer');
   const metaPixelIds = metaPixelIdsWhenConversionsEnabled();
+  const decision = consentDecisionFromHeaders(await headers());
 
   return (
     <html
       lang={locale}
+      data-consent-mode={decision.mode}
+      {...(decision.gpc ? { 'data-gpc': '1' } : {})}
       className={`${figtree.variable} ${sourceSerif.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
@@ -137,10 +147,14 @@ export default async function RootLayout({
         <ConsentBanner
           privacyHref={localeHref(locale, '/privacy')}
           text={consent('text')}
+          notice={consent('notice')}
           privacyLabel={footer('linkPrivacy')}
           rejectLabel={consent('reject')}
+          turnOffLabel={consent('turnOff')}
           acceptLabel={consent('accept')}
           regionLabel={consent('region')}
+          mode={decision.mode}
+          gpc={decision.gpc}
           pixelId={metaPixelIds.length > 0 ? metaPixelIds.join(',') : null}
         />
         <AttributionCapture />

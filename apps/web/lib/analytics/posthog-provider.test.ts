@@ -135,8 +135,8 @@ describe('privacy page PostHog disclosure', () => {
   it('says the app does not record and replay runs only on the marketing site', () => {
     expect(source).not.toContain('Session replay is on');
     expect(source).toContain('Session replay runs only on the marketing site');
-    expect(source).toContain('only after the visitor taps Accept in the cookie banner');
-    expect(source).toContain('app at app.villagehale.com does not record session replays');
+    expect(source).toContain('only when measurement is allowed on that visit');
+    expect(source).toMatch(/app at\s+app\.villagehale\.com does not record session replays/);
   });
 
   it('discloses masked session replay, error tracking, and opaque-id identity', () => {

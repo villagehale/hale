@@ -67,6 +67,14 @@ describe('installMetaPixel', () => {
     expect(document.querySelectorAll('script[src*="fbevents.js"]')).toHaveLength(1);
   });
 
+  it('does not init when the page address carries a checkout session id', () => {
+    window.history.replaceState(null, '', '/checkout/success?session_id=cs_test_secret');
+    installMetaPixel(OLD_ID);
+    expect(queue()).toEqual([]);
+    expect(document.querySelectorAll('script[src*="fbevents.js"]')).toHaveLength(0);
+    window.history.replaceState(null, '', '/');
+  });
+
   it('does not init again on a second call', () => {
     installMetaPixel(OLD_ID);
     installMetaPixel(`${OLD_ID},${NEW_ID}`);

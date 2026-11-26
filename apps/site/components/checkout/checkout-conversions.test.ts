@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
-import { writeConsent } from '~/lib/site/consent';
+import { resetConsentDocumentState, writeConsent } from '~/lib/site/consent';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -38,6 +38,11 @@ afterEach(() => {
   w.gtag = undefined;
   w.dataLayer = undefined;
   w.__haleAds = undefined;
+  document.documentElement.removeAttribute('data-consent');
+  document.documentElement.removeAttribute('data-consent-mode');
+  document.documentElement.removeAttribute('data-gpc');
+  resetConsentDocumentState();
+  window.history.replaceState(null, '', '/');
   vi.unstubAllGlobals();
 });
 
@@ -212,6 +217,117 @@ describe('purchase conversions across the pending state', () => {
       writeConsent('granted');
     });
     expect(googleConversions()).toHaveLength(1);
+    await act(async () => root.unmount());
+  });
+
+  it('fires Purchase in a default-on region with no stored choice', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111',
+          transactionId: 'cs_test_default_on',
+        }),
+      );
+    });
+    const fbq = (window as Window & { fbq?: { queue?: unknown[][] } }).fbq;
+    const queued = fbq?.queue ?? [];
+    expect(queued.filter(([method, name]) => method === 'track' && name === 'Purchase')).toEqual([
+      ['track', 'Purchase', { value: 59, currency: 'CAD' }, { eventID: 'cs_test_default_on' }],
+    ]);
+    expect(localStorage.getItem('hale-site-consent')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('does not fire Purchase when Global Privacy Control is set', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    document.documentElement.dataset.gpc = '1';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111',
+          transactionId: 'cs_test_gpc',
+        }),
+      );
+    });
+    expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_gpc')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('does not fire Purchase after an opt-out, even in a default-on region', async () => {
+    localStorage.setItem('hale-site-consent', 'denied');
+    document.documentElement.dataset.consentMode = 'opt-out';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111',
+          transactionId: 'cs_test_opt_out',
+        }),
+      );
+    });
+    expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    await act(async () => root.unmount());
+  });
+
+  it('does not fire Purchase on a receipt whose address carries the session id', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    window.history.replaceState(null, '', '/checkout/success?session_id=cs_test_secret');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MetaPurchaseConversion, {
+          ...BASE,
+          pixelId: '1111111111111111',
+          transactionId: 'cs_test_secret',
+        }),
+      );
+    });
+    expect((window as Window & { fbq?: unknown }).fbq).toBeUndefined();
+    expect(sessionStorage.getItem('hale.meta_purchase.cs_test_secret')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it('fires Google in a default-on region with no stored choice', async () => {
+    document.documentElement.dataset.consentMode = 'opt-out';
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(GooglePurchaseConversion, {
+          ...BASE,
+          sendTo: 'AW-1/test',
+          transactionId: 'cs_test_google_default',
+        }),
+      );
+    });
+    expect(googleConversions()).toEqual([
+      [
+        'event',
+        'conversion',
+        {
+          send_to: 'AW-1/test',
+          value: 59,
+          currency: 'CAD',
+          transaction_id: 'cs_test_google_default',
+        },
+      ],
+    ]);
     await act(async () => root.unmount());
   });
 

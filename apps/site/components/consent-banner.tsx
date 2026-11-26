@@ -12,7 +12,20 @@ import {
   denyMetaPixel,
   installMetaPixel,
 } from '~/lib/analytics/meta-pixel-client';
-import { CONSENT_OPEN_EVENT, readConsent, writeConsent } from '~/lib/site/consent';
+import { hasSecretQuery } from '~/lib/analytics/url-secrets';
+import {
+  CONSENT_OPEN_EVENT,
+  CONSENT_STORAGE_KEY,
+  type ConsentChoice,
+  browserGlobalPrivacyControl,
+  markMeasurementStarted,
+  measurementStartedHere,
+  readConsent,
+  readStoredConsent,
+  refuseMeasurementHere,
+  writeConsent,
+} from '~/lib/site/consent';
+import type { ConsentMode } from '~/lib/site/consent-region';
 
 /** Keeps the last ZH clause on one line so a single character is not stranded. */
 const ZH_UNBROKEN = '什么都不会加载。';
@@ -29,6 +42,25 @@ function ConsentSentence({ text }: { text: string }): ReactNode {
   );
 }
 
+function pageCarriesSecret(): boolean {
+  if (typeof window === 'undefined') return false;
+  return hasSecretQuery(window.location.search) || hasSecretQuery(window.location.hash);
+}
+
+function shutdownTrackers(reload: boolean): void {
+  denyGoogleAds();
+  clearGoogleClickCookies();
+  denyMetaPixel();
+  clearMetaClickCookies();
+  void import('posthog-js')
+    .then(({ default: posthog }) => {
+      if (posthog.__loaded) posthog.opt_out_capturing();
+    })
+    .finally(() => {
+      if (reload) window.location.reload();
+    });
+}
+
 function pixelIdsFromPropsOrEnv(pixelId: string | null | undefined): readonly string[] {
   if (pixelId) return parseMetaPixelIds(pixelId);
   if (process.env.NEXT_PUBLIC_CONVERSIONS_API_ENABLED !== 'true') return [];
@@ -38,37 +70,77 @@ function pixelIdsFromPropsOrEnv(pixelId: string | null | undefined): readonly st
 export function ConsentBanner({
   privacyHref,
   text,
+  notice,
   privacyLabel,
   rejectLabel,
+  turnOffLabel,
   acceptLabel,
   regionLabel,
+  mode,
+  gpc,
   pixelId = null,
 }: {
   privacyHref: string;
+  /** Opt-in copy: nothing loads until Accept. */
   text: string;
+  /** Opt-out copy: measurement is already on. */
+  notice: string;
   privacyLabel: string;
   rejectLabel: string;
+  turnOffLabel: string;
   acceptLabel: string;
   regionLabel: string;
+  mode: ConsentMode;
+  /** Sec-GPC from the request. The browser flag is read before anything loads. */
+  gpc: boolean;
   pixelId?: string | null;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState<ConsentChoice | null>(null);
+  const [storageBlocked, setStorageBlocked] = useState(false);
+  const [browserGpc, setBrowserGpc] = useState(false);
+  const [persistable, setPersistable] = useState(true);
+  const [pageBlocked, setPageBlocked] = useState(false);
 
   useEffect(() => {
+    document.documentElement.dataset.consentMode = mode;
+    const navGpc = browserGlobalPrivacyControl();
+    if (gpc || navGpc) document.documentElement.dataset.gpc = '1';
+    else document.documentElement.removeAttribute('data-gpc');
+    if (navGpc) setBrowserGpc(true);
+    const stored = readStoredConsent();
+    setStorageBlocked(stored.blocked);
+    setChoice(stored.choice);
+    const secret = pageCarriesSecret();
+    setPageBlocked(secret);
+    const allowed = readConsent() === 'granted';
+    setPersistable(allowed || readStoredConsent().choice === 'granted');
     const ids = pixelIdsFromPropsOrEnv(pixelId);
-    if (readConsent() === 'granted') {
+    if (allowed && !secret) {
       installGoogleAds();
       if (ids.length > 0) installMetaPixel(ids);
+      markMeasurementStarted();
     }
     const onOpen = () => setOpen(true);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== CONSENT_STORAGE_KEY || event.newValue !== 'denied') return;
+      if (!measurementStartedHere()) return;
+      setChoice('denied');
+      shutdownTrackers(true);
+    };
     window.addEventListener(CONSENT_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(CONSENT_OPEN_EVENT, onOpen);
-  }, [pixelId]);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(CONSENT_OPEN_EVENT, onOpen);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [pixelId, mode, gpc]);
 
   function accept() {
     const previous = readConsent();
     if (!writeConsent('granted')) return;
+    setChoice('granted');
     setOpen(false);
     if (previous !== 'granted') {
       installGoogleAds();
@@ -78,22 +150,30 @@ export function ConsentBanner({
   }
 
   function reject() {
-    const previous = readConsent();
-    if (!writeConsent('denied')) return;
+    // This document may already be measuring while another tab stored the
+    // refusal. The shared value is then `denied`, so the decision to stop
+    // follows what this document started, not that stored value.
+    const measuring = readConsent() === 'granted' || measurementStartedHere();
+    const saved = writeConsent('denied');
+    if (!saved) {
+      if (!measuring) return;
+      refuseMeasurementHere();
+      setChoice('denied');
+      setOpen(false);
+      shutdownTrackers(false);
+      return;
+    }
+    setChoice('denied');
     setOpen(false);
-    if (previous !== 'granted') return;
-    denyGoogleAds();
-    clearGoogleClickCookies();
-    denyMetaPixel();
-    clearMetaClickCookies();
-    void import('posthog-js')
-      .then(({ default: posthog }) => {
-        if (posthog.__loaded) posthog.opt_out_capturing();
-      })
-      .finally(() => {
-        window.location.reload();
-      });
+    if (!measuring) return;
+    shutdownTrackers(true);
   }
+
+  const measuring =
+    !storageBlocked &&
+    persistable &&
+    !pageBlocked &&
+    (choice === 'granted' || (choice === null && mode === 'opt-out' && !gpc && !browserGpc));
 
   return (
     <section
@@ -104,7 +184,7 @@ export function ConsentBanner({
         {regionLabel}
       </h2>
       <p className="consent-text">
-        <ConsentSentence text={text} />
+        <ConsentSentence text={measuring ? notice : text} />
         <span className="consent-inline">
           {' '}
           <a href={privacyHref}>{privacyLabel}</a>
@@ -115,7 +195,7 @@ export function ConsentBanner({
           {privacyLabel}
         </a>
         <button type="button" className="is-reject" onClick={reject}>
-          {rejectLabel}
+          {measuring ? turnOffLabel : rejectLabel}
         </button>
         <button type="button" className="is-accept" onClick={accept}>
           {acceptLabel}

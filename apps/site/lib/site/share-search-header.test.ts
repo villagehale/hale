@@ -1,8 +1,9 @@
 import createMiddleware from 'next-intl/middleware';
 import { NextRequest, NextResponse } from 'next/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { routing } from '~/i18n/routing';
 import middleware, { stampShareSearch } from '../../middleware';
+import { CONSENT_GEO_HEADER } from './consent-region';
 import { SHARE_SEARCH_HEADER } from './share-search-header';
 
 const intl = createMiddleware(routing);
@@ -80,5 +81,32 @@ describe('middleware promo_phase regression', () => {
         SHARE_SEARCH_HEADER,
       );
     }
+  });
+});
+
+describe('consent geo override', () => {
+  const original = process.env.VERCEL_ENV;
+
+  afterEach(() => {
+    if (original === undefined) Reflect.deleteProperty(process.env, 'VERCEL_ENV');
+    else process.env.VERCEL_ENV = original;
+  });
+
+  it('stamps the override outside production and ignores it in production', () => {
+    process.env.VERCEL_ENV = 'preview';
+    const preview = middleware(page('/?consent_geo=US'));
+    expect(preview.headers.get(`x-middleware-request-${CONSENT_GEO_HEADER}`)).toBe('US');
+
+    process.env.VERCEL_ENV = 'production';
+    const production = middleware(page('/?consent_geo=US'));
+    const untouched = intl(page('/?consent_geo=US'));
+    expect(production.headers.get(`x-middleware-request-${CONSENT_GEO_HEADER}`)).toBeNull();
+    expect(headerBag(production)).toEqual(headerBag(untouched));
+  });
+
+  it('does not stamp an invalid override', () => {
+    process.env.VERCEL_ENV = 'preview';
+    const response = middleware(page('/?consent_geo=not-a-region'));
+    expect(response.headers.get(`x-middleware-request-${CONSENT_GEO_HEADER}`)).toBeNull();
   });
 });
