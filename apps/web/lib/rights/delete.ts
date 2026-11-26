@@ -1,5 +1,6 @@
 import { type Database, schema } from '@hale/db';
 import { and, eq, inArray, isNotNull, lte, or } from 'drizzle-orm';
+import { erasePricingCheckoutRows } from '../billing/pricing-checkout.js';
 import { type CoParentDeparted, departCoParent } from '../channel/coparent/depart.js';
 import {
   type UndecodableIntakeOutcome,
@@ -458,6 +459,10 @@ export async function runDeletionSweep(
       'erased',
     );
   }
+
+  // Before the family delete. The checkout row's family pointer only SET NULLs,
+  // which would keep the phone ciphertext after the household is gone.
+  await erasePricingCheckoutRows(database, familyIds);
 
   let purgedObjects = 0;
   for (const familyId of familyIds) {

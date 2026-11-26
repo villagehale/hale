@@ -66,6 +66,39 @@ export const POSTHOG_AUTOCAPTURE_URL_ALLOWLIST = [
   /https?:\/\/[^/]+\/((en|fr|zh)\/)?terms(?:\/)?(?:\?.*)?$/,
 ];
 
+const CHECKOUT_SESSION_QUERY = /([?&]|%3F|%26)session_id(=|%3D)[^&#"'\\\s]*/gi;
+
+/** The success URL's checkout id can send a code and read the phone. It stays out of analytics. */
+export function redactCheckoutSessionIds(value: string): string {
+  return value.replace(CHECKOUT_SESSION_QUERY, '$1session_id$2[session]');
+}
+
+function redactMarketingValue<T>(value: T): T {
+  if (typeof value === 'string') return redactCheckoutSessionIds(value) as T;
+  if (Array.isArray(value)) return value.map(redactMarketingValue) as T;
+  if (value && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, inner]) => [
+        redactMarketingValue(key),
+        redactMarketingValue(inner),
+      ]),
+    ) as T;
+  }
+  return value;
+}
+
+export function redactMarketingEvent<
+  T extends { properties?: unknown; $set?: unknown; $set_once?: unknown } | null,
+>(event: T): T {
+  if (!event) return event;
+  return {
+    ...event,
+    properties: redactMarketingValue(event.properties),
+    ...(event.$set ? { $set: redactMarketingValue(event.$set) } : {}),
+    ...(event.$set_once ? { $set_once: redactMarketingValue(event.$set_once) } : {}),
+  };
+}
+
 export const POSTHOG_INIT_CONFIG = {
   autocapture: { url_allowlist: POSTHOG_AUTOCAPTURE_URL_ALLOWLIST },
   capture_pageview: 'history_change' as const,
@@ -79,7 +112,9 @@ export const POSTHOG_INIT_CONFIG = {
   respect_dnt: true,
   mask_all_text: false,
   mask_all_element_attributes: true,
-  before_send: redactSecretEvent,
+  // The checkout id is stripped first. url-secrets then strips every other bearer,
+  // including a session id, so main's attribution redaction and this checkout stay.
+  before_send: (event) => redactSecretEvent(redactMarketingEvent(event)),
 } satisfies Partial<Parameters<PostHog['init']>[1]>;
 
 interface Analytics {

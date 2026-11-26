@@ -821,6 +821,11 @@
 }
 .rd .sp-lede { margin: var(--s5) auto 0; max-width: 600px; text-wrap: balance; font-family: var(--font-body); font-size: 18.4px; line-height: 1.45; color: var(--navy); opacity: 0.9; }
 .rd .sp-cta { margin-top: var(--s6); display: flex; align-items: center; justify-content: center; gap: var(--s5); flex-wrap: wrap; }
+.rd .sp-verify { margin: var(--s6) auto 0; width: min(100%, 420px); display: flex; flex-direction: column; gap: var(--s4); text-align: left; }
+.rd .sp-verify label { display: flex; flex-direction: column; gap: var(--s2); font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--navy); }
+.rd .sp-verify input { width: 100%; padding: 12px 14px; border-radius: 12px; border: 0; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--font-ui); font-size: 16px; color: var(--navy); }
+.rd .sp-verify input[readonly] { opacity: 0.72; }
+.rd .sp-verify .btn { width: 100%; justify-content: center; }
 .rd .sp-legal .sp-hero { padding: 64px var(--s5) 96px; }
 .rd .sp-legal .sp-h1 { font-size: 60.8px; }
 /* Helvetica Neue 450 has no CJK face, so /zh synthesized a heavier fallback.

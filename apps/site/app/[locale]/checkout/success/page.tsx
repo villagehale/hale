@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { CheckoutState } from '~/components/checkout/checkout-state';
+import { PricingCheckoutVerify } from '~/components/checkout/pricing-verify';
 import { GooglePurchaseConversion } from '~/components/google-purchase-conversion';
 import { MetaPurchaseConversion } from '~/components/meta-purchase-conversion';
 import { SiteFooter } from '~/components/site-footer';
@@ -22,6 +23,7 @@ import {
   metaPurchaseFromPaidSession,
   paidPlanName,
 } from '~/lib/billing/checkout-success';
+import { openPricingCheckout } from '~/lib/billing/pricing-checkout-open';
 import { type Platform, platformFromUa } from '~/lib/chooser';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
@@ -35,6 +37,8 @@ interface PageProps {
     currency?: string | string[];
   }>;
 }
+
+const successCopyStyle = { fontFamily: 'var(--font-ui)', color: 'var(--navy)' } as const;
 
 const CONFIRMED_PURCHASE_STATES: ReadonlySet<CheckoutSuccessView['state']> = new Set([
   'plan_active',
@@ -100,7 +104,20 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
     : null;
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const textHref = smsNumber ? buildSmsHref(smsNumber, null, intakePrefill(locale)) : null;
-  const view = checkoutViewForPage(sessionId, facts);
+  const opened = paid && sessionId ? await openPricingCheckout(sessionId) : null;
+  const direct =
+    opened?.direct === true
+      ? opened
+      : facts?.direct === true
+        ? {
+            direct: true as const,
+            bound: false,
+            phone: null,
+            tier: facts.tier,
+            status: 'send_failed',
+          }
+        : null;
+  const view = direct ? null : checkoutViewForPage(sessionId, facts);
   const platform = view ? await requestPlatform() : 'unknown';
 
   return (
@@ -108,9 +125,42 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
       <SiteHeader locale={locale} />
       <div className="rd">
         <main id="main" className="sp-hero">
-          {view ? (
+          {direct && sessionId ? (
+            <PricingCheckoutVerify
+              sessionId={sessionId}
+              initialPhone={direct.phone}
+              initialStatus={direct.status}
+              initialBound={direct.bound}
+              locale={locale}
+              smsNumber={smsNumber ?? ''}
+              prefill={intakePrefill(locale)}
+              copy={{
+                heading: t('heading'),
+                plan: planName ? t('plan', { plan: planName }) : null,
+                codeSent: t('codeSent'),
+                codeHint: t('codeHint'),
+                phoneLabel: t('phoneLabel'),
+                codeLabel: t('codeLabel'),
+                resend: t('resend'),
+                editNumber: t('editNumber'),
+                saveNumber: t('saveNumber'),
+                wrongCode: t('wrongCode'),
+                expired: t('expired'),
+                locked: t('locked'),
+                limited: t('limited'),
+                cooldown: t('cooldown'),
+                notSent: t('notSent'),
+                phoneInvalid: t('phoneInvalid'),
+                confirm: t('confirm'),
+                paymentEnded: t('paymentEnded'),
+                alreadyOnPlan: t('alreadyOnPlan'),
+                lede: t('lede'),
+                textHale: t('textHale'),
+              }}
+            />
+          ) : view ? (
             <div className="sp-grid">
-              <div className="sp-copy">
+              <div className="hs-card sp-card sp-aside">
                 <CheckoutState
                   view={view}
                   locale={locale}
@@ -121,24 +171,32 @@ export default async function CheckoutSuccessPage({ params, searchParams }: Page
               </div>
             </div>
           ) : (
-            <>
-              <h1 className="sp-h1">{paid ? t('heading') : t('unpaidHeading')}</h1>
-              {paid ? (
-                <>
-                  {planName ? <p className="sp-lede">{t('plan', { plan: planName })}</p> : null}
-                  <p className="sp-lede">{t('lede')}</p>
-                  <p className="sp-lede">
-                    {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
-                    {textHref ? ' · ' : null}
-                    <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+            <div className="sp-grid">
+              <div className="hs-card sp-card sp-aside">
+                <h1 className="hs-h2">{paid ? t('heading') : t('unpaidHeading')}</h1>
+                {paid ? (
+                  <>
+                    {planName ? (
+                      <p className="hs-p" style={successCopyStyle}>
+                        {t('plan', { plan: planName })}
+                      </p>
+                    ) : null}
+                    <p className="hs-p" style={successCopyStyle}>
+                      {t('lede')}
+                    </p>
+                    <p className="hs-p" style={successCopyStyle}>
+                      {textHref ? <a href={textHref}>{t('textHale')}</a> : null}
+                      {textHref ? ' · ' : null}
+                      <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
+                    </p>
+                  </>
+                ) : (
+                  <p className="hs-p" style={successCopyStyle}>
+                    {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
                   </p>
-                </>
-              ) : (
-                <p className="sp-lede">
-                  {t('unpaidLede')} <a href={`${APP_URL}/settings#billing`}>{t('continue')}</a>
-                </p>
-              )}
-            </>
+                )}
+              </div>
+            </div>
           )}
         </main>
       </div>

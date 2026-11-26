@@ -7,6 +7,10 @@ import {
 } from '@hale/db';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { billingThreadNoticesArmedAt } from '~/lib/billing/flags';
+import {
+  recordPricingDirectCheckout,
+  recordPricingSubscriptionEnded,
+} from '~/lib/billing/pricing-checkout';
 import type { OpsPager } from '~/lib/monitoring/failure-page';
 import { isPreviewDeploy } from '~/lib/preview/family-scope';
 import { familyIdFromStripeEvent, stripeRefsFromStripeEvent } from '~/lib/webhooks/stripe-billing';
@@ -16,8 +20,9 @@ import { BILLING_NOTICE_LOCK_NS, writeNoticeDrop } from './store';
 
 /**
  * VIL-735 · the webhook's half of a billing notice: one durable row saying a text is
- * owed. No model call, no send and no Stripe call happen here, and a dark flag returns
- * before any query, so the route behaves exactly as it did.
+ * owed. No model call, no send and no Stripe call happen here. A dark flag returns
+ * before any notice query. A paid pricing_direct checkout is stored first, and
+ * every other event still never touches the database on that path.
  *
  * Apply's status alone does not prove the money moved: every second delivery answers
  * `duplicate` whatever the first did, so a duplicate records only when this event's own
@@ -105,6 +110,11 @@ export async function recordBillingNoticeIntent(
   applied: ApplyStripeBillingResult,
   deps: RecordNoticeDeps = {},
 ): Promise<BillingNoticeRecordOutcome> {
+  // Before the dark return. A paid pricing_direct checkout is stored, and a
+  // subscription that has ended stamps an unbound row. Every other event —
+  // including the flag-off proxy test — stays a pure read of the event object.
+  await recordPricingSubscriptionEnded(database, event);
+  await recordPricingDirectCheckout(database, event);
   const env = deps.env ?? process.env;
   const armedAt = billingThreadNoticesArmedAt(env);
   if (armedAt === null) return 'dark';

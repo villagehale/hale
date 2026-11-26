@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RedesignHome } from '~/components/redesign/home';
 import { RedesignPricing } from '~/components/redesign/pricing';
 import { FOUNDING_REFUND_LINE, type PromoPhase, buildHolidayPromo } from '~/lib/promo/holiday';
-import { foundingCheckoutTarget } from './founding-checkout-link';
+import { pricingCheckoutTarget } from './founding-checkout-link';
 import {
   PromoBanner,
   PromoFaqItems,
@@ -105,9 +105,10 @@ for (const { phase, currency } of CASES) {
           expect(c).toContain(`<span class="promo-tier-sale">${sale}</span>`);
           expect(c).toContain(FOUNDING_REFUND_LINE);
           expect(text(c)).toContain(`Lock in ${sale}`);
-          expect(c).toContain('href="https://app.villagehale.com/founding"');
+          expect(c).toContain(`href="/api/checkout?tier=${tier}"`);
           expect(c).not.toContain('/settings/founding');
           expect(c).not.toContain('plan=');
+          expect(c).not.toContain('villagehale.com/founding');
           expect(c).not.toContain('Coming soon');
           expect(c).not.toMatch(/\/mo\b/);
         }
@@ -180,11 +181,13 @@ for (const { phase, currency } of CASES) {
         expect(body).not.toMatch(/by the year or the month/i);
       });
 
-      it('offers the founding checkout door and a mobile sticky CTA', () => {
+      it('offers Stripe Checkout from the sale buttons and a mobile sticky CTA', () => {
         expect(html).toContain('data-cta="promo_cta_click"');
-        expect(html).toContain('https://app.villagehale.com/founding');
+        expect(html).toContain('href="/api/checkout?tier=max"');
+        if (name === 'pricing') expect(html).toContain('href="/api/checkout?tier=plus"');
         expect(html).not.toContain('/settings/founding');
         expect(html).not.toContain('plan=');
+        expect(html).not.toContain('villagehale.com/founding');
         expect(html).toContain('promo-sticky');
       });
     });
@@ -192,25 +195,23 @@ for (const { phase, currency } of CASES) {
 }
 
 describe('promo lock-in door', () => {
-  it('opens the new-visitor /founding path and keeps a click id off the plan query', () => {
-    expect(foundingCheckoutTarget()).toBe('https://app.villagehale.com/founding');
-    expect(foundingCheckoutTarget('utm_source=meta&fbclid=abc')).toBe(
-      'https://app.villagehale.com/founding?utm_source=meta&fbclid=abc',
+  it('opens Stripe Checkout for the tier and keeps a click id off the plan query', () => {
+    expect(pricingCheckoutTarget('plus')).toBe('/api/checkout?tier=plus');
+    expect(pricingCheckoutTarget('max', 'utm_source=meta&fbclid=abc')).toBe(
+      '/api/checkout?tier=max&utm_source=meta&fbclid=abc',
     );
-    expect(foundingCheckoutTarget('gclid=1')).not.toContain('plan=');
-    expect(foundingCheckoutTarget('gclid=1')).not.toContain('/settings/founding');
+    expect(pricingCheckoutTarget('plus', 'gclid=1')).not.toContain('plan=');
+    expect(pricingCheckoutTarget('max', 'gclid=1')).not.toContain('/settings/founding');
   });
 
-  it('uses that same door on home and pricing in en, fr, and zh', () => {
+  it('uses that checkout on home and pricing when a promo is passed, in en, fr, and zh', () => {
     const promo = buildHolidayPromo('black_friday', 'CAD');
     for (const locale of ['en', 'fr', 'zh'] as const) {
       for (const Page of [RedesignHome, RedesignPricing]) {
         const html = renderToStaticMarkup(createElement(Page, { ...door, locale, promo }));
-        const hrefs = [...html.matchAll(/href="([^"]+)"/g)]
-          .map((match) => match[1] ?? '')
-          .filter((href) => href.includes('villagehale.com') && href.includes('founding'));
-        expect(hrefs.length).toBeGreaterThan(0);
-        expect(new Set(hrefs)).toEqual(new Set(['https://app.villagehale.com/founding']));
+        expect(html).toContain('href="/api/checkout?tier=max"');
+        if (Page === RedesignPricing) expect(html).toContain('href="/api/checkout?tier=plus"');
+        expect(html).not.toContain('villagehale.com/founding');
         expect(html).not.toContain('/settings/founding');
       }
     }

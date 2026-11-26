@@ -103,6 +103,8 @@ export const AUDIT_VERBS = [
   'family_plan_comped',
   'billing_refund_ready',
   'billing_grant_blocked',
+  'pricing_checkout_bound',
+  'pricing_checkout_duplicate',
   'billing_revoke_unresolved',
   'billing_plan_unsettled',
   'family_intents_updated',
@@ -786,6 +788,14 @@ const VERBS: Record<AuditVerb, Verb> = {
   },
   billing_refund_ready: {
     sentence: 'a payment came in at the wrong price and was not added to your plan',
+    family: 'problem',
+  },
+  pricing_checkout_bound: {
+    sentence: 'a paid checkout was tied to your verified number',
+    family: 'done',
+  },
+  pricing_checkout_duplicate: {
+    sentence: 'this number already had a plan, so the extra checkout was not added',
     family: 'problem',
   },
   billing_grant_blocked: {

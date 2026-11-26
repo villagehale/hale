@@ -210,6 +210,22 @@ describe('redactLoginLinkCodes', () => {
       next: '%3Fpreview%3D[preview]',
     });
   });
+
+  it('strips a checkout session id from the URL', async () => {
+    const { redactLoginLinkCodes } = await import('./posthog-provider');
+    const id = 'cs_test_secret_session';
+    const out = redactLoginLinkCodes({
+      uuid: 'u',
+      event: '$pageview',
+      properties: {
+        $current_url: `https://www.example.test/checkout/success?session_id=${id}&x=1`,
+      },
+    });
+    expect(JSON.stringify(out)).not.toContain(id);
+    expect(out?.properties).toEqual({
+      $current_url: 'https://www.example.test/checkout/success?session_id=[redacted]&x=1',
+    });
+  });
 });
 
 describe('every other bearer token in an app URL never reaches PostHog', () => {

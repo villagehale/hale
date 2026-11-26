@@ -67,6 +67,27 @@ describe('paidCheckoutFactsFromStripeSession', () => {
       }),
     ).toMatchObject({ paid: false, value: 59, currency: 'CAD', tier: null });
   });
+
+  it('marks a pricing_direct session and leaves the phone out of the facts', () => {
+    const facts = paidCheckoutFactsFromStripeSession({
+      id: 'cs_test_direct',
+      payment_status: 'paid',
+      amount_total: 5900,
+      currency: 'cad',
+      customer_details: { phone: '+14165550100', email: 'buyer@example.test' },
+      metadata: { source: 'pricing_direct', tier: 'plus' },
+    });
+    expect(facts).toEqual({
+      transactionId: 'cs_test_direct',
+      value: 59,
+      currency: 'CAD',
+      paid: true,
+      tier: 'plus',
+      direct: true,
+    });
+    expect(JSON.stringify(facts)).not.toContain('+1416');
+    expect(JSON.stringify(facts)).not.toContain('buyer@');
+  });
 });
 
 describe('checkoutSuccessUrl', () => {

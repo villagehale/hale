@@ -40,7 +40,7 @@ describe('/checkout/success', () => {
 
   it('renders a neutral unpaid state without a purchase claim or conversion', async () => {
     const html = renderToStaticMarkup(await CheckoutSuccessPage(EN));
-    expect(html).not.toContain('You&#x27;re in.');
+    expect(html).not.toContain('You’re in.');
     expect(html).toContain('Checkout');
     expect(html).toContain('This page confirms a payment after Stripe has taken it.');
     expect(html).toContain('Open Hale');
@@ -69,7 +69,7 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_1' }),
       }),
     );
-    expect(html).toContain('You&#x27;re in.');
+    expect(html).toContain('You’re in.');
     expect(html).toContain('Text Hale');
     expect(html).toContain('sms:+16462352164');
   });
@@ -81,20 +81,18 @@ describe('/checkout/success', () => {
     ] as const) {
       vi.stubGlobal(
         'fetch',
-        vi
-          .fn()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({
-                transactionId: 'cs_test_t',
-                value: 99,
-                currency: 'CAD',
-                paid: true,
-                tier,
-              }),
-              { status: 200 },
-            ),
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              transactionId: 'cs_test_t',
+              value: 99,
+              currency: 'CAD',
+              paid: true,
+              tier,
+            }),
+            { status: 200 },
           ),
+        ),
       );
       const html = renderToStaticMarkup(
         await CheckoutSuccessPage({
@@ -147,10 +145,175 @@ describe('/checkout/success', () => {
         searchParams: Promise.resolve({ session_id: 'cs_test_unpaid' }),
       }),
     );
-    expect(html).not.toContain('You&#x27;re in.');
+    expect(html).not.toContain('You’re in.');
     expect(html).toContain('Checkout');
     expect(html).not.toContain('Text Hale');
     expect(html).not.toContain('GooglePurchaseConversion');
+  });
+
+  it('asks for the Linq code before Text Hale on a direct checkout', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: false,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'sent',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_direct',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_direct' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('We sent a code to this number.');
+    expect(main).toContain('+14165550100');
+    expect(main).toContain('Confirm');
+    expect(main).toContain('Send again');
+    expect(main).toContain('Use a different number');
+    expect(main).not.toContain('sms:');
+    expect(main).not.toContain('app.villagehale.com');
+  });
+
+  it('shows Text Hale once that direct checkout is bound', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: true,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'already_bound',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_bound',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_bound' }),
+      }),
+    );
+    expect(html).toContain('You’re in.');
+    expect(html).toContain('Text Hale');
+    expect(html).toContain('href="/text"');
+    expect(html).toContain('data-cta-placement="checkout_success"');
+    expect(html).not.toContain('We sent a code to this number.');
+  });
+
+  it('keeps Text Hale when checkout states are on and the direct checkout is bound', async () => {
+    vi.stubEnv('CHECKOUT_SUCCESS_STATES_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response(
+            JSON.stringify({
+              direct: true,
+              bound: true,
+              phone: '+14165550100',
+              tier: 'plus',
+              status: 'already_bound',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_bound_states',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+            direct: true,
+            view: { state: 'receipt' },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_bound_states' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('Text Hale');
+    expect(main).toContain('href="/text"');
+    expect(main).toContain('data-cta-placement="checkout_success"');
+    expect(main).not.toContain('This checkout is finished');
+  });
+
+  it('shows the code form when a direct checkout cannot be opened', async () => {
+    vi.stubEnv('NEXT_PUBLIC_HALE_SMS_NUMBER', '+14165550199');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('pricing-checkout')) {
+          return new Response('nope', { status: 500 });
+        }
+        return new Response(
+          JSON.stringify({
+            transactionId: 'cs_test_direct_down',
+            value: 59,
+            currency: 'CAD',
+            paid: true,
+            tier: 'plus',
+            direct: true,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    const html = renderToStaticMarkup(
+      await CheckoutSuccessPage({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve({ session_id: 'cs_test_direct_down' }),
+      }),
+    );
+    const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+    expect(main).toContain('send a code just now');
+    expect(main).toContain('Send a code to this number');
+    expect(main).not.toContain('sms:');
   });
 
   it('never reads value or currency from the query string', () => {
@@ -228,7 +391,7 @@ function bundle(locale: Locale): Record<string, string> {
 
 describe('with the flag off', () => {
   it.each([
-    ['en', 'You&#x27;re in.', 'Text Hale to start.'],
+    ['en', 'You’re in.', 'Text Hale to start.'],
     ['fr', 'C’est fait.', 'Texte Hale pour commencer.'],
     ['zh', '已经完成。', '给 Hale 发条 iMessage 就能开始。'],
   ] as const)(
@@ -238,7 +401,7 @@ describe('with the flag off', () => {
       stubFacts({ state: 'receipt' });
       const main = mainOf(await renderPage(locale));
       expect(main).toContain(heading);
-      expect(main).toContain(`<p class="sp-lede">${lede}</p>`);
+      expect(main).toContain(lede);
       expect(main).toContain(`sms:${NUMBER}`);
       expect(main).not.toContain('text first');
       expect(main).not.toContain('premier');
@@ -259,7 +422,7 @@ describe('with the flag on', () => {
       withUserAgent(IPHONE);
       stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You’re on Plus.</h1>');
+      expect(main).toContain('<h1 class="hs-h2">You’re on Plus.</h1>');
       expect(main).toContain('Thanks. Keep texting Hale like you do now.');
       expect(main).not.toContain('Riley');
       expect(main).not.toContain('ph-no-capture');
@@ -271,16 +434,19 @@ describe('with the flag on', () => {
     it.each([
       ['Windows', DESKTOP],
       ['no user agent', null],
-    ])('offers no Text Hale door on %s, where it would open the new-visitor page', async (_name, ua) => {
-      if (ua) withUserAgent(ua);
-      stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
-      const main = mainOf(await renderPage());
-      expect(main).toContain('Keep texting Hale like you do now.');
-      expect(main).toContain('Open Hale');
-      expect(main).not.toContain('Text Hale<');
-      expect(main).not.toContain('checkout_success');
-      expect(main).not.toContain('<svg');
-    });
+    ])(
+      'offers no Text Hale door on %s, where it would open the new-visitor page',
+      async (_name, ua) => {
+        if (ua) withUserAgent(ua);
+        stubFacts({ state: 'plan_active', firstName: 'Riley', checkInDue: false });
+        const main = mainOf(await renderPage());
+        expect(main).toContain('Keep texting Hale like you do now.');
+        expect(main).toContain('Open Hale');
+        expect(main).not.toContain('Text Hale<');
+        expect(main).not.toContain('checkout_success');
+        expect(main).not.toContain('<svg');
+      },
+    );
 
     it.each([
       ['iPhone', IPHONE],
@@ -318,7 +484,7 @@ describe('with the flag on', () => {
     withUserAgent(IPHONE);
     stubFacts({ state: 'upgraded' }, { tier: 'family' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">You’re on Max now.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">You’re on Max now.</h1>');
     expect(main).toContain(
       'You paid only the difference for the rest of your year. Everything carries over.',
     );
@@ -338,7 +504,7 @@ describe('with the flag on', () => {
   it('C renders its final copy with Open Hale alone', async () => {
     stubFacts({ state: 'already_on_plan' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">You’re already on Plus.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">You’re already on Plus.</h1>');
     expect(main).toContain(
       'This payment won’t be kept. We’ll refund it in full within a few days.',
     );
@@ -354,8 +520,8 @@ describe('with the flag on', () => {
       withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You&#x27;re in.</h1>');
-      expect(main).toContain('<p class="sp-lede">Text Hale to start.</p>');
+      expect(main).toContain('<h1 class="hs-h2">You’re in.</h1>');
+      expect(main).toContain('Text Hale to start.');
       expect(main).toContain('data-cta-placement="checkout_success"');
       expect(main).toContain('Hale’s number: (555) 555-0100');
       expect(main).toContain('Open Hale');
@@ -369,7 +535,7 @@ describe('with the flag on', () => {
       if (ua) withUserAgent(ua);
       stubFacts({ state: 'new_visitor' });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">You&#x27;re in.</h1>');
+      expect(main).toContain('<h1 class="hs-h2">You’re in.</h1>');
       expect(main).toContain('Text Hale from your phone to start.');
       expect(main).toContain('<svg');
       expect(main).toContain('Hale’s number: (555) 555-0100');
@@ -395,16 +561,16 @@ describe('with the flag on', () => {
   it('F says the payment is going through, as a live status', async () => {
     stubFacts({ state: 'pending' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Almost there.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Almost there.</h1>');
     expect(main).toContain(
-      '<output class="sp-lede" style="display:block">Your payment is still going through. This page will update on its own.</output>',
+      'Your payment is still going through. This page will update on its own.',
     );
   });
 
   it('a purchase under review gets the slow line, with a way to reach us and no polling', async () => {
     stubFacts({ state: 'under_review' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Almost there.</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Almost there.</h1>');
     expect(main).toContain('It can take a few minutes. You’ll see it in Hale once it clears.');
     expect(main).toContain('Open Hale');
     expect(main).toContain('Email us');
@@ -415,7 +581,7 @@ describe('with the flag on', () => {
   it('the neutral view names no plan and no person', async () => {
     stubFacts({ state: 'receipt', firstName: 'Riley' });
     const main = mainOf(await renderPage());
-    expect(main).toContain('<h1 class="sp-h1">Checkout</h1>');
+    expect(main).toContain('<h1 class="hs-h2">Checkout</h1>');
     expect(main).toContain('This checkout is finished. Open Hale to see your plan.');
     expect(main).toContain('Open Hale');
     expect(main).toContain('Email us');
@@ -428,7 +594,7 @@ describe('with the flag on', () => {
     it('says no charge only when Stripe confirmed it', async () => {
       stubFacts({ state: 'not_paid' }, { paid: false });
       const main = mainOf(await renderPage());
-      expect(main).toContain('<h1 class="sp-h1">Checkout</h1>');
+      expect(main).toContain('<h1 class="hs-h2">Checkout</h1>');
       expect(main).toContain('We couldn’t find a finished payment here. You haven’t been charged.');
       expect(main).toContain('See pricing');
       expect(main).toContain('href="/pricing"');
@@ -460,7 +626,7 @@ describe('with the flag on', () => {
   it('keeps paid sessions on today’s page when hale-web sends no view', async () => {
     stubFacts(undefined);
     const main = mainOf(await renderPage());
-    expect(main).toContain('You&#x27;re in.');
+    expect(main).toContain('You’re in.');
     expect(main).toContain('You’re on Plus.');
     expect(main).toContain('Text Hale to start.');
   });
@@ -521,9 +687,9 @@ describe('with the flag on', () => {
       stubFacts(view, over);
       return (await generateMetadata(pageInput('en'))).title;
     };
-    expect(await titleFor({ state: 'plan_active' })).toBe("You're in · Hale");
-    expect(await titleFor({ state: 'upgraded' })).toBe("You're in · Hale");
-    expect(await titleFor({ state: 'new_visitor' })).toBe("You're in · Hale");
+    expect(await titleFor({ state: 'plan_active' })).toBe('You’re in · Hale');
+    expect(await titleFor({ state: 'upgraded' })).toBe('You’re in · Hale');
+    expect(await titleFor({ state: 'new_visitor' })).toBe('You’re in · Hale');
     for (const state of [
       'already_on_plan',
       'pending',

@@ -93,6 +93,8 @@ export interface CheckoutSessionFacts {
   readonly tier: 'plus' | 'family' | null;
   /** Present only when hale-web has CHECKOUT_SUCCESS_STATES_ENABLED on. */
   readonly view?: CheckoutSuccessView;
+  /** A paid /pricing checkout. Present only when the app says so. */
+  readonly direct?: true;
 }
 
 export function googlePurchaseFromPaidSession(input: {
@@ -189,6 +191,7 @@ export function checkoutFactsFromJson(payload: unknown): CheckoutSessionFacts | 
     paid: payload.paid === true,
     tier,
     ...(view ? { view } : {}),
+    ...(payload.direct === true ? { direct: true as const } : {}),
   };
 }
 
@@ -207,14 +210,31 @@ export function checkoutViewForPage(
   return facts.view ?? null;
 }
 
+/**
+ * Preview hale-web sits behind Vercel SSO. A server fetch from this site is not a
+ * browser, so without the automation bypass it comes back 302 and the success page
+ * cannot read the session. Production has no such secret, so the header stays off.
+ */
+export function vercelProtectionBypassHeaders(
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const bypass = env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
+  if (!bypass) return {};
+  return { 'x-vercel-protection-bypass': bypass };
+}
+
 export async function fetchCheckoutSessionFacts(
   sessionId: string,
   appUrl: string = APP_URL,
   fetchImpl: typeof fetch = fetch,
 ): Promise<CheckoutSessionFacts | null> {
   const url = `${appUrl.replace(/\/$/, '')}/api/billing/checkout-session?session_id=${encodeURIComponent(sessionId)}`;
+  const bypass = vercelProtectionBypassHeaders();
   try {
-    const res = await fetchImpl(url, { cache: 'no-store' });
+    const res = await fetchImpl(url, {
+      cache: 'no-store',
+      ...(Object.keys(bypass).length > 0 ? { headers: bypass } : {}),
+    });
     if (!res.ok) return null;
     return checkoutFactsFromJson(await res.json());
   } catch {
