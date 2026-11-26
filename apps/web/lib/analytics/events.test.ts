@@ -152,6 +152,8 @@ describe('buildEvent privacy gate', () => {
       utm_content: 'hero',
       gclid: 'Gw',
       fbclid: 'Fb',
+      msclkid: 'Ms',
+      source_code: 'poster-oakville',
       currency: 'CAD',
       value: 79,
       email: 'sam@example.com',
@@ -165,6 +167,8 @@ describe('buildEvent privacy gate', () => {
       utm_content: 'hero',
       gclid: 'Gw',
       fbclid: 'Fb',
+      msclkid: 'Ms',
+      source_code: 'poster-oakville',
       currency: 'CAD',
       value: 79,
     });

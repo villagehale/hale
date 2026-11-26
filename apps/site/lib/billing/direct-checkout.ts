@@ -1,7 +1,9 @@
 import {
+  ANALYTICS_DISTINCT_ID_KEY,
   ATTRIBUTION_KEYS,
   type Attribution,
   type BillingCurrency,
+  analyticsDistinctId,
   isFoundingPromoWindowOpen,
   parseAttribution,
   parseFoundingPromoEndsAt,
@@ -159,6 +161,9 @@ export function directCheckoutForm(input: {
   successUrl: string;
   cancelUrl: string;
   attribution?: Attribution;
+  /** Consented PostHog distinct id. Written only while the funnel flag is on. */
+  analyticsDistinctId?: string | null;
+  env?: Record<string, string | undefined>;
 }): URLSearchParams {
   const form = new URLSearchParams({
     mode: 'subscription',
@@ -178,13 +183,18 @@ export function directCheckoutForm(input: {
     'subscription_data[metadata][currency]': input.currency,
     'subscription_data[metadata][source]': 'pricing_direct',
   });
+  const env = input.env ?? process.env;
+  const funnelOn = env.FUNNEL_ATTRIBUTION_ENABLED === 'true';
   const attribution = input.attribution ?? {};
   for (const key of ATTRIBUTION_KEYS) {
+    if (key === 'source_code' && !funnelOn) continue;
     const value = attribution[key];
     if (!value) continue;
     form.set(`metadata[${key}]`, value);
     form.set(`subscription_data[metadata][${key}]`, value);
   }
+  const distinct = funnelOn ? analyticsDistinctId(input.analyticsDistinctId) : null;
+  if (distinct) form.set(`metadata[${ANALYTICS_DISTINCT_ID_KEY}]`, distinct);
   return form;
 }
 

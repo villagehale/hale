@@ -8,8 +8,9 @@ import { type CaptureOutcome, captureServerEvent, hashFamilyId } from './server-
  * attribution on signup_completed. Dark unless FUNNEL_ATTRIBUTION_ENABLED is exactly
  * `true` (env-only in @hale/flags).
  *
- * Every event is keyed on the hashed family id IdentifyUser uses and carries the
- * first-touch attribution keys. An event with an identifying property is refused whole,
+ * A family event is keyed on the hashed family id IdentifyUser uses. A checkout
+ * that has no family yet passes `distinctId` (`cs:` plus the Checkout Session id)
+ * and no family id. An event with an identifying property is refused whole,
  * not trimmed: the call sites below pass only plan, period and attribution, so a key
  * the privacy gate drops means a caller reached for something it must not send.
  *
@@ -46,6 +47,10 @@ export type FunnelOutcome = CaptureOutcome | 'flag_off' | 'refused_identifying';
 
 type Env = Record<string, string | undefined>;
 
+function isSafeDistinctId(value: string): boolean {
+  return value.length > 0 && value.length <= 200 && !/[\s@]|:\/\//.test(value);
+}
+
 function isPrimitive(value: unknown): value is string | number | boolean {
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 }
@@ -65,7 +70,9 @@ function gated(
 export async function captureFunnelEvent(
   input: {
     event: FunnelEvent;
-    familyId: string;
+    familyId?: string;
+    /** Checkout person (`cs:` + session id) when there is no family yet. Ignored when familyId is set. */
+    distinctId?: string;
     attribution: Attribution;
     properties?: Record<string, unknown>;
     set?: Record<string, unknown>;
@@ -74,6 +81,11 @@ export async function captureFunnelEvent(
   deps: { sender: FunnelSender; env?: Env },
 ): Promise<FunnelOutcome> {
   if (!funnelAttributionEnabled(deps.env)) return 'flag_off';
+  const distinctId = input.familyId ? hashFamilyId(input.familyId) : (input.distinctId ?? null);
+  if (!distinctId || !isSafeDistinctId(distinctId)) {
+    console.warn('analytics: funnel event refused a distinct id', { event: input.event });
+    return 'refused_identifying';
+  }
   const main = gated(input.event, {
     ...input.properties,
     ...parseAttribution(input.attribution),
@@ -92,7 +104,7 @@ export async function captureFunnelEvent(
   }
   const capture: FunnelCapture = {
     event: input.event,
-    distinctId: hashFamilyId(input.familyId),
+    distinctId,
     properties: main.properties,
     ...(set && 'properties' in set ? { set: set.properties } : {}),
     ...(setOnce && 'properties' in setOnce ? { setOnce: setOnce.properties } : {}),

@@ -172,6 +172,8 @@ const ATTRIBUTION_PROPERTY_KEYS = new Set([
   'utm_content',
   'gclid',
   'fbclid',
+  'msclkid',
+  'source_code',
 ]);
 
 const FORBIDDEN_KEY_FRAGMENTS = [

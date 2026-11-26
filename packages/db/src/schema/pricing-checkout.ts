@@ -27,6 +27,13 @@ export const pricingCheckoutPayments = pgTable(
     boundAt: timestamp('bound_at', { withTimezone: true }),
     /** Set when the subscription ends before this row is bound. Verify then refuses. */
     endedAt: timestamp('ended_at', { withTimezone: true }),
+    /**
+     * First-touch attribution (query string). No phone and no email. Written
+     * once, with the row, so bind can attribute signup without fetching Stripe.
+     */
+    attribution: text('attribution'),
+    /** Consented PostHog distinct id. Null when analytics consent was not granted. */
+    analyticsDistinctId: text('analytics_distinct_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

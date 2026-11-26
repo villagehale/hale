@@ -107,6 +107,38 @@ describe('direct checkout price', () => {
     expect(form.get('success_url')).toContain('/checkout/success?session_id={CHECKOUT_SESSION_ID}');
     expect(form.get('cancel_url')).toContain('/pricing?checkout=cancelled');
   });
+
+  it('puts msclkid on the session always, and source_code plus the consented id only with the funnel flag', () => {
+    const shared = {
+      priceId: 'price_plus_cad',
+      tier: 'plus' as const,
+      sku: 'promo_plus_annual' as const,
+      currency: 'CAD' as const,
+      successUrl: 'https://www.villagehale.com/checkout/success?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: 'https://www.villagehale.com/pricing?checkout=cancelled',
+      attribution: { msclkid: 'msclk', source_code: 'poster-oakville', gclid: 'click' },
+      analyticsDistinctId: '0123456789abcdef',
+    };
+    const dark = directCheckoutForm({ ...shared, env: {} });
+    expect(dark.get('metadata[msclkid]')).toBe('msclk');
+    expect(dark.get('subscription_data[metadata][msclkid]')).toBe('msclk');
+    expect(dark.get('metadata[source_code]')).toBeNull();
+    expect(dark.get('metadata[ph_distinct_id]')).toBeNull();
+
+    const lit = directCheckoutForm({ ...shared, env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' } });
+    expect(lit.get('metadata[msclkid]')).toBe('msclk');
+    expect(lit.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(lit.get('subscription_data[metadata][source_code]')).toBe('poster-oakville');
+    expect(lit.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    expect(lit.get('subscription_data[metadata][ph_distinct_id]')).toBeNull();
+
+    const email = directCheckoutForm({
+      ...shared,
+      analyticsDistinctId: 'parent@example.com',
+      env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' },
+    });
+    expect(email.get('metadata[ph_distinct_id]')).toBeNull();
+  });
 });
 
 describe('GET /api/checkout', () => {
@@ -184,5 +216,63 @@ describe('GET /api/checkout', () => {
     const missing = await GET(request('plus', 'CA'));
     expect(missing.status).toBe(501);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('passes source_code and msclkid into Stripe metadata and records checkout_started on the session', async () => {
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'ph_test_key');
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url: String(url), body: String(init.body) });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_attr',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_attr',
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('ok', { status: 200 });
+      }),
+    );
+    const headers = new Headers({ 'x-vercel-ip-country': 'CA' });
+    const res = await GET(
+      new Request(
+        'https://preview.villagehale.com/api/checkout?tier=plus&msclkid=msclk&source_code=poster-oakville&ph_distinct_id=0123456789abcdef',
+        { headers },
+      ),
+    );
+    expect(res.status).toBe(303);
+    const stripe = calls.find((call) => call.url.includes('api.stripe.com'));
+    const form = new URLSearchParams(stripe?.body);
+    expect(form.get('metadata[msclkid]')).toBe('msclk');
+    expect(form.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(form.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    const captures = calls
+      .filter((call) => call.url.includes('/capture/'))
+      .map(
+        (call) =>
+          JSON.parse(call.body) as {
+            event?: string;
+            distinct_id?: string;
+            properties?: Record<string, unknown>;
+          },
+      );
+    const started = captures.find((call) => call.event === 'checkout_started');
+    const alias = captures.find((call) => call.event === '$create_alias');
+    expect(started?.distinct_id).toBe('cs:cs_test_attr');
+    expect(started?.properties).toMatchObject({
+      sku: 'promo_plus_annual',
+      currency: 'CAD',
+      msclkid: 'msclk',
+      source_code: 'poster-oakville',
+    });
+    expect(JSON.stringify(started)).not.toContain('ph_distinct_id');
+    expect(JSON.stringify(started)).not.toContain('@');
+    expect(alias?.distinct_id).toBe('0123456789abcdef');
+    expect(alias?.properties).toMatchObject({ alias: 'cs:cs_test_attr' });
   });
 });

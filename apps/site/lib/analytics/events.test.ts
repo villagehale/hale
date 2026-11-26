@@ -43,12 +43,16 @@ describe('site buildEvent privacy gate', () => {
         utm_source: 'google',
         utm_content: 'hero',
         gclid: 'Click1',
+        msclkid: 'Ms',
+        source_code: 'poster-oakville',
         cta_placement: 'hero',
       }).properties,
     ).toEqual({
       utm_source: 'google',
       utm_content: 'hero',
       gclid: 'Click1',
+      msclkid: 'Ms',
+      source_code: 'poster-oakville',
       cta_placement: 'hero',
     });
   });

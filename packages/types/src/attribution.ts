@@ -2,7 +2,8 @@
  * First-touch acquisition params that survive landing → signup → checkout.
  *
  * These are advertising click and campaign identifiers plus Hale's own card code,
- * not parent or child data. Values are truncated so they fit Stripe metadata (500
+ * not parent or child data. `msclkid` is the Microsoft Ads click id and rides with
+ * `gclid` and `fbclid`. Values are truncated so they fit Stripe metadata (500
  * chars). A value that carries an email's `@`, a URL's `://`, markup or a double quote
  * is dropped whole rather than carried, because these values reach Stripe and
  * analytics. Anything else a campaign name holds (accents, `'`, CJK, `|`, `/`, `:`)
@@ -20,6 +21,7 @@ export const ATTRIBUTION_KEYS = [
   'utm_content',
   'gclid',
   'fbclid',
+  'msclkid',
   'source_code',
 ] as const;
 
@@ -103,4 +105,31 @@ export function serializeAttribution(attribution: Attribution): string {
     if (value) params.set(key, value);
   }
   return params.toString();
+}
+
+/**
+ * Stripe session metadata key for a PostHog distinct id the visitor already
+ * consented to. Not an attribution key: it must not be spread into event properties.
+ */
+export const ANALYTICS_DISTINCT_ID_KEY = 'ph_distinct_id';
+
+const ANALYTICS_DISTINCT_ID = /^[A-Za-z0-9_-]{16,128}$/;
+
+/**
+ * A browser distinct id from a consented PostHog client. Emails, checkout
+ * session ids, and short tokens are dropped. Null when the visitor has not
+ * accepted analytics, because that client is never loaded.
+ */
+export function analyticsDistinctId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!ANALYTICS_DISTINCT_ID.test(trimmed)) return null;
+  if (trimmed.startsWith('cs_') || trimmed.startsWith('cs:')) return null;
+  return trimmed;
+}
+
+/** Person key for a Checkout Session that has no family yet. Null when the id is not a session id. */
+export function checkoutPersonId(sessionId: string): string | null {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return null;
+  return `cs:${sessionId}`;
 }

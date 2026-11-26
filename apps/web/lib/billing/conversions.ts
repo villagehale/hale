@@ -1,15 +1,21 @@
 import { createHash } from 'node:crypto';
-import type { Attribution, BillingCurrency } from '@hale/types';
+import { type Database, schema } from '@hale/db';
+import { type Attribution, type BillingCurrency, checkoutPersonId } from '@hale/types';
 import { PROMO_PRICE_DISPLAY } from '@hale/types';
+import {
+  type CheckoutCaptureOutcome,
+  captureCheckoutEvent,
+} from '~/lib/analytics/checkout-capture';
 import {
   type FunnelOutcome,
   type FunnelSender,
   captureFunnelEvent,
   posthogFunnelSender,
 } from '~/lib/analytics/funnel';
+import { funnelAttributionEnabled } from '~/lib/analytics/funnel-flag';
 import { metaPixelIdFromEnv } from '~/lib/analytics/meta-pixel';
 import { captureServerEvent, hashFamilyId } from '~/lib/analytics/server-capture';
-import { familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
+import { eventIdFromStripeEvent, familyIdFromStripeEvent } from '~/lib/webhooks/stripe-billing';
 import { type AdsCheckoutContext, adsContextFromStripeMetadata } from './ads-context.js';
 import { attributionFromStripeMetadata } from './attribution.js';
 import { metaCapiEnabled } from './flags.js';
@@ -26,8 +32,12 @@ import { isPromoPreviewFamily } from './promo-preview.js';
  * Google Ads Purchase fires in the browser on the checkout success page.
  *
  * Each sender no-ops with a named reason when its flag or env is missing (rule #11).
- * Idempotency is the Stripe event id: the route only calls this after
- * applyStripeBillingEvent returns `applied`, so a redelivery does not send again.
+ * A family purchase is reported only after applyStripeBillingEvent returns `applied`,
+ * which has already claimed the Stripe event id. An unbound /pricing checkout is
+ * reported by deliverUnboundCheckoutPurchase, which claims the event id and
+ * `purchase:<session id>` itself. Both claims live in stripe_billing_events.
+ * That path stays dark until FUNNEL_ATTRIBUTION_ENABLED is exactly true, including
+ * Meta, so a deploy does not start a new Purchase while the flag is off.
  * No child data. Email and phone are hashed per Meta's spec and never sent to PostHog.
  */
 
@@ -36,7 +46,8 @@ export type ConversionSkipReason =
   | 'not_configured'
   | 'not_a_purchase'
   | 'provider_error'
-  | 'preview';
+  | 'preview'
+  | 'duplicate';
 
 export type ConversionSendResult =
   | { status: 'sent' }
@@ -53,6 +64,7 @@ export interface PurchaseConversion {
   readonly attribution: Attribution;
   readonly ads: AdsCheckoutContext;
   readonly sku: string | null;
+  readonly tier: 'plus' | 'family' | null;
 }
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
@@ -170,7 +182,15 @@ export function purchaseFromStripeEvent(payload: unknown): PurchaseConversion | 
     attribution: attributionFromStripeMetadata(metadata),
     ads: adsContextFromStripeMetadata(metadata),
     sku: metadata ? readString(metadata.sku) : null,
+    tier: paidTier(metadata?.tier),
   };
+}
+
+function paidTier(value: unknown): 'plus' | 'family' | null {
+  const token = readString(value)?.toLowerCase();
+  if (token === 'plus') return 'plus';
+  if (token === 'family' || token === 'max') return 'family';
+  return null;
 }
 
 export async function sendMetaPurchase(
@@ -261,6 +281,7 @@ export function metaTestPurchaseFor(
     attribution: {},
     ads: {},
     sku: tier === 'family' ? 'promo_max_annual' : 'promo_plus_annual',
+    tier,
   };
 }
 
@@ -381,4 +402,140 @@ export async function reportBillingPurchase(
     sendFunnelCheckoutCompleted(purchase, payload, env, funnel),
   ]);
   return { meta, posthog, funnel: funnelOutcome };
+}
+
+const unboundFunnelSender: FunnelSender = {
+  send: (capture) =>
+    captureCheckoutEvent(capture.event, capture.distinctId, capture.properties, {
+      ...(capture.set ? { set: capture.set } : {}),
+      ...(capture.setOnce ? { setOnce: capture.setOnce } : {}),
+    }),
+};
+
+export type UnboundPurchaseCapture = (
+  event: 'purchase',
+  distinctId: string,
+  properties: Record<string, unknown>,
+) => Promise<CheckoutCaptureOutcome>;
+
+/**
+ * Paid checkout.session.completed with no family. PostHog distinct id is
+ * `cs:` plus the session id. Properties are sku, value, currency, tier, and
+ * attribution — never phone or email. Meta event_id is the session id, so a
+ * browser Purchase with the same eventID dedupes. The Stripe event id and
+ * `purchase:<session id>` are claimed together; a retry or a second event for
+ * the same session does not send again. Dark until FUNNEL_ATTRIBUTION_ENABLED,
+ * and that includes Meta, so the claim is not written while the flag is off.
+ * A claim that throws propagates (the route answers 500 and Stripe retries).
+ * A send that throws is caught here: the claim already landed, so a retry
+ * must not send a second Purchase.
+ */
+export async function deliverUnboundCheckoutPurchase(
+  database: Database,
+  payload: unknown,
+  env: Record<string, string | undefined> = process.env,
+  fetchImpl: typeof fetch = fetch,
+  funnel: FunnelSender = unboundFunnelSender,
+  capture: UnboundPurchaseCapture = captureCheckoutEvent,
+): Promise<PurchaseConversionReport | { status: 'skipped'; reason: ConversionSkipReason }> {
+  if (!funnelAttributionEnabled(env)) {
+    return { status: 'skipped', reason: 'flag_off' };
+  }
+  const purchase = purchaseFromStripeEvent(payload);
+  const person = purchase ? checkoutPersonId(purchase.eventId) : null;
+  if (!purchase || purchase.familyId || !person) {
+    return { status: 'skipped', reason: 'not_a_purchase' };
+  }
+  const eventId = eventIdFromStripeEvent(payload);
+  if (!eventId || !isClaimKey(eventId)) {
+    return { status: 'skipped', reason: 'not_a_purchase' };
+  }
+  const claimed = await claimUnboundPurchase(database, eventId, purchase.eventId);
+  if (!claimed) return { status: 'skipped', reason: 'duplicate' };
+  try {
+    const [meta, posthog, funnelOutcome] = await Promise.all([
+      sendMetaPurchase(purchase, env, fetchImpl),
+      sendUnboundPosthogPurchase(purchase, person, capture),
+      sendUnboundFunnelCheckoutCompleted(purchase, person, env, funnel),
+    ]);
+    return { meta, posthog, funnel: funnelOutcome };
+  } catch (err) {
+    console.warn('billing conversions: unbound report failed', {
+      err: err instanceof Error ? err.name : 'unknown',
+    });
+    return {
+      meta: { status: 'skipped', reason: 'provider_error' },
+      posthog: { status: 'skipped', reason: 'provider_error' },
+      funnel: 'provider_error',
+    };
+  }
+}
+
+function isClaimKey(value: string): boolean {
+  return value.length > 0 && value.length <= 255 && !/[\s@]/.test(value);
+}
+
+async function claimUnboundPurchase(
+  database: Database,
+  eventId: string,
+  sessionId: string,
+): Promise<boolean> {
+  return database.transaction(async (tx) => {
+    const eventInserted = await tx
+      .insert(schema.stripeBillingEvents)
+      .values({ eventId })
+      .onConflictDoNothing()
+      .returning({ id: schema.stripeBillingEvents.id });
+    if (eventInserted.length === 0) return false;
+    const sessionInserted = await tx
+      .insert(schema.stripeBillingEvents)
+      .values({ eventId: `purchase:${sessionId}` })
+      .onConflictDoNothing()
+      .returning({ id: schema.stripeBillingEvents.id });
+    return sessionInserted.length > 0;
+  });
+}
+
+async function sendUnboundPosthogPurchase(
+  purchase: PurchaseConversion,
+  distinctId: string,
+  capture: UnboundPurchaseCapture,
+): Promise<ConversionSendResult> {
+  const properties: Record<string, unknown> = {
+    currency: purchase.currency,
+    value: purchase.value,
+    ...purchase.attribution,
+  };
+  if (purchase.sku) properties.sku = purchase.sku;
+  if (purchase.tier) properties.tier = purchase.tier;
+  try {
+    const outcome = await capture('purchase', distinctId, properties);
+    if (outcome === 'not_configured') return { status: 'skipped', reason: 'not_configured' };
+    if (outcome === 'provider_error') return { status: 'skipped', reason: 'provider_error' };
+    return { status: 'sent' };
+  } catch {
+    return { status: 'skipped', reason: 'provider_error' };
+  }
+}
+
+async function sendUnboundFunnelCheckoutCompleted(
+  purchase: PurchaseConversion,
+  distinctId: string,
+  env: Record<string, string | undefined>,
+  sender: FunnelSender,
+): Promise<FunnelOutcome> {
+  return captureFunnelEvent(
+    {
+      event: 'checkout_completed',
+      distinctId,
+      attribution: purchase.attribution,
+      properties: {
+        currency: purchase.currency,
+        value: purchase.value,
+        ...(purchase.sku ? { sku: purchase.sku } : {}),
+        ...(purchase.tier ? { tier: purchase.tier } : {}),
+      },
+    },
+    { sender, env },
+  );
 }

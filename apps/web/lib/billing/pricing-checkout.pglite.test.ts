@@ -69,7 +69,7 @@ function sessionId(): string {
   return `cs_test_pricing_${serial}`;
 }
 
-function paidEvent(id: string, phone: string, tier = 'plus') {
+function paidEvent(id: string, phone: string, tier = 'plus', extra: Record<string, string> = {}) {
   return {
     id: `evt_${id}`,
     type: 'checkout.session.completed',
@@ -86,6 +86,7 @@ function paidEvent(id: string, phone: string, tier = 'plus') {
           tier,
           sku: tier === 'plus' ? 'promo_plus_annual' : 'promo_max_annual',
           currency: 'CAD',
+          ...extra,
         },
       },
     },
@@ -193,6 +194,40 @@ describe('pricing checkout payments', () => {
       { status: 'unbound' },
     );
     expect(await payment(other)).toBeNull();
+  });
+
+  it('stores attribution and the consented distinct id, and reports them when the code verifies', async () => {
+    const id = sessionId();
+    const phone = '+14165552077';
+    await recordPricingDirectCheckout(
+      db.database,
+      paidEvent(id, phone, 'plus', {
+        utm_source: 'google',
+        msclkid: 'msclk',
+        source_code: 'poster-oakville',
+        ph_distinct_id: '0123456789abcdef',
+      }),
+    );
+    const row = await payment(id);
+    expect(row?.analyticsDistinctId).toBe('0123456789abcdef');
+    expect(row?.attribution).toContain('source_code=poster-oakville');
+    expect(row?.attribution).toContain('msclkid=msclk');
+    const sender = new FakeOtpSender();
+    await sendPricingCheckoutCode(db.database, { sessionId: id, now: NOW, sender });
+    const seen: Array<{ signup: boolean; analyticsDistinctId: string | null }> = [];
+    const verified = await verifyPricingCheckoutCode(
+      db.database,
+      { sessionId: id, code: sender.sent[0]?.code ?? '', now: NOW },
+      {
+        onBound: async (bound) => {
+          seen.push(bound);
+        },
+      },
+    );
+    expect(verified.status).toBe('verified');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.signup).toBe(true);
+    expect(seen[0]?.analyticsDistinctId).toBe('0123456789abcdef');
   });
 });
 

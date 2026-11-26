@@ -1,6 +1,6 @@
 'use client';
 
-import { parseAttribution } from '@hale/types';
+import { analyticsDistinctId, parseAttribution } from '@hale/types';
 import { usePathname } from 'next/navigation';
 import type { PostHog } from 'posthog-js';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
@@ -266,6 +266,21 @@ export function useAnalytics(): (
  */
 export function useAnalyticsReady(): boolean {
   return useContext(PostHogContext).client !== null;
+}
+
+/**
+ * The PostHog distinct id, only when the client has loaded. The client is set
+ * after Accept and not when the visitor has opted out, so a null result means
+ * analytics consent was not granted.
+ */
+export function useConsentedDistinctId(): string | null {
+  const client = useContext(PostHogContext).client;
+  if (!client) return null;
+  try {
+    return analyticsDistinctId(client.get_distinct_id());
+  } catch {
+    return null;
+  }
 }
 
 /** The site's funnel page views (lib/analytics/funnel-views.ts). Renders nothing. */

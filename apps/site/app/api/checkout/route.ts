@@ -1,4 +1,6 @@
+import { ANALYTICS_DISTINCT_ID_KEY } from '@hale/types';
 import { NextResponse } from 'next/server';
+import { captureSiteCheckoutStarted } from '~/lib/analytics/server-capture';
 import {
   attributionFromCheckoutUrl,
   directCheckoutCancelUrl,
@@ -47,6 +49,8 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   const origin = url.origin;
+  const attribution = attributionFromCheckoutUrl(url);
+  const distinctId = url.searchParams.get(ANALYTICS_DISTINCT_ID_KEY);
   const form = directCheckoutForm({
     priceId: selected.priceId,
     tier: selected.tier,
@@ -54,10 +58,12 @@ export async function GET(request: Request): Promise<Response> {
     currency: selected.currency,
     successUrl: directCheckoutSuccessUrl(origin),
     cancelUrl: directCheckoutCancelUrl(origin),
-    attribution: attributionFromCheckoutUrl(url),
+    attribution,
+    analyticsDistinctId: distinctId,
   });
 
   let checkoutUrl: string | null = null;
+  let sessionId: string | null = null;
   try {
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
@@ -74,8 +80,9 @@ export async function GET(request: Request): Promise<Response> {
       );
       return NextResponse.json({ error: 'stripe_unavailable' }, { status: 502 });
     }
-    const json = (await res.json()) as { url?: unknown };
+    const json = (await res.json()) as { url?: unknown; id?: unknown };
     checkoutUrl = stripeHostedCheckoutUrl(json.url);
+    sessionId = typeof json.id === 'string' ? json.id : null;
   } catch (err) {
     console.warn(
       {
@@ -87,6 +94,27 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'stripe_unavailable' }, { status: 502 });
   }
   if (!checkoutUrl) return NextResponse.json({ error: 'stripe_unavailable' }, { status: 502 });
+
+  if (sessionId) {
+    try {
+      await captureSiteCheckoutStarted({
+        sessionId,
+        tier: selected.tier,
+        sku: selected.sku,
+        currency: selected.currency,
+        attribution,
+        analyticsDistinctId: distinctId,
+      });
+    } catch (err) {
+      console.warn(
+        {
+          event: 'pricing_checkout_started_failed',
+          name: err instanceof Error ? err.name : 'unknown',
+        },
+        'pricing checkout',
+      );
+    }
+  }
 
   return new NextResponse(null, {
     status: 303,
