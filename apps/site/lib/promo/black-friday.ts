@@ -10,7 +10,7 @@ import {
   serverCheckoutCurrency,
 } from '@hale/types';
 import { bfAnnualPriceId } from '~/lib/billing/direct-checkout';
-import type { PromoTier, PromoTierPrice } from './holiday';
+import { FOUNDING_REFUND_LINE, type PromoTier, type PromoTierPrice } from './holiday';
 
 /**
  * The one-day price, as the marketing site shows it.
@@ -181,23 +181,104 @@ export function blackFridaySentence(
   return `Black Friday: yearly Max ${max}, today only.`;
 }
 
-/**
- * The Dec 31 sentence keeps the season amounts. Today's price is named on
- * its own, so a later buyer is not told the one-day price lasts the month.
- */
-export function blackFridayDeadlineCopy(input: {
-  plusToday: string | null;
-  maxToday: string | null;
-  plusSeason: string;
-  maxSeason: string;
-}): string {
-  const today = [
-    input.plusToday ? `Plus is ${input.plusToday}` : null,
-    input.maxToday ? `Max is ${input.maxToday}` : null,
-  ]
-    .filter((part): part is string => part !== null)
-    .join(' and ');
-  return `${today} today. Join by Dec 31 and Plus is ${input.plusSeason}, Max is ${input.maxSeason}, for as long as you’re a member.`;
+/** "$39/yr" in the page's money style. An unrecognized label is returned as-is. */
+export function blackFridayPriceLabel(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
+  const amount = saleLabel.match(/\$(\d+)/)?.[1];
+  if (!amount) return saleLabel;
+  if (locale === 'fr') return `${amount} $/an`;
+  if (locale === 'zh') return `每年 $${amount}`;
+  return saleLabel;
+}
+
+function blackFridayPlanName(plan: 'plus' | 'max'): 'Plus' | 'Max' {
+  return plan === 'plus' ? 'Plus' : 'Max';
+}
+
+/** Today's price, and that it stays at renewal. No season amount. */
+export function blackFridayRenewalCopy(
+  locale: 'en' | 'fr' | 'zh',
+  plus: string | null,
+  max: string | null,
+): string {
+  const named = (plan: 'Plus' | 'Max', label: string): string => {
+    const price = blackFridayPriceLabel(locale, label);
+    if (locale === 'fr') return `${plan} coûte ${price}`;
+    if (locale === 'zh') return `${plan} ${price}`;
+    return `${plan} is ${price}`;
+  };
+  const parts = [
+    plus ? named('Plus', plus) : null,
+    max ? named('Max', max) : null,
+  ].filter((part): part is string => part !== null);
+  const stays =
+    locale === 'fr'
+      ? 'Ce prix reste quand tu renouvelles.'
+      : locale === 'zh'
+        ? '续订时这个价格不变。'
+        : 'This price stays when you renew.';
+  if (locale === 'zh') return `今日 ${parts.join('，')}。${stays}`;
+  if (locale === 'fr') return `${parts.join(' et ')} aujourd'hui. ${stays}`;
+  return `${parts.join(' and ')} today. ${stays}`;
+}
+
+/** The checkout button. "Get Plus, $39/yr", and the tu / 开通 forms. */
+export function blackFridayPlanButton(
+  locale: 'en' | 'fr' | 'zh',
+  plan: 'plus' | 'max',
+  saleLabel: string,
+): string {
+  const name = blackFridayPlanName(plan);
+  const price = blackFridayPriceLabel(locale, saleLabel);
+  if (locale === 'fr') return `Prends ${name}, ${price}`;
+  if (locale === 'zh') return `开通 ${name}，${price}`;
+  return `Get ${name}, ${price}`;
+}
+
+export function blackFridayMaxHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
+  const price = blackFridayPriceLabel(locale, saleLabel);
+  if (locale === 'fr') return `Black Friday : Max à ${price}.`;
+  if (locale === 'zh') return `黑色星期五：Max ${price}。`;
+  return `Black Friday: Max for ${price}.`;
+}
+
+export function blackFridayCloseHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
+  const price = blackFridayPriceLabel(locale, saleLabel);
+  if (locale === 'fr') return `Max à ${price}, aujourd'hui.`;
+  if (locale === 'zh') return `今日 Max ${price}。`;
+  return `Max for ${price}, today.`;
+}
+
+export function blackFridayTodayTag(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return "Aujourd'hui seulement.";
+  if (locale === 'zh') return '仅限今日。';
+  return 'Today only.';
+}
+
+export function blackFridayYearlyNote(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return "Plus et Max sont facturés à l'année. Ce prix reste quand tu renouvelles.";
+  if (locale === 'zh') return 'Plus 和 Max 按年计费。续订时这个价格不变。';
+  return 'Plus and Max are billed yearly. This price stays when you renew.';
+}
+
+export function blackFridayRefundLine(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return "Remboursement complet en tout temps si ce n'est pas pour toi.";
+  if (locale === 'zh') return '不合适可随时全额退款。';
+  return FOUNDING_REFUND_LINE;
+}
+
+/** What a screen reader hears for the struck price beside today's price. */
+export function blackFridayHeardPrice(
+  locale: 'en' | 'fr' | 'zh',
+  saleLabel: string,
+  regularLabel: string,
+): string {
+  if (locale === 'fr') {
+    return `${blackFridayPriceLabel('fr', saleLabel)}, prix habituel ${blackFridayPriceLabel('fr', regularLabel)}.`;
+  }
+  if (locale === 'zh') {
+    return `${blackFridayPriceLabel('zh', saleLabel)}，原价 ${blackFridayPriceLabel('zh', regularLabel)}。`;
+  }
+  return `${saleLabel.replace('/yr', ' a year')}, regular price ${regularLabel.replace('/yr', ' a year')}.`;
 }
 
 /**

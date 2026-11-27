@@ -2,7 +2,11 @@ import logo from '~/assets/hale-logo.jpeg';
 import { FaqItem } from '~/components/redesign/faq-item';
 import { TextDoor } from '~/components/redesign/text-door';
 import type { Locale } from '~/i18n/routing';
-import type { BlackFridayOffer } from '~/lib/promo/black-friday';
+import {
+  type BlackFridayOffer,
+  blackFridayHeardPrice,
+  blackFridayRenewalCopy,
+} from '~/lib/promo/black-friday';
 import {
   FOUNDING_REFUND_LINE,
   type HolidayPromo,
@@ -300,7 +304,7 @@ export function PromoSection({
               <p className="promo-price-note">{FOUNDING_REFUND_LINE}</p>
               <p className="promo-lede">
                 {oneDay
-                  ? `Today only. Join by Dec 31 and your price (${promo.max.saleLabel} for Max, ${promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. Refund anytime.`
+                  ? `${blackFridayRenewalCopy('en', plusPrice.saleLabel, maxPrice.saleLabel)} Refund anytime.`
                   : 'Your price for the rest of the year, locked in for as long as you’re a member. Join by Dec 31. Refund anytime.'}
               </p>
               <ul className="promo-chips">
@@ -321,13 +325,15 @@ export function PromoSection({
                   plan="max"
                   query={checkoutQuery}
                 >
-                  Already texting Hale? Lock in Max at {maxPrice.saleLabel}
+                  {oneDay
+                    ? `Get Max, ${maxPrice.saleLabel}`
+                    : `Already texting Hale? Lock in Max at ${maxPrice.saleLabel}`}
                   <Arrow />
                 </FoundingCheckoutLink>
               </div>
               <p className="promo-fine">
                 {oneDay
-                  ? `Billed once a year. Today’s price is for today. Families who join by Dec 31, 2026 lock in ${promo.plus.saleLabel} for Plus and ${promo.max.saleLabel} for Max.`
+                  ? 'Billed once a year. This price stays when you renew.'
                   : 'Billed once a year. Sale prices are for families who join by Dec 31, 2026.'}
               </p>
             </div>
@@ -348,11 +354,11 @@ export function PromoSection({
                 <Check />
               </span>
               <div>
-                <h3>Locked in</h3>
+                <h3>{oneDay ? 'When you renew' : 'Locked in'}</h3>
                 <p>
-                  Join by Dec 31 and your price ({promo.max.saleLabel} for Max,{' '}
-                  {promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. It
-                  doesn’t go up at renewal. If you cancel, the sale price ends with the membership.
+                  {oneDay
+                    ? `${blackFridayRenewalCopy('en', plusPrice.saleLabel, maxPrice.saleLabel)} If you cancel, it ends with the membership.`
+                    : `Join by Dec 31 and your price (${promo.max.saleLabel} for Max, ${promo.plus.saleLabel} for Plus) stays the same for as long as you’re a member. It doesn’t go up at renewal. If you cancel, the sale price ends with the membership.`}
                 </p>
               </div>
             </li>
@@ -394,13 +400,24 @@ export function foundingAfterLine(promo: HolidayPromo): string {
 }
 
 /** The promo questions, in the site's FAQ rows. */
-export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
-  const after = foundingAfterLine(promo);
+export function PromoFaqItems({
+  promo,
+  oneDay = false,
+}: {
+  promo: HolidayPromo;
+  oneDay?: boolean;
+}) {
   return (
     <>
-      <FaqItem id="what-happens-after-dec-31" question="What happens after Dec 31?">
-        {after}
-      </FaqItem>
+      {oneDay ? (
+        <FaqItem id="what-happens-when-you-renew" question="What happens when you renew?">
+          This price stays when you renew.
+        </FaqItem>
+      ) : (
+        <FaqItem id="what-happens-after-dec-31" question="What happens after Dec 31?">
+          {foundingAfterLine(promo)}
+        </FaqItem>
+      )}
       <FaqItem id="can-i-get-a-refund" question="Can I get a refund?">
         Yes, any time. Email {REFUND_EMAIL} and we’ll refund you and end the membership.
       </FaqItem>
@@ -416,12 +433,17 @@ export function PromoFaqItems({ promo }: { promo: HolidayPromo }) {
 }
 
 /** Card price for a paid tier on the pricing page: regular struck, sale beside it. */
-export function TierSalePrice({ price }: { price: PromoTierPrice }) {
+export function TierSalePrice({
+  price,
+  locale = 'en',
+}: {
+  price: PromoTierPrice;
+  locale?: 'en' | 'fr' | 'zh';
+}) {
   return (
     <h3 className="promo-tier-price">
       <span className="promo-sr">
-        {price.saleLabel.replace('/yr', ' a year')}, regular price{' '}
-        {price.regularLabel.replace('/yr', ' a year')}.
+        {blackFridayHeardPrice(locale, price.saleLabel, price.regularLabel)}
       </span>
       <span className="promo-tier-pair" aria-hidden="true">
         <s className="promo-tier-regular">{price.regularLabel}</s>

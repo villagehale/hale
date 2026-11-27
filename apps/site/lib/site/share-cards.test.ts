@@ -152,12 +152,12 @@ describe('share card query', () => {
     const cad = paintShareCard('home', open);
     expect(cad.flag).toBe('Ends Friday at midnight');
     expect(cad.prices).toBe('Plus $39/yr · Max $59/yr');
-    expect(cad.headline).toBe(HOME_SLOGAN.en.plain);
+    expect(cad.headline).toBe(HOME_CARD.en.plain);
     expect(cad.flag).not.toMatch(/PT|ET|time zone/i);
     const usd = shareCardQueryFrom({ locale: 'en', now: inside, country: 'US', env: BF_ENV });
     expect(paintShareCard('home', usd).prices).toBe('Plus $29/yr · Max $49/yr');
     expect(paintShareCard('home', shut).flag).toBe('Black Friday Sale');
-    expect(paintShareCard('home', shut).prices).toBe('Max C$99/yr · Plus C$59/yr');
+    expect(paintShareCard('home', shut).prices).toBe('Max $99/yr · Plus $59/yr');
     expect(paintShareCard('pricing', open).headline).toBe('Black Friday Sale: Max for C$99/yr.');
     const missing = shareCardQueryFrom({
       locale: 'en',
@@ -166,7 +166,7 @@ describe('share card query', () => {
       env: { HOLIDAY_PROMO_ENABLED: 'true', VERCEL_ENV: 'production' },
     });
     expect(missing.bf24).toBe(false);
-    expect(paintShareCard('home', missing).prices).toBe('Max C$99/yr · Plus C$59/yr');
+    expect(paintShareCard('home', missing).prices).toBe('Max $99/yr · Plus $59/yr');
     const french = shareCardQueryFrom({ locale: 'fr', now: inside, country: 'CA', env: BF_ENV });
     expect(french.bf24).toBe(false);
     expect(shareCardUrl('home', french)).not.toContain('bf24');
@@ -208,7 +208,7 @@ describe('share card query', () => {
     expect(paintShareCard('home', forced).prices).toBe('Plus $39/yr · Max $59/yr');
     const ignored = shareCardQueryFromUrl(image, now, BF_ENV);
     expect(ignored.bf24).toBe(false);
-    expect(paintShareCard('home', ignored).prices).toBe('Max C$99/yr · Plus C$59/yr');
+    expect(paintShareCard('home', ignored).prices).toBe('Max $99/yr · Plus $59/yr');
     const bumpOnly = new URL(
       `${SITE_URL}/og/home?v=${SHARE_CARD_VERSION}&locale=en&phase=black_friday&cc=CAD&offer=1&paid=0&bf24=1`,
     );
@@ -218,7 +218,7 @@ describe('share card query', () => {
     });
     expect(stale.bf24).toBe(false);
     expect(paintShareCard('home', stale).flag).toBe('Black Friday Sale');
-    expect(paintShareCard('home', stale).prices).toBe('Max C$99/yr · Plus C$59/yr');
+    expect(paintShareCard('home', stale).prices).toBe('Max $99/yr · Plus $59/yr');
   });
 
   it('uses CAD when no country is known, the same default as the site', () => {
@@ -239,19 +239,14 @@ describe('share card query', () => {
 describe('share card copy', () => {
   it('paints the shared promo prices, in both currencies', () => {
     for (const currency of CURRENCIES) {
-      const promo = buildHolidayPromo('holiday', currency);
       const card = paintShareCard(
         'home',
         query({ locale: 'en', currency, offer: true, phase: 'holiday' }),
       );
-      const max = sharePriceLabel(currency, promo.max.saleLabel);
-      const plus = sharePriceLabel(currency, promo.plus.saleLabel);
-      expect(card.prices).toBe(`Max ${max} · Plus ${plus}`);
-      const symbol = currency === 'CAD' ? 'C$' : '$';
       expect(card.prices).toBe(
-        `Max ${symbol}${PROMO_PRICE_DISPLAY.family[currency].amount}/yr · Plus ${symbol}${PROMO_PRICE_DISPLAY.plus[currency].amount}/yr`,
+        `Max $${PROMO_PRICE_DISPLAY.family[currency].amount}/yr · Plus $${PROMO_PRICE_DISPLAY.plus[currency].amount}/yr`,
       );
-      expect(card.prices).not.toContain('US$');
+      expect(card.prices).not.toMatch(/C\$|US\$/);
       expect(card.flag).toBe('Holiday Sale');
     }
   });

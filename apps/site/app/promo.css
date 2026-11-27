@@ -1398,7 +1398,7 @@
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: baseline;
-  gap: 0.4em;
+  gap: 0;
   max-width: 100%;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
@@ -1413,6 +1413,12 @@
   min-width: 8ch;
   font-variant-numeric: tabular-nums;
   text-align: left;
+}
+.rd .bf-count-sep {
+  white-space: pre;
+}
+.rd .bf-count-left {
+  white-space: nowrap;
 }
 .rd .bf-banner-actions {
   display: flex;
@@ -1444,7 +1450,7 @@
 }
 .rd [data-bf-sticky="1"] .bf-count,
 .rd [data-bf-sticky="1"] .bf-count span {
-  gap: 0.3em;
+  gap: 0;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;

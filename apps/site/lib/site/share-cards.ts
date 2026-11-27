@@ -32,10 +32,10 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. /og caches for a day. v=d7 was the
- * "we should" headline. The new hero is d8.
+ * Cache key for the painted PNG. /og caches for a day. v=d8 was hero B
+ * with C$ on the season home prices. v=d9 is that card in a plain "$".
  */
-export const SHARE_CARD_VERSION = 'd8';
+export const SHARE_CARD_VERSION = 'd9';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -427,7 +427,14 @@ function paint(
   const promo = paintedPromo(query);
   const max = promo ? sharePriceLabel(promo.currency, promo.max.saleLabel) : null;
   const plus = promo ? sharePriceLabel(promo.currency, promo.plus.saleLabel) : null;
-  const seasonPrices = max && plus ? `Max ${max} · Plus ${plus}` : null;
+  // Promo prices on the home card are a plain "$" in both countries. Other
+  // cards still mark CAD with C$, because that line is the only currency cue.
+  const seasonPrices =
+    promo && id === 'home'
+      ? `Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}`
+      : max && plus
+        ? `Max ${max} · Plus ${plus}`
+        : null;
   const oneDay = id === 'home' && query.bf24 ? homeShareOneDayCopy(query.currency) : null;
   return {
     id,

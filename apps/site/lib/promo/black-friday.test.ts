@@ -3,11 +3,16 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PromoStickyCta } from '~/components/promo/holiday-promo';
+import { RedesignHome } from '~/components/redesign/home';
+import { RedesignPricing } from '~/components/redesign/pricing';
 import {
+  blackFridayCloseHeadline,
   blackFridayCountdownCopy,
   blackFridayCountdownPair,
-  blackFridayDeadlineCopy,
   blackFridayEndsInCopy,
+  blackFridayMaxHeadline,
+  blackFridayPlanButton,
+  blackFridayRenewalCopy,
   blackFridaySentence,
   resolveBlackFridayFromSearch,
   resolveBlackFridayOffer,
@@ -160,16 +165,22 @@ describe('resolveBlackFridayOffer', () => {
     });
     expect(blackFridayEndsInCopy('zh', '00:00:00')).toBe('剩余 00:00:00');
     expect(blackFridayEndsInCopy('en', '01:02:03')).toBe('Ends in 01:02:03');
-    expect(
-      blackFridayDeadlineCopy({
-        plusToday: '$29/yr',
-        maxToday: '$49/yr',
-        plusSeason: '$39/yr',
-        maxSeason: '$79/yr',
-      }),
-    ).toBe(
-      'Plus is $29/yr and Max is $49/yr today. Join by Dec 31 and Plus is $39/yr, Max is $79/yr, for as long as you’re a member.',
+    expect(blackFridayRenewalCopy('en', '$39/yr', '$59/yr')).toBe(
+      'Plus is $39/yr and Max is $59/yr today. This price stays when you renew.',
     );
+    expect(blackFridayRenewalCopy('fr', '$39/yr', '$59/yr')).toBe(
+      "Plus coûte 39 $/an et Max coûte 59 $/an aujourd'hui. Ce prix reste quand tu renouvelles.",
+    );
+    expect(blackFridayRenewalCopy('zh', '$29/yr', '$49/yr')).toBe(
+      '今日 Plus 每年 $29，Max 每年 $49。续订时这个价格不变。',
+    );
+    expect(blackFridayRenewalCopy('en', '$39/yr', '$59/yr')).not.toMatch(/Dec 31|\$99|for life|locked in/i);
+    expect(blackFridayPlanButton('en', 'plus', '$39/yr')).toBe('Get Plus, $39/yr');
+    expect(blackFridayPlanButton('en', 'max', '$59/yr')).toBe('Get Max, $59/yr');
+    expect(blackFridayPlanButton('fr', 'plus', '$39/yr')).toBe('Prends Plus, 39 $/an');
+    expect(blackFridayPlanButton('zh', 'max', '$49/yr')).toBe('开通 Max，每年 $49');
+    expect(blackFridayMaxHeadline('fr', '$59/yr')).toBe('Black Friday : Max à 59 $/an.');
+    expect(blackFridayCloseHeadline('zh', '$49/yr')).toBe('今日 Max 每年 $49。');
   });
 });
 
@@ -277,5 +288,61 @@ describe('sticky promo bar', () => {
     expect(blackFridaySentence('fr', '$39', '$59')).toContain("aujourd'hui seulement");
     expect(blackFridaySentence('zh', '$29', '$49')).toContain('仅限今日');
     expect(blackFridaySentence('en', '$39', '$59')).not.toMatch(/C\$|US\$|founding|first\s100/i);
+  });
+});
+
+describe('in-window pages name only today’s price', () => {
+  const at = new Date('2026-11-27T18:00:00.000Z');
+  const canada = resolveBlackFridayOffer({ now: at, country: 'CA', env: IDS });
+  const promo = buildHolidayPromo('black_friday', 'CAD');
+  const door = { smsNumber: '+16475551234', prefill: 'Hi Hale' };
+
+  function page(locale: 'en' | 'fr' | 'zh', withPromo: boolean) {
+    const props = { ...door, locale, promo: withPromo ? promo : null, blackFriday: canada };
+    return {
+      home: text(renderToStaticMarkup(createElement(RedesignHome, props))),
+      pricing: text(renderToStaticMarkup(createElement(RedesignPricing, props))),
+    };
+  }
+
+  it('keeps the strike and drops every season-price sentence on the English body', () => {
+    const { home, pricing } = page('en', true);
+    for (const body of [home, pricing]) {
+      expect(body).toContain('Plus is $39/yr and Max is $59/yr today. This price stays when you renew.');
+      expect(body).toContain('Get Plus, $39/yr');
+      expect(body).toContain('Get Max, $59/yr');
+      expect(body).toContain('Ends Friday at midnight · Ends in');
+      expect(body).not.toMatch(/Join by Dec 31|Lock in|for as long as|locked in for life|After today/i);
+      expect(body).not.toContain('Plus is $59');
+      expect(body).not.toContain('Max is $99');
+    }
+    const pricingHtml = renderToStaticMarkup(
+      createElement(RedesignPricing, { ...door, locale: 'en', promo, blackFriday: canada }),
+    );
+    expect(pricingHtml).toContain('<s class="promo-tier-regular">$59/yr</s>');
+    expect(pricingHtml).toContain('<s class="promo-tier-regular">$99/yr</s>');
+  });
+
+  it('localizes the French and Chinese pricing page, including the countdown', () => {
+    const fr = page('fr', false).pricing;
+    expect(fr).toContain('Black Friday : Max à 59 $/an.');
+    expect(fr).toContain('Prends Plus, 39 $/an');
+    expect(fr).toContain('Prends Max, 59 $/an');
+    expect(fr).toContain("Ce prix reste quand tu renouvelles.");
+    expect(fr).toContain("si ce n'est pas pour toi.");
+    expect(fr).toContain('Se termine vendredi à minuit · Se termine dans');
+    expect(fr).not.toMatch(
+      /Lock in|Get Plus|Get Max|Join by Dec|Ends Friday|Ends in|Today only|regular price| a year|Billed yearly|Black Friday:|Max for |This price stays/,
+    );
+
+    const zh = page('zh', false).pricing;
+    expect(zh).toContain('黑色星期五：Max 每年 $59。');
+    expect(zh).toContain('开通 Plus，每年 $39');
+    expect(zh).toContain('开通 Max，每年 $59');
+    expect(zh).toContain('续订时这个价格不变。');
+    expect(zh).toContain('周五午夜结束 · 剩余');
+    expect(zh).not.toMatch(
+      /Lock in|Get Plus|Get Max|Join by Dec|Ends Friday|Ends in|Today only|regular price|Black Friday:|Max for |This price stays/,
+    );
   });
 });

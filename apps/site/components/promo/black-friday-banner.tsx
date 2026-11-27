@@ -13,6 +13,7 @@ import {
   blackFridayCountdownCopy,
   blackFridayCountdownPair,
   blackFridayEndsInLabel,
+  blackFridayPlanButton,
   blackFridaySentence,
 } from '~/lib/promo/black-friday';
 import { FoundingCheckoutLink } from './founding-checkout-link';
@@ -70,6 +71,7 @@ export function BlackFridayCountdown({ serverNow, locale }: { serverNow: number;
     >
       <span className="bf-count-when">{when}</span>
       <span className="bf-count-left">
+        <span className="bf-count-sep"> · </span>
         {blackFridayEndsInLabel(locale)} <span className="bf-count-time">{clock}</span>
       </span>
     </span>
@@ -105,7 +107,7 @@ export function BlackFridayBanner({
               plan="plus"
               query={offer.checkoutQuery}
             >
-              Plus {offer.plus.saleLabel}
+              {blackFridayPlanButton(locale, 'plus', offer.plus.saleLabel)}
             </FoundingCheckoutLink>
           ) : null}
           {offer.max ? (
@@ -117,7 +119,7 @@ export function BlackFridayBanner({
               plan="max"
               query={offer.checkoutQuery}
             >
-              Max {offer.max.saleLabel}
+              {blackFridayPlanButton(locale, 'max', offer.max.saleLabel)}
             </FoundingCheckoutLink>
           ) : null}
         </div>
