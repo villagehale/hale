@@ -1,13 +1,18 @@
-import { type BillingCurrency, type PromoPhase, currencyFromIpCountry } from '@hale/types';
+import {
+  BLACK_FRIDAY_PRICE_DISPLAY,
+  type BillingCurrency,
+  type PromoPhase,
+  currencyFromIpCountry,
+} from '@hale/types';
 import { headers } from 'next/headers';
 import { connection } from 'next/server';
 import { tx } from '~/components/redesign/tx';
-import { H1 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import {
   blackFridayCheckoutQuery,
+  blackFridayMaxHeadline,
   homeShareOneDay,
   homeShareOneDayCopy,
 } from '~/lib/promo/black-friday';
@@ -19,6 +24,7 @@ import {
   promoPhase,
   resolveHolidayPromo,
 } from '~/lib/promo/holiday';
+import { H1 } from '~/lib/site/narrative';
 import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
 
 /**
@@ -68,12 +74,12 @@ export interface ShareCardQuery {
   /** Checkout only. The paid confirmation heading, otherwise the unpaid one. */
   paid: boolean;
   /**
-   * Home card only. True while the one-day gate is open and both price ids
-   * for this currency exist. The home image URL adds `bf24=1` for that
-   * request and omits it again when the gate closes.
+   * Home and pricing cards. True while the one-day gate is open and both
+   * price ids for this currency exist. Those image URLs add `bf24=1` for
+   * that request and omit it again when the gate closes.
    */
   bf24?: boolean;
-  /** Non-production `bf` / `bf_now`, forwarded on the home image URL only. */
+  /** Non-production `bf` / `bf_now`, forwarded on the home and pricing image URLs. */
   bfForward?: string;
 }
 
@@ -191,9 +197,7 @@ export function shareCardQueryFromUrl(
   const bf = url.searchParams.get('bf');
   const bfNow = url.searchParams.get('bf_now');
   const oneDay =
-    phase === 'black_friday' && offer
-      ? homeShareOneDay({ now, currency, env, bf, bfNow })
-      : null;
+    phase === 'black_friday' && offer ? homeShareOneDay({ now, currency, env, bf, bfNow }) : null;
   return {
     locale,
     phase,
@@ -227,9 +231,11 @@ export function shareCardQueryString(query: ShareCardQuery): string {
 
 export function shareCardUrl(id: string, query: ShareCardQuery = defaultShareQuery('en')): string {
   const base = `${SITE_URL}/og/${id}?${shareCardQueryString(query)}`;
-  // Home only. `bf24` is the cache bump for the one-day gate. Other cards,
-  // and the home card outside the gate, stay on the query string above.
-  if (id !== 'home') return base;
+  // Home and pricing. `bf24` is the cache bump while the one-day price is
+  // painted. Other cards, and these two outside the gate, stay on the query
+  // string above. `bf` / `bf_now` are forwarded so a preview image uses the
+  // same clock as the page.
+  if (id !== 'home' && id !== 'pricing') return base;
   const extra = [query.bf24 ? 'bf24=1' : null, query.bfForward ? query.bfForward : null].filter(
     (part): part is string => part !== null,
   );
@@ -358,14 +364,22 @@ function pageHeadline(
   locale: Locale,
   promo: HolidayPromo | null,
   paid: boolean,
+  query: ShareCardQuery,
 ): string {
   switch (id) {
     case 'home':
       return HOME_CARD[locale].plain;
     case 'pricing':
       if (promo) {
-        const max = sharePriceLabel(promo.currency, promo.max.saleLabel);
-        return `${promo.saleName}: Max for ${max}.`;
+        // Same words as the pricing H1: the one-day line while the gate is
+        // open, otherwise the season sale. Plain "$", never C$ / CAD / USD.
+        if (query.bf24) {
+          return blackFridayMaxHeadline(
+            'en',
+            BLACK_FRIDAY_PRICE_DISPLAY.family[query.currency].perYear,
+          );
+        }
+        return `${promo.saleName}: Max for ${promo.max.saleLabel}.`;
       }
       return tx(locale, 'More done for you, all year.');
     case 'faq':
@@ -436,6 +450,12 @@ function paint(
         ? `Max ${max} · Plus ${plus}`
         : null;
   const oneDay = id === 'home' && query.bf24 ? homeShareOneDayCopy(query.currency) : null;
+  const pricingOneDay =
+    id === 'pricing' && query.bf24
+      ? `Max ${BLACK_FRIDAY_PRICE_DISPLAY.family[query.currency].perYear} · Plus ${
+          BLACK_FRIDAY_PRICE_DISPLAY.plus[query.currency].perYear
+        }`
+      : null;
   return {
     id,
     alt: `Hale. ${headline}`,
@@ -444,7 +464,7 @@ function paint(
     slogan,
     headline,
     flag: oneDay?.flag ?? promo?.saleName ?? null,
-    prices: oneDay?.prices ?? seasonPrices,
+    prices: oneDay?.prices ?? pricingOneDay ?? seasonPrices,
     footer: footerLine(query.locale),
     chat: {
       group: tx(query.locale, 'Saturday crew'),
@@ -455,7 +475,7 @@ function paint(
 }
 
 export function paintShareCard(id: ShareCardId, query: ShareCardQuery): PaintedShareCard {
-  const headline = pageHeadline(id, query.locale, paintedPromo(query), query.paid);
+  const headline = pageHeadline(id, query.locale, paintedPromo(query), query.paid, query);
   const slogan =
     id === 'home' ? HOME_CARD[query.locale] : id === 'about' ? HOME_SLOGAN[query.locale] : null;
   return paint(id, headline, query, slogan);

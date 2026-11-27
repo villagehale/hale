@@ -55,7 +55,7 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd(locale)) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd(locale, { search })) }}
       />
       <RedesignPricing
         regionBlocked={checkoutCurrency === null}

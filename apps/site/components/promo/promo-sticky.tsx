@@ -2,11 +2,13 @@
 
 import { type ReactNode, useEffect, useState } from 'react';
 import { PROMO_OFFER_ID, type PromoPhase } from '~/lib/promo/holiday';
+import { type StickyCoverBlock, promoStickyVisible } from '~/lib/promo/sticky-visibility';
 
 /**
  * Reveals the mobile promo bar after the first screen and hides it while the
- * offer section or the footer is on screen, so it never covers the real CTA.
- * Server HTML ships it hidden; with no JavaScript it simply never appears.
+ * offer covers the page or the footer is on screen, so it never covers the
+ * real CTA. Server HTML ships it hidden; with no JavaScript it simply never
+ * appears.
  */
 export function PromoStickyReveal({
   children,
@@ -19,32 +21,45 @@ export function PromoStickyReveal({
 }) {
   const [show, setShow] = useState(false);
   useEffect(() => {
-    const covered = new Set<Element>();
-    let pastHero = false;
-    const update = () => setShow(pastHero && covered.size === 0);
-    const onScroll = () => {
-      pastHero = window.scrollY > window.innerHeight * 0.6;
-      update();
+    const measure = () => {
+      const scrollY = window.scrollY;
+      const blocks: StickyCoverBlock[] = [];
+      const offer = document.getElementById(PROMO_OFFER_ID);
+      const footer = document.querySelector('footer');
+      if (offer) {
+        const rect = offer.getBoundingClientRect();
+        blocks.push({ kind: 'offer', top: rect.top + scrollY, bottom: rect.bottom + scrollY });
+      }
+      if (footer) {
+        const rect = footer.getBoundingClientRect();
+        blocks.push({ kind: 'footer', top: rect.top + scrollY, bottom: rect.bottom + scrollY });
+      }
+      setShow(
+        promoStickyVisible({
+          scrollY,
+          viewportHeight: window.innerHeight,
+          blocks,
+        }),
+      );
     };
-    const targets = [document.getElementById(PROMO_OFFER_ID), document.querySelector('footer')].filter(
-      (el): el is HTMLElement => el !== null,
-    );
+    const targets = [
+      document.getElementById(PROMO_OFFER_ID),
+      document.querySelector('footer'),
+    ].filter((el): el is HTMLElement => el !== null);
     const io =
       typeof IntersectionObserver === 'undefined'
         ? null
-        : new IntersectionObserver((entries) => {
-            for (const entry of entries) {
-              if (entry.isIntersecting) covered.add(entry.target);
-              else covered.delete(entry.target);
-            }
-            update();
+        : new IntersectionObserver(() => {
+            measure();
           });
     for (const el of targets) io?.observe(el);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
+    window.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    measure();
     return () => {
       io?.disconnect();
-      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
     };
   }, []);
   return (

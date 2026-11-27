@@ -43,6 +43,7 @@ export default async function LandingPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
+  const search = (await searchParams) ?? {};
   const smsNumber = readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER);
   const source = await pageSource(searchParams);
   const promo = await requestHolidayPromo(locale, searchParams);
@@ -54,7 +55,7 @@ export default async function LandingPage({
       <script
         type="application/ld+json"
         // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a serialized in-repo data object (no user input).
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale)) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd(locale, { search })) }}
       />
       <RedesignHome
         locale={locale}
