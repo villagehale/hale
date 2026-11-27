@@ -214,7 +214,8 @@
 .rd .hero h1:lang(zh) { font-size: 80px; }
 /* Variant B. Line 1 is the headline face at 60% and a lighter weight. Line 2 is
    Caveat Brush, large, with a highlighter stripe, and it does not wrap.
-   The stripe and the ink stay the same in dark mode. */
+   The stripe stays in dark mode. The ink is white there, on an explicit theme
+   and when the OS asks for dark. */
 .rd .hero h1 .h1-lead,
 .rd .hero h1 .h1-name { display: block; }
 .rd .hero h1 .h1-lead {
@@ -240,10 +241,15 @@
 .rd .hero h1.h1-fr .h1-name { font-size: clamp(32px, 5vw, 64px); }
 .rd .hero h1:lang(zh) .h1-name { font-size: clamp(36px, 7vw, 88px); }
 :root[data-theme="dark"] .rd .hero h1 .h1-name,
-:root.dark .rd .hero h1 .h1-name,
-:root:not([data-theme="light"]):not(.light) .rd .hero h1 .h1-name {
-  color: #1C1C1E;
+:root.dark .rd .hero h1 .h1-name {
+  color: #FFFFFF;
   background: linear-gradient(transparent 52%, #FFE066 52%, #FFE066 92%, transparent 92%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not(.light) .rd .hero h1 .h1-name {
+    color: #FFFFFF;
+    background: linear-gradient(transparent 52%, #FFE066 52%, #FFE066 92%, transparent 92%);
+  }
 }
 .rd h1 {
   margin-top: var(--s5);
