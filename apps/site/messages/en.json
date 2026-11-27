@@ -6,10 +6,10 @@
     "notFoundTitle": "Page not found · Hale"
   },
   "HomeMeta": {
-    "title": "Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d",
-    "description": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
-    "ogDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
-    "twitterDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
+    "title": "Hale: Every family has a default parent. Now it’s Hale.",
+    "description": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.",
+    "ogDescription": "It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.",
+    "twitterDescription": "It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents."
   },
   "Header": {
     "navPricing": "Pricing",
@@ -18,7 +18,7 @@
     "signIn": "Sign in"
   },
   "Footer": {
-    "blurb": "Hale finds what's on near you. It gets the whole group chat to a yes.",
+    "blurb": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.",
     "pronunciationPrefix": "Hale",
     "pronunciation": "/HAH-leh/",
     "pronunciationSuffix": "— Hawaiian for home.",
@@ -59,12 +59,12 @@
   },
   "About": {
     "metaTitle": "About · Hale",
-    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes. For parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
+    "metaDescription": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents. For parents in the US and Canada. Made by Barton Dong and Eugene Song at Village Hale Technologies Inc."
   },
   "Pricing": {
     "noCharge": "No charge was made.",
     "metaTitle": "Pricing · Hale",
-    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
+    "metaDescription": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents."
   },
   "Contact": {
     "metaTitle": "Contact · Hale",
@@ -110,7 +110,7 @@
   },
   "Text": {
     "metaTitle": "Text Hale",
-    "metaDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
+    "metaDescription": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents."
   },
   "CheckoutSuccess": {
     "plan": "You’re on {plan}.",
@@ -169,12 +169,12 @@
     "inMax": "What’s in Max",
     "knowsLine": "Remembers your family, season to season.",
     "findsLine": "Real classes and plans near you, for your kids’ ages.",
-    "chatLine": "Add Hale to a chat with other families, and it gets everyone to a yes.",
+    "chatLine": "Text it one-on-one, or add it to a chat with other families.",
     "maxLimits": "Highest limits on searches",
     "refund": "Changed your mind? Email {email} and we’ll refund you, any time."
   },
   "Jsonld": {
-    "orgDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes.",
-    "appDescription": "Hale finds real classes and plans near you for your kids' ages, and gets the group chat to a yes."
+    "orgDescription": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents.",
+    "appDescription": "Hale is the AI agent for family life. It knows your kids, finds what fits, signs them up with your ok, and handles the schedule, the driving and the other parents."
   }
 }

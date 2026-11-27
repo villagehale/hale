@@ -34,9 +34,9 @@ vi.mock('next/headers', () => ({
  */
 
 const HOME_TITLES = {
-  en: 'Hale: From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d',
-  fr: 'Hale: De « on devrait » à « on y va ».',
-  zh: 'Hale: 从“改天吧”到“就这么定了”。',
+  en: "Hale: Every family has a default parent. Now it’s Hale.",
+  fr: 'Hale: Chaque famille a un parent par défaut. Maintenant, c’est Hale.',
+  zh: 'Hale: 每个家庭都有一位默认家长。现在是 Hale。',
 } as const;
 
 const NOT_FOUND_TITLES = {

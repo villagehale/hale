@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allAnswers, publishedAnswers } from '~/lib/answers/index.js';
 import { SITE_URL } from '~/lib/app-url.js';
+import { ONE_LINER } from '~/lib/site/narrative.js';
 import { GET } from './route.js';
 
 /**
@@ -40,9 +41,7 @@ describe('llms.txt', () => {
   it('describes what Hale is and that the content is cited, not medical advice', async () => {
     const text = await body();
     expect(text).toMatch(/^# Hale/);
-    expect(text).toContain(
-      'Hale finds real classes and plans near you for your kids\' ages, and gets the group chat to a yes.',
-    );
+    expect(text).toContain(ONE_LINER);
     expect(text).toContain('Starting Dec 1, signs them up with your ok.');
     expect(text.toLowerCase()).not.toContain('family ai');
     expect(text.toLowerCase()).toContain('0–18');

@@ -13,6 +13,9 @@ export default defineConfig({
       // time; vitest needs the same alias so getTranslations({locale}) resolves
       // the request config (and thus the message bundles) under test.
       'next-intl/config': fileURLToPath(new URL('./i18n/request.ts', import.meta.url)),
+      // next/font/google is rewritten by the Next compiler. Vitest loads the
+      // empty package file, so the hero's Caveat Brush import needs a stand-in.
+      'next/font/google': fileURLToPath(new URL('./test/next-font-google-stub.ts', import.meta.url)),
     },
   },
   test: {

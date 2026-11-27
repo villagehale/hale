@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { describe, expect, it } from 'vitest';
 import { SITE_URL } from '~/lib/app-url';
 import { homeMetadata } from '~/lib/site/home-meta';
-import { ONE_LINER } from '~/lib/site/narrative';
+import { H1, HERO_SHARE, ONE_LINER } from '~/lib/site/narrative';
 import { notFoundMetadata } from '~/lib/site/not-found-copy';
 import { HOME_SLOGAN, answerShareUrl, shareCardUrl } from '~/lib/site/share-cards';
 
@@ -130,9 +130,17 @@ describe('share previews', () => {
 
   it('uses the approved home, pricing, faq, and about preview copy', async () => {
     const home = homeMetadata('en');
-    expect(home.openGraph?.description).toBe(ONE_LINER);
+    expect(home.title).toBe(`Hale: ${H1}`);
+    expect(home.openGraph?.title).toBe(`Hale: ${H1}`);
+    expect(home.twitter && 'title' in home.twitter ? home.twitter.title : '').toBe(`Hale: ${H1}`);
+    expect(home.openGraph?.description).toBe(HERO_SHARE);
     expect(home.twitter && 'description' in home.twitter ? home.twitter.description : '').toBe(
       home.openGraph?.description,
+    );
+    const homeImage = home.openGraph?.images;
+    const homeAlt = Array.isArray(homeImage) ? homeImage[0] : homeImage;
+    expect(homeAlt && typeof homeAlt === 'object' && 'alt' in homeAlt ? homeAlt.alt : '').toBe(
+      `Hale. ${H1}`,
     );
     expect(HOME_SLOGAN.en.plain).toBe('From “we should” to “we’re in.”');
 
@@ -148,7 +156,7 @@ describe('share previews', () => {
 
     const about = await aboutPageMetadata({ params: Promise.resolve(en) });
     expect(about.openGraph?.description).toContain('Barton Dong');
-    expect(about.openGraph?.description).toContain('gets the group chat to a yes');
+    expect(about.openGraph?.description).toContain('the AI agent for family life');
   });
 
   it('does not sell Hale with the retired pitch in the new preview copy', async () => {

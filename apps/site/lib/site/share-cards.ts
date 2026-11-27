@@ -2,6 +2,7 @@ import { type BillingCurrency, type PromoPhase, currencyFromIpCountry } from '@h
 import { headers } from 'next/headers';
 import { connection } from 'next/server';
 import { tx } from '~/components/redesign/tx';
+import { H1 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
@@ -13,7 +14,6 @@ import {
   promoPhase,
   resolveHolidayPromo,
 } from '~/lib/promo/holiday';
-import { H1 } from '~/lib/site/narrative';
 import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
 
 /**
@@ -27,10 +27,10 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. /og caches for a day, and v=d6 was already
- * fetched with the French headline on four lines. This two-line break is d7.
+ * Cache key for the painted PNG. /og caches for a day. v=d7 was the
+ * "we should" headline. The new hero is d8.
  */
-export const SHARE_CARD_VERSION = 'd7';
+export const SHARE_CARD_VERSION = 'd8';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -194,15 +194,49 @@ export function answerShareUrl(
   return `${SITE_URL}/og/answers/${slug}?${shareCardQueryString(query)}`;
 }
 
+type SloganLines = {
+  lead: string;
+  quote: string;
+  bridge: string;
+  marked: string;
+  plain: string;
+};
+
 /**
- * The home line, split the way the card draws it. The words are the page H1
- * in each locale. French is two lines, with non-breaking spaces inside the
- * guillemets so a word cannot drop onto its own line.
+ * Homepage share headline, split the way Style D draws it. The last line is
+ * the marked one, so the highlighter sits on "Now it's Hale." French and
+ * Chinese use the same two sentences.
  */
-export const HOME_SLOGAN: Record<
-  Locale,
-  { lead: string; quote: string; bridge: string; marked: string; plain: string }
-> = {
+export const HOME_CARD: Record<Locale, SloganLines> = {
+  en: {
+    lead: 'Every family has',
+    quote: 'a default parent.',
+    bridge: '',
+    marked: 'Now it’s Hale.',
+    plain: H1,
+  },
+  fr: {
+    lead: 'Chaque famille a',
+    quote: 'un parent par défaut.',
+    bridge: '',
+    marked: 'Maintenant, c’est Hale.',
+    plain: 'Chaque famille a un parent par défaut. Maintenant, c’est Hale.',
+  },
+  zh: {
+    lead: '每个家庭都有',
+    quote: '一位默认家长。',
+    bridge: '',
+    marked: '现在是 Hale。',
+    plain: '每个家庭都有一位默认家长。现在是 Hale。',
+  },
+};
+
+/**
+ * The older group-chat line, split the way the about card still draws it.
+ * The homepage moved on. French is two lines, with non-breaking spaces inside
+ * the guillemets so a word cannot drop onto its own line.
+ */
+export const HOME_SLOGAN: Record<Locale, SloganLines> = {
   en: {
     lead: 'From',
     quote: '“we should”',
@@ -239,7 +273,7 @@ export interface PaintedShareCard {
   locale: Locale;
   /** Handwriting face for the headline. Chinese uses the handwriting CJK face. */
   headlineFont: 'Caveat Brush' | 'Ma Shan Zheng';
-  slogan: (typeof HOME_SLOGAN)[Locale] | null;
+  slogan: SloganLines | null;
   headline: string;
   flag: string | null;
   prices: string | null;
@@ -278,7 +312,7 @@ function pageHeadline(
 ): string {
   switch (id) {
     case 'home':
-      return HOME_SLOGAN[locale].plain;
+      return HOME_CARD[locale].plain;
     case 'pricing':
       if (promo) {
         const max = sharePriceLabel(promo.currency, promo.max.saleLabel);
@@ -288,7 +322,7 @@ function pageHeadline(
     case 'faq':
       return tx(locale, 'Is Hale right for your family?');
     case 'about':
-      return tx(locale, H1);
+      return HOME_SLOGAN[locale].plain;
     case 'activities':
       return tx(locale, 'Things to do with your kids, near you.');
     case 'answers':
@@ -365,7 +399,8 @@ function paint(
 
 export function paintShareCard(id: ShareCardId, query: ShareCardQuery): PaintedShareCard {
   const headline = pageHeadline(id, query.locale, paintedPromo(query), query.paid);
-  const slogan = id === 'home' || id === 'about' ? HOME_SLOGAN[query.locale] : null;
+  const slogan =
+    id === 'home' ? HOME_CARD[query.locale] : id === 'about' ? HOME_SLOGAN[query.locale] : null;
   return paint(id, headline, query, slogan);
 }
 

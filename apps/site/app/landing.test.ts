@@ -49,7 +49,14 @@ describe('landing — the redesign hero', () => {
     expect(html).toContain('class="stage"');
     expect(html).toContain('shore-art');
     expect([...html.matchAll(/<h1[\s>]/g)]).toHaveLength(1);
-    expect(html).toContain('From \u201cwe should\u201d<br/>to \u201cwe\u2019re in.\u201d');
+    expect(html).toContain('class="h1-lead"');
+    expect(html).toContain('Every family has a default parent.');
+    expect(html).toContain('h1-name');
+    expect(html).toContain('Now it’s Hale.');
+    expect(html).not.toContain('Every family has a default parent.<br/>');
+    expect(html).toContain('The AI agent for family life');
+    expect(html).toContain('From \u201cwe should\u201d to \u201cwe\u2019re in.\u201d');
+    expect(html).not.toContain('From \u201cwe should\u201d<br/>to \u201cwe\u2019re in.\u201d');
     const css = readFileSync(fileURLToPath(new URL('./redesign.css', import.meta.url)), 'utf8');
     expect(css).toMatch(/\.rd h1 \{[^}]*font-size: 84px;/);
     expect(css).toContain('.rd h1 { font-size: 54px;');
