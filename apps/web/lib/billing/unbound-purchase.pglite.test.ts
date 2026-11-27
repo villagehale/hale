@@ -40,6 +40,7 @@ function unboundEvent(sessionId: string, eventId: string) {
           utm_source: 'google',
           msclkid: 'msclk',
           source_code: 'poster-oakville',
+          ph_distinct_id: '0123456789abcdef',
           fbp: 'fb.1.1.cookie',
           fbc: 'fb.1.1.click',
         } as Record<string, string>,
@@ -52,13 +53,20 @@ describe('deliverUnboundCheckoutPurchase', () => {
   it('sends purchase and checkout_completed once, and Meta uses the session id', async () => {
     const seen: Array<{ event: string; distinctId: string; properties: Record<string, unknown> }> =
       [];
+    const order: string[] = [];
+    const aliased: Array<[string, string]> = [];
     const capture = async (
       event: 'purchase',
       distinctId: string,
       properties: Record<string, unknown>,
     ) => {
+      order.push('capture');
       seen.push({ event, distinctId, properties });
       return 'sent' as const;
+    };
+    const alias = async (distinctId: string, aliasId: string) => {
+      order.push('alias');
+      aliased.push([distinctId, aliasId]);
     };
     const funnel = createFakeFunnelSender();
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
@@ -74,6 +82,7 @@ describe('deliverUnboundCheckoutPurchase', () => {
       fetchImpl,
       funnel.sender,
       capture,
+      alias,
     );
     const second = await deliverUnboundCheckoutPurchase(
       db.database,
@@ -82,6 +91,7 @@ describe('deliverUnboundCheckoutPurchase', () => {
       fetchImpl,
       funnel.sender,
       capture,
+      alias,
     );
     const otherEvent = await deliverUnboundCheckoutPurchase(
       db.database,
@@ -90,6 +100,7 @@ describe('deliverUnboundCheckoutPurchase', () => {
       fetchImpl,
       funnel.sender,
       capture,
+      alias,
     );
 
     expect(first).toMatchObject({
@@ -108,6 +119,10 @@ describe('deliverUnboundCheckoutPurchase', () => {
         properties: {
           currency: 'CAD',
           value: 59,
+          amount: 59,
+          region: 'CA',
+          plan: 'plus',
+          interval: 'annual',
           utm_source: 'google',
           msclkid: 'msclk',
           source_code: 'poster-oakville',
@@ -116,6 +131,10 @@ describe('deliverUnboundCheckoutPurchase', () => {
         },
       },
     ]);
+    expect(order).toEqual(['alias', 'capture']);
+    expect(aliased).toEqual([['0123456789abcdef', person]]);
+    expect(JSON.stringify(seen)).not.toContain('0123456789abcdef');
+    expect(JSON.stringify(seen)).not.toContain('ph_distinct_id');
     expect(JSON.stringify(seen)).not.toContain('parent@example.com');
     expect(JSON.stringify(seen)).not.toContain('555');
     expect(funnel.sent).toHaveLength(1);
@@ -125,8 +144,12 @@ describe('deliverUnboundCheckoutPurchase', () => {
       properties: {
         sku: 'promo_plus_annual',
         value: 59,
+        amount: 59,
         currency: 'CAD',
+        region: 'CA',
+        plan: 'plus',
         tier: 'plus',
+        interval: 'annual',
         msclkid: 'msclk',
         source_code: 'poster-oakville',
       },
@@ -181,6 +204,7 @@ describe('deliverUnboundCheckoutPurchase', () => {
       fetchImpl,
       funnel.sender,
       capture,
+      async () => undefined,
     );
     expect(lit).toMatchObject({ meta: { status: 'sent' }, posthog: { status: 'sent' } });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -201,6 +225,9 @@ describe('deliverUnboundCheckoutPurchase', () => {
       vi.fn(),
       funnel.sender,
       capture,
+      async () => {
+        throw new Error('aliased a family checkout');
+      },
     );
     expect(result).toEqual({ status: 'skipped', reason: 'not_a_purchase' });
     expect(capture).not.toHaveBeenCalled();

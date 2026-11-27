@@ -8,6 +8,9 @@ import {
   attributionFromCheckoutUrl,
   directCheckoutCancelUrl,
   directCheckoutForm,
+  directCheckoutInterval,
+  directCheckoutPlan,
+  directCheckoutRegion,
   directCheckoutSuccessUrl,
   directCheckoutTier,
   isCheckoutPrefetch,
@@ -146,8 +149,12 @@ export async function GET(request: Request): Promise<Response> {
       await captureSiteCheckoutStarted({
         sessionId,
         tier: selected.tier,
+        plan: directCheckoutPlan(selected.tier),
         sku: selected.sku,
+        interval: directCheckoutInterval(selected.sku),
         currency: selected.currency,
+        region: directCheckoutRegion(selected.currency),
+        amount: checkoutValue,
         attribution,
         analyticsDistinctId: distinctId,
       });
