@@ -5,18 +5,23 @@ import {
   blackFridayCountdownClock,
   blackFridayCountdownRemainingMs,
 } from '@hale/types';
-import { useEffect, useState } from 'react';
+import { type MouseEvent, useEffect, useState } from 'react';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
 import {
   BLACK_FRIDAY_COUNTDOWN_HOLD,
-  blackFridayCountdownCopy,
-  blackFridayCountdownPair,
+  BLACK_FRIDAY_DISMISS_KEY,
+  blackFridayBarLabel,
+  blackFridayClockLabels,
+  blackFridayCloseLabel,
   blackFridayEndsInLabel,
-  blackFridayPlanButton,
-  blackFridaySentence,
+  blackFridayPlainAmount,
+  blackFridaySeePrices,
 } from '~/lib/promo/black-friday';
-import { FoundingCheckoutLink } from './founding-checkout-link';
+import { bfInter, bfMono, heroBrush } from '~/lib/site/display-fonts';
+
+const DISMISS_EVENT = 'hale-bf-dismiss';
 
 /** A tab left open past the gate reloads onto the season bar. A preview pin does not. */
 function useRestoreWhenGateCloses(serverNow: number, pinned: boolean) {
@@ -52,33 +57,161 @@ function useBlackFridayCountdownRemaining(serverNow: number): number | null {
   return remaining;
 }
 
+/** Session hide shared by the top bar and the sticky. Checkout is untouched. */
+export function useBlackFridayDismissed(): {
+  dismissed: boolean;
+  dismiss: (event: MouseEvent<HTMLButtonElement>) => void;
+} {
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(BLACK_FRIDAY_DISMISS_KEY) === '1') setDismissed(true);
+    } catch {
+      // A private window can refuse storage. The bar stays up.
+    }
+    const onDismiss = () => setDismissed(true);
+    window.addEventListener(DISMISS_EVENT, onDismiss);
+    return () => window.removeEventListener(DISMISS_EVENT, onDismiss);
+  }, []);
+  const dismiss = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      sessionStorage.setItem(BLACK_FRIDAY_DISMISS_KEY, '1');
+    } catch {
+      // This tab still hides the bars. A reload may show them again.
+    }
+    setDismissed(true);
+    window.dispatchEvent(new Event(DISMISS_EVENT));
+  };
+  return { dismissed, dismiss };
+}
+
 /**
- * The midnight sentence and "Ends in HH:MM:SS", side by side. The server HTML
- * is a hidden placeholder of the same width. Both lines go away together once
- * the visitor's Friday ends. The prices stay.
+ * HH, MM and SS beside "Ends in". Hidden once the visitor's Friday ends.
+ * The server HTML is a same-width placeholder so the row does not jump.
  */
-export function BlackFridayCountdown({ serverNow, locale }: { serverNow: number; locale: Locale }) {
+function BlackFridayCount({
+  serverNow,
+  locale,
+  labeled,
+}: {
+  serverNow: number;
+  locale: Locale;
+  labeled: boolean;
+}) {
   const remaining = useBlackFridayCountdownRemaining(serverNow);
-  const pair = remaining === null ? null : blackFridayCountdownPair(locale, remaining);
-  if (remaining !== null && !pair) return null;
-  const when = pair?.when ?? blackFridayCountdownCopy(locale, 1);
-  const clock = pair ? blackFridayCountdownClock(remaining ?? 0) : BLACK_FRIDAY_COUNTDOWN_HOLD;
-  return (
+  if (remaining !== null && remaining <= 0) return null;
+  const clock = remaining === null ? BLACK_FRIDAY_COUNTDOWN_HOLD : blackFridayCountdownClock(remaining);
+  const [hh = '88', mm = '88', ss = '88'] = clock.split(':');
+  const [hours, minutes, seconds] = blackFridayClockLabels(locale);
+  const live = remaining !== null;
+  const units = [
+    { value: hh, label: hours },
+    { value: mm, label: minutes },
+    { value: ss, label: seconds },
+  ];
+  const chip = (
     <span
-      className={pair ? 'bf-count' : 'bf-count is-hold'}
+      className={live ? 'bf-clock' : 'bf-clock is-hold'}
       data-bf-countdown="1"
-      aria-hidden={pair ? undefined : true}
+      aria-hidden={live ? undefined : true}
     >
-      <span className="bf-count-when">{when}</span>
-      <span className="bf-count-left">
-        <span className="bf-count-sep"> · </span>
-        {blackFridayEndsInLabel(locale)} <span className="bf-count-time">{clock}</span>
-      </span>
+      {units.map((unit, index) => (
+        <span key={unit.label} className="bf-unit-wrap">
+          {index > 0 ? (
+            <span className={`bf-colon ${bfInter.className}`} aria-hidden="true">
+              :
+            </span>
+          ) : null}
+          <span className="bf-unit">
+            <span className={`bf-digit ${bfInter.className}`}>{unit.value}</span>
+            <span className={`bf-unit-label ${bfMono.className}`}>{unit.label}</span>
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+  if (!labeled) return chip;
+  return (
+    <span className="bf-count">
+      <span className={`bf-ends-in ${bfInter.className}`}>{blackFridayEndsInLabel(locale)}</span>
+      {chip}
     </span>
   );
 }
 
-/** Glass strip in the existing promo-bar slot. Desktop and mobile, above the header. */
+/** The chip alone. The sticky keeps its own midnight line when this hides. */
+export function BlackFridayClock({ serverNow, locale }: { serverNow: number; locale: Locale }) {
+  return <BlackFridayCount serverNow={serverNow} locale={locale} labeled={false} />;
+}
+
+function PriceLine({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
+  const pieces = [
+    offer.plus
+      ? {
+          name: 'Plus' as const,
+          was: blackFridayPlainAmount(locale, offer.plus.regular, false),
+          now: blackFridayPlainAmount(locale, offer.plus.sale, true),
+        }
+      : null,
+    offer.max
+      ? {
+          name: 'Max' as const,
+          was: blackFridayPlainAmount(locale, offer.max.regular, false),
+          now: blackFridayPlainAmount(locale, offer.max.sale, true),
+        }
+      : null,
+  ].filter((piece) => piece !== null);
+  return (
+    <span className={`bf-prices ${bfInter.className}`}>
+      {pieces.map((piece, index) => (
+        <span key={piece.name}>
+          {index > 0 ? ' · ' : null}
+          {piece.name} <s>{piece.was}</s> {piece.now}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** The two rows. Desktop CSS lays them out as one line. */
+export function BlackFridayRows({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
+  return (
+    <>
+      <span className="bf-row bf-row-1">
+        <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
+        <BlackFridayCount serverNow={offer.serverNow} locale={locale} labeled />
+      </span>
+      <span className="bf-row bf-row-2">
+        <PriceLine offer={offer} locale={locale} />
+        <span className={`bf-see ${bfInter.className}`}>{blackFridaySeePrices(locale)}</span>
+      </span>
+    </>
+  );
+}
+
+/** Sibling of the link, so the control is not a button inside an anchor. */
+export function BlackFridayClose({
+  locale,
+  onDismiss,
+}: {
+  locale: Locale;
+  onDismiss: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`bf-close ${bfInter.className}`}
+      aria-label={blackFridayCloseLabel(locale)}
+      onClick={onDismiss}
+    >
+      ×
+    </button>
+  );
+}
+
+/** Black bar in the promo-bar slot. The whole cluster links to pricing. */
 export function BlackFridayBanner({
   offer,
   locale,
@@ -87,43 +220,18 @@ export function BlackFridayBanner({
   locale: Locale;
 }) {
   useRestoreWhenGateCloses(offer.serverNow, offer.checkoutQuery.length > 0);
-  const sentence = blackFridaySentence(
-    locale,
-    offer.plus?.banner ?? null,
-    offer.max?.banner ?? null,
-  );
+  const { dismissed, dismiss } = useBlackFridayDismissed();
+  if (dismissed) return null;
   return (
     <div className="rd bf-banner" data-bf="1" data-bf-currency={offer.currency}>
-      <div className="bf-banner-in v4-glass">
-        <p className="bf-banner-copy">{sentence}</p>
-        <BlackFridayCountdown serverNow={offer.serverNow} locale={locale} />
-        <div className="bf-banner-actions">
-          {offer.plus ? (
-            <FoundingCheckoutLink
-              className="hs-btn-primary"
-              placement="bf_banner"
-              phase="black_friday"
-              currency={offer.currency}
-              plan="plus"
-              query={offer.checkoutQuery}
-            >
-              {blackFridayPlanButton(locale, 'plus', offer.plus.saleLabel)}
-            </FoundingCheckoutLink>
-          ) : null}
-          {offer.max ? (
-            <FoundingCheckoutLink
-              className="hs-btn-primary"
-              placement="bf_banner"
-              phase="black_friday"
-              currency={offer.currency}
-              plan="max"
-              query={offer.checkoutQuery}
-            >
-              {blackFridayPlanButton(locale, 'max', offer.max.saleLabel)}
-            </FoundingCheckoutLink>
-          ) : null}
-        </div>
-      </div>
+      <a
+        className="bf-banner-link"
+        href={localeHref(locale, '/pricing')}
+        aria-label={blackFridayBarLabel(locale, offer)}
+      >
+        <BlackFridayRows offer={offer} locale={locale} />
+      </a>
+      <BlackFridayClose locale={locale} onDismiss={dismiss} />
     </div>
   );
 }

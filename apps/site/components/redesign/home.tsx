@@ -1,5 +1,4 @@
 import type { BillingCurrency } from '@hale/types';
-import { Caveat_Brush } from 'next/font/google';
 import {
   PAID_PLANS_LINE,
   maxAnnualLabel,
@@ -30,6 +29,7 @@ import { HaleHead, ImBack, ImCompose, OneStamp, StackAvatars } from './imessage-
 import { TypingBubble } from './phone-chat';
 import { TextDoor } from './text-door';
 import { BlackFridayBanner } from '~/components/promo/black-friday-banner';
+import { BlackFridaySticky } from '~/components/promo/black-friday-sticky';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
 import {
@@ -43,13 +43,8 @@ import {
 } from '~/lib/promo/black-friday';
 import type { HolidayPromo } from '~/lib/promo/holiday';
 import { localeHref } from '~/i18n/navigation';
+import { heroBrush } from '~/lib/site/display-fonts';
 import { LandingScrollAnalytics } from '~/components/landing-scroll-analytics';
-
-const heroBrush = Caveat_Brush({
-  weight: '400',
-  subsets: ['latin'],
-  display: 'swap',
-});
 
 export function RedesignHome({
   locale,
@@ -466,7 +461,7 @@ export function RedesignHome({
 
 
       </div>
-      {promo ? <PromoStickyCta promo={promo} blackFriday={blackFriday} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
+      {blackFriday ? <BlackFridaySticky offer={blackFriday} locale={locale} /> : promo ? <PromoStickyCta promo={promo} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
       <SiteFooter locale={locale} />
     </>
   );

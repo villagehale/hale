@@ -281,31 +281,90 @@ export function blackFridayHeardPrice(
   return `${saleLabel.replace('/yr', ' a year')}, regular price ${regularLabel.replace('/yr', ' a year')}.`;
 }
 
+/** Sticky only. The top bar uses "Ends in" beside the clock. */
+export function blackFridayEndsLine(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return 'Se termine à minuit.';
+  if (locale === 'zh') return '午夜结束。';
+  return 'Ends at midnight.';
+}
+
+/** Today's price on the sticky. No strike, no unit. */
+export function blackFridayShortPriceLine(locale: 'en' | 'fr' | 'zh', offer: BlackFridayOffer): string {
+  const bits: string[] = [];
+  if (offer.plus) bits.push(`Plus ${blackFridayPlainAmount(locale, offer.plus.sale, false)}`);
+  if (offer.max) bits.push(`Max ${blackFridayPlainAmount(locale, offer.max.sale, false)}`);
+  return bits.join(' · ');
+}
+
+/** Words beside the clock on the top bar. Hidden with the chip once Friday ends. */
+export function blackFridayEndsInLabel(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return 'Fin dans';
+  if (locale === 'zh') return '距结束';
+  return 'Ends in';
+}
+
+/** The × control. Session-only; checkout is unchanged. */
+export function blackFridayCloseLabel(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return 'Fermer';
+  if (locale === 'zh') return '关闭';
+  return 'Close';
+}
+
+/** Accessible name for the bar link. Prices are today's, with the unit. */
+export function blackFridayBarLabel(locale: 'en' | 'fr' | 'zh', offer: BlackFridayOffer): string {
+  const bits: string[] = [];
+  if (offer.plus) bits.push(`Plus ${blackFridayPlainAmount(locale, offer.plus.sale, true)}`);
+  if (offer.max) bits.push(`Max ${blackFridayPlainAmount(locale, offer.max.sale, true)}`);
+  const see = blackFridaySeePrices(locale);
+  const prices = bits.join(' · ');
+  if (locale === 'zh') return `Black Friday。${prices}。${see}`;
+  return `Black Friday. ${prices}. ${see}.`;
+}
+
+/** Under the clock digits. Not uppercased. */
+export function blackFridayClockLabels(locale: 'en' | 'fr' | 'zh'): readonly [string, string, string] {
+  if (locale === 'fr') return ['h', 'min', 's'];
+  if (locale === 'zh') return ['时', '分', '秒'];
+  return ['hrs', 'min', 'sec'];
+}
+
+/** The only banner and sticky action. Locale-prefixed `/pricing`. */
+export function blackFridaySeePrices(locale: 'en' | 'fr' | 'zh'): string {
+  if (locale === 'fr') return 'Voir les prix';
+  if (locale === 'zh') return '查看价格';
+  return 'See prices';
+}
+
+/** sessionStorage. Set by either close button. Both bars read it. */
+export const BLACK_FRIDAY_DISMISS_KEY = 'hale_bf_dismissed';
+
+/** Plain dollars. The strike omits the unit; the sale keeps it. */
+export function blackFridayPlainAmount(
+  locale: 'en' | 'fr' | 'zh',
+  amount: number,
+  withUnit: boolean,
+): string {
+  if (locale === 'fr') return withUnit ? `${amount} $/an` : `${amount} $`;
+  if (locale === 'zh') return withUnit ? `$${amount}/年` : `$${amount}`;
+  return withUnit ? `$${amount}/yr` : `$${amount}`;
+}
+
 /**
- * The countdown sentence. Null once the visitor's Friday has ended, including
- * zero remaining. Callers must not substitute an "ended" line.
+ * The words beside the clock. Null once the visitor's Friday has ended,
+ * including zero remaining. Callers must not substitute an "ended" line.
  */
 export function blackFridayCountdownCopy(
   locale: 'en' | 'fr' | 'zh',
   remainingMs: number,
 ): string | null {
   if (remainingMs <= 0) return null;
-  if (locale === 'fr') return 'Se termine vendredi à minuit';
-  if (locale === 'zh') return '周五午夜结束';
-  return 'Ends Friday at midnight';
+  return blackFridayEndsInLabel(locale);
 }
 
 /** Width reserved for the ticking clock before the visitor's zone is known. */
 export const BLACK_FRIDAY_COUNTDOWN_HOLD = '88:88:88';
 
-/** Words in front of the clock. The digits sit in their own tabular span. */
-export function blackFridayEndsInLabel(locale: 'en' | 'fr' | 'zh'): string {
-  if (locale === 'fr') return 'Se termine dans';
-  if (locale === 'zh') return '剩余';
-  return 'Ends in';
-}
-
-/** The clock line beside the midnight sentence. Hidden with that sentence at zero. */
+/** The clock line. Hidden with the label at zero. */
 export function blackFridayEndsInCopy(locale: 'en' | 'fr' | 'zh', clock: string): string {
   return `${blackFridayEndsInLabel(locale)} ${clock}`;
 }

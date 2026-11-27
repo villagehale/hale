@@ -21,6 +21,7 @@ import { logoSrc, shoreSrc } from './assets';
 import { ShoreArt } from './shore-hero';
 import { TextDoor } from './text-door';
 import { BlackFridayBanner } from '~/components/promo/black-friday-banner';
+import { BlackFridaySticky } from '~/components/promo/black-friday-sticky';
 import { PromoBanner, PromoFaqItems, PromoSection, PromoStickyCta, TierSalePrice } from '~/components/promo/holiday-promo';
 import { FoundingCheckoutLink } from '~/components/promo/founding-checkout-link';
 import {
@@ -228,7 +229,7 @@ export function RedesignPricing({
 
 
       </div>
-      {promo ? <PromoStickyCta promo={promo} blackFriday={blackFriday} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
+      {blackFriday ? <BlackFridaySticky offer={blackFriday} locale={locale} /> : promo ? <PromoStickyCta promo={promo} locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source} /> : null}
       <SiteFooter locale={locale} />
     </>
   );

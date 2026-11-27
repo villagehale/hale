@@ -1,61 +1,37 @@
 'use client';
 
-import { TextDoor } from '~/components/redesign/text-door';
+import { localeHref } from '~/i18n/navigation';
 import type { Locale } from '~/i18n/routing';
 import type { BlackFridayOffer } from '~/lib/promo/black-friday';
-import type { HolidayPromo } from '~/lib/promo/holiday';
-import { BlackFridayCountdown } from './black-friday-banner';
+import {
+  blackFridayEndsLine,
+  blackFridaySeePrices,
+  blackFridayShortPriceLine,
+} from '~/lib/promo/black-friday';
+import { bfInter, bfMono, heroBrush } from '~/lib/site/display-fonts';
+import { BlackFridayClock, BlackFridayClose, useBlackFridayDismissed } from './black-friday-banner';
 import { PromoStickyReveal } from './promo-sticky';
 
 /**
- * The mobile sticky bar while the price gate is open.
- * Same shell as the season bar. The price line stays after the visitor's
- * Friday ends; the midnight sentence and the clock go away together. The
- * season bar returns when the server stops sending this offer.
+ * The mobile sticky while the price gate is open.
+ * One centered row: sticker, today's price, the midnight line, the clock, See prices.
+ * The season bar returns when the server stops sending this offer.
  */
-export function BlackFridaySticky({
-  offer,
-  phase,
-  locale,
-  smsNumber,
-  prefill,
-  source,
-  mode,
-}: {
-  offer: BlackFridayOffer;
-  phase: HolidayPromo['phase'];
-  locale: Locale;
-  smsNumber: string;
-  prefill: string;
-  source?: string | null;
-  mode: 'chooser' | 'sms';
-}) {
-  const bits = [
-    offer.plus ? `Plus ${offer.plus.banner}` : null,
-    offer.max ? `Max ${offer.max.banner}` : null,
-  ]
-    .filter((bit): bit is string => bit !== null)
-    .join(' · ');
+export function BlackFridaySticky({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
+  const { dismissed, dismiss } = useBlackFridayDismissed();
+  if (dismissed) return null;
   return (
-    <PromoStickyReveal phase={phase}>
-      <div className="promo-sticky-copy" data-bf-sticky="1">
-        <strong>Black Friday</strong>
-        <span>{bits}</span>
-        <small>
-          <BlackFridayCountdown serverNow={offer.serverNow} locale={locale} />
-        </small>
-      </div>
-      <TextDoor
-        className="promo-sticky-btn"
-        placement="promo_sticky"
-        locale={locale}
-        smsNumber={smsNumber}
-        prefill={prefill}
-        mode={mode}
-        source={source}
-      >
-        Text Hale
-      </TextDoor>
+    <PromoStickyReveal phase="black_friday" className="bf-sticky">
+      <span className="bf-sticky-lead">
+        <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
+        <span className={`bf-prices ${bfInter.className}`}>{blackFridayShortPriceLine(locale, offer)}</span>
+        <span className={`bf-ends ${bfMono.className}`}>{blackFridayEndsLine(locale)}</span>
+      </span>
+      <BlackFridayClock serverNow={offer.serverNow} locale={locale} />
+      <a className={`bf-see ${bfInter.className}`} href={localeHref(locale, '/pricing')}>
+        {blackFridaySeePrices(locale)}
+      </a>
+      <BlackFridayClose locale={locale} onDismiss={dismiss} />
     </PromoStickyReveal>
   );
 }

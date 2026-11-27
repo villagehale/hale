@@ -1366,124 +1366,320 @@
   }
 }
 
-/* One-day price, in the promo-bar slot. Glass, site type, pricing buttons.
-   The season bar returns when this is not rendered. */
+/* One-day bar. Hard colours, so light and dark paint the same chip.
+   The season bar returns when this is not rendered.
+   Desktop is one centered row. At 640px and below, two rows, and the
+   sticky card repeats those two rows. */
 .rd.bf-banner {
   position: relative;
   z-index: 11;
-  padding: 10px var(--gutter);
-  background: var(--page);
-  color: var(--navy);
-}
-.rd .bf-banner-in {
-  max-width: var(--container);
-  margin: 0 auto;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px 16px;
-  padding: 12px 16px;
-  border-radius: 20px;
-  font-family: var(--font-ui);
+  overflow: visible;
+  background: #0b0b0c;
+  color: #f5f5f7;
+  padding: 10px 16px;
 }
-.rd .bf-banner-copy {
-  flex: 1 1 16rem;
+.rd .bf-banner-link,
+.rd .bf-banner-link:hover,
+.rd .bf-banner-link:visited {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+.rd .bf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
-  font-size: 15px;
-  line-height: 1.35;
-  text-align: center;
+}
+.rd .bf-sticker {
+  display: inline-block;
+  flex: none;
+  padding: 2px 9px 4px;
+  border-radius: 4px;
+  background: #ffe066;
+  color: #1c1c1e;
+  font-size: 22px;
+  line-height: 1.05;
+  white-space: nowrap;
+  transform: rotate(-1.5deg);
 }
 .rd .bf-count {
   display: inline-flex;
-  flex-wrap: nowrap;
-  align-items: baseline;
-  gap: 0;
-  max-width: 100%;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.rd .bf-ends-in {
+  color: #a8a8a8;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.rd .bf-prices {
+  min-width: 0;
+  color: #f5f5f7;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.rd .bf-prices s {
+  color: #8a8a8a;
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.rd .bf-clock {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 7px 3px;
+  border: 1px solid #3a3a3c;
+  border-radius: 9px;
+  background: #161618;
+}
+.rd .bf-clock.is-hold {
+  visibility: hidden;
+}
+.rd .bf-unit-wrap {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+.rd .bf-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.rd .bf-digit {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.rd .bf-colon {
+  color: #6b6b6b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 17px;
+}
+.rd .bf-unit-label {
+  color: #b5b5b5;
+  font-size: 7.5px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.rd .bf-see {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: #ffe066;
+  color: #1c1c1e;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.rd.bf-banner .bf-row-1 {
+  padding-right: 36px;
+}
+.rd .bf-close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8a8a8a;
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+.rd.bf-banner .bf-close:hover {
+  color: #fff;
+  background: #1f1f21;
+}
+.rd .bf-close:focus-visible {
+  outline: 2px solid #ffe066;
+  outline-offset: 2px;
+}
+@media (min-width: 641px) {
+  .rd.bf-banner {
+    align-items: center;
+    justify-content: center;
+    height: 56px;
+    padding: 0 24px;
+  }
+  .rd.bf-banner .bf-banner-link {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    max-width: 1200px;
+  }
+  .rd.bf-banner .bf-row {
+    display: contents;
+  }
+  .rd.bf-banner .bf-sticker {
+    order: 1;
+    padding: 2px 10px;
+    font-size: 26px;
+  }
+  .rd.bf-banner .bf-prices {
+    order: 2;
+    font-size: 15px;
+  }
+  .rd.bf-banner .bf-count {
+    order: 3;
+    gap: 10px;
+    margin-left: 0;
+  }
+  .rd.bf-banner .bf-ends-in {
+    font-size: 13px;
+  }
+  .rd.bf-banner .bf-see {
+    order: 4;
+    height: 36px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+  .rd.bf-banner .bf-clock {
+    padding: 5px 10px 4px;
+    border-radius: 10px;
+  }
+  .rd.bf-banner .bf-digit {
+    font-size: 20px;
+  }
+  .rd.bf-banner .bf-colon {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .rd.bf-banner .bf-unit-label {
+    font-size: 9px;
+  }
+  .rd.bf-banner .bf-row-1 {
+    padding-right: 0;
+  }
+  .rd.bf-banner .bf-close {
+    top: 50%;
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    font-size: 22px;
+    transform: translateY(-50%);
+  }
+}
+.rd.promo-sticky.bf-sticky {
+  padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+}
+.rd.promo-sticky.bf-sticky .promo-sticky-in {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: auto;
+  min-height: 0;
+  padding: 8px 8px;
+  overflow: visible;
+  border: none;
+  border-radius: 16px;
+  background: #0b0b0c;
+  color: #f5f5f7;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.rd.promo-sticky.bf-sticky .bf-sticky-lead {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.rd.promo-sticky.bf-sticky .bf-sticker {
+  padding: 1px 8px 2px;
+  font-size: 23px;
+}
+.rd.promo-sticky.bf-sticky .bf-prices {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.rd.promo-sticky.bf-sticky .bf-ends {
+  color: #a8a8a8;
+  font-size: 10px;
+  line-height: 1;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
-.rd .bf-count.is-hold {
-  visibility: hidden;
+.rd.promo-sticky.bf-sticky .bf-clock,
+.rd.promo-sticky.bf-sticky .bf-see {
+  flex: none;
 }
-.rd .bf-count-time {
-  display: inline-block;
-  min-width: 8ch;
-  font-variant-numeric: tabular-nums;
-  text-align: left;
+.rd.promo-sticky.bf-sticky .bf-clock {
+  padding: 3px 6px;
 }
-.rd .bf-count-sep {
-  white-space: pre;
+.rd.promo-sticky.bf-sticky .bf-see,
+.rd.promo-sticky.bf-sticky .bf-see:hover,
+.rd.promo-sticky.bf-sticky .bf-see:visited {
+  height: 34px;
+  padding: 0 12px;
+  color: #1c1c1e;
+  font-size: 13px;
+  text-decoration: none;
 }
-.rd .bf-count-left {
-  white-space: nowrap;
-}
-.rd .bf-banner-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  max-width: 100%;
-}
-.rd .bf-banner-actions .hs-btn-primary {
-  min-height: 44px;
-  padding: 8px 18px;
-  font-size: 15px;
-}
-.rd [data-bf-sticky="1"] {
-  min-width: 0;
-}
-.rd [data-bf-sticky="1"] > span {
-  overflow-wrap: anywhere;
-}
-.rd [data-bf-sticky="1"] small {
-  max-width: 100%;
-  white-space: nowrap;
-}
-.rd [data-bf-sticky="1"] small:not(:has(.bf-count)) {
-  display: none;
-}
-.rd.promo-sticky[data-promo-phase="black_friday"] .promo-sticky-btn {
-  padding: 0 14px;
-}
-.rd [data-bf-sticky="1"] .bf-count,
-.rd [data-bf-sticky="1"] .bf-count span {
-  gap: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: 1.2;
-  overflow-wrap: normal;
-  white-space: nowrap;
-}
-@media (max-width: 640px) {
-  .rd.bf-banner .bf-count {
-    flex-wrap: wrap;
-    justify-content: center;
-    row-gap: 0.15em;
+@media (max-width: 360px) {
+  .rd.bf-banner .bf-row-2 {
+    gap: 8px;
+  }
+  .rd.bf-banner .bf-prices {
     white-space: normal;
   }
-  .rd.bf-banner .bf-count-when,
-  .rd.bf-banner .bf-count-left {
-    white-space: nowrap;
+  .rd.promo-sticky.bf-sticky .promo-sticky-in {
+    padding-right: 2px;
+    padding-left: 2px;
   }
-  .rd.bf-banner {
-    padding: 8px 12px;
+  .rd.promo-sticky.bf-sticky .bf-clock {
+    padding-right: 2px;
+    padding-left: 2px;
   }
-  .rd .bf-banner-in {
-    padding: 12px;
+  .rd.promo-sticky.bf-sticky .bf-see,
+  .rd.promo-sticky.bf-sticky .bf-see:hover,
+  .rd.promo-sticky.bf-sticky .bf-see:visited {
+    padding: 0 8px;
   }
-  .rd .bf-banner-copy {
-    flex-basis: 100%;
-    font-size: 14px;
-  }
-  .rd .bf-banner-actions {
-    width: 100%;
-  }
-  .rd .bf-banner-actions .hs-btn-primary {
-    flex: 1 1 0;
-    min-width: 0;
-  }
+}
+.rd.promo-sticky.bf-sticky .bf-close,
+.rd.promo-sticky.bf-sticky .bf-close:hover {
+  top: -9px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #3a3a3c;
+  background: #2a2a2c;
+  color: #fff;
+  font-size: 15px;
+  transform: none;
 }

@@ -460,7 +460,7 @@ export function PromoStickyCta({
   ...door
 }: { promo: HolidayPromo; blackFriday?: BlackFridayOffer | null } & DoorProps) {
   if (blackFriday) {
-    return <BlackFridaySticky offer={blackFriday} phase={promo.phase} {...door} />;
+    return <BlackFridaySticky offer={blackFriday} locale={door.locale} />;
   }
   return (
     <PromoStickyReveal phase={promo.phase}>
