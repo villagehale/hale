@@ -150,7 +150,10 @@ describe('direct checkout price', () => {
     expect(form.get('payment_method_types[1]')).toBe('link');
     expect(form.get('metadata[source]')).toBe('pricing_direct');
     expect(form.get('metadata[tier]')).toBe('plus');
+    expect(form.get('metadata[plan]')).toBe('plus');
+    expect(form.get('metadata[interval]')).toBe('annual');
     expect(form.get('metadata[currency]')).toBe('CAD');
+    expect(form.get('metadata[region]')).toBe('CA');
     expect(form.get('metadata[gclid]')).toBe('click');
     expect(form.get('subscription_data[metadata][source]')).toBe('pricing_direct');
     expect(form.get('client_reference_id')).toBeNull();
@@ -175,6 +178,10 @@ describe('direct checkout price', () => {
     expect(dark.get('subscription_data[metadata][msclkid]')).toBe('msclk');
     expect(dark.get('metadata[source_code]')).toBeNull();
     expect(dark.get('metadata[ph_distinct_id]')).toBeNull();
+    expect(dark.get('metadata[plan]')).toBe('plus');
+    expect(dark.get('metadata[interval]')).toBe('annual');
+    expect(dark.get('metadata[region]')).toBe('CA');
+    expect(dark.get('client_reference_id')).toBeNull();
 
     const lit = directCheckoutForm({ ...shared, env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' } });
     expect(lit.get('metadata[msclkid]')).toBe('msclk');
@@ -189,6 +196,14 @@ describe('direct checkout price', () => {
       env: { FUNNEL_ATTRIBUTION_ENABLED: 'true' },
     });
     expect(email.get('metadata[ph_distinct_id]')).toBeNull();
+
+    const web = directCheckoutForm({
+      ...shared,
+      env: { NEXT_PUBLIC_POSTHOG_WEB_ENABLED: 'true' },
+    });
+    expect(web.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(web.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    expect(web.get('client_reference_id')).toBeNull();
   });
 });
 
@@ -198,6 +213,10 @@ describe('GET /api/checkout', () => {
     vi.setSystemTime(NOW);
     for (const [key, value] of Object.entries(PROMO)) vi.stubEnv(key, value);
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_example');
+    vi.stubEnv('FUNNEL_ATTRIBUTION_ENABLED', '');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_WEB_ENABLED', '');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', '');
+    vi.stubEnv('POSTHOG_PROJECT_API_KEY', '');
   });
 
   afterEach(() => {
@@ -235,6 +254,9 @@ describe('GET /api/checkout', () => {
     const plus = new URLSearchParams(bodies[0]);
     expect(plus.get('line_items[0][price]')).toBe('price_plus_cad');
     expect(plus.get('metadata[tier]')).toBe('plus');
+    expect(plus.get('metadata[plan]')).toBe('plus');
+    expect(plus.get('metadata[interval]')).toBe('annual');
+    expect(plus.get('metadata[region]')).toBe('CA');
     expect(plus.get('metadata[source]')).toBe('pricing_direct');
     expect(plus.get('phone_number_collection[enabled]')).toBe('true');
     expect(plus.get('payment_method_types[0]')).toBe('card');
@@ -254,6 +276,9 @@ describe('GET /api/checkout', () => {
     const max = new URLSearchParams(bodies[1]);
     expect(max.get('line_items[0][price]')).toBe('price_max_usd');
     expect(max.get('metadata[tier]')).toBe('family');
+    expect(max.get('metadata[plan]')).toBe('max');
+    expect(max.get('metadata[interval]')).toBe('annual');
+    expect(max.get('metadata[region]')).toBe('US');
     expect(max.get('metadata[currency]')).toBe('USD');
   });
 
@@ -318,8 +343,12 @@ describe('GET /api/checkout', () => {
     expect(started?.distinct_id).toBe(checkoutPersonId('cs_test_attr'));
     expect(started?.distinct_id).not.toContain('cs_test_attr');
     expect(started?.properties).toMatchObject({
+      plan: 'plus',
+      tier: 'plus',
       sku: 'promo_plus_annual',
+      interval: 'annual',
       currency: 'CAD',
+      region: 'CA',
       msclkid: 'msclk',
       source_code: 'poster-oakville',
     });
@@ -327,6 +356,82 @@ describe('GET /api/checkout', () => {
     expect(JSON.stringify(started)).not.toContain('@');
     expect(alias?.distinct_id).toBe('0123456789abcdef');
     expect(alias?.properties).toMatchObject({ alias: checkoutPersonId('cs_test_attr') });
+  });
+
+  it('flushes checkout_started before the redirect when only the web analytics flag is on', async () => {
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_WEB_ENABLED', 'true');
+    vi.stubEnv('NEXT_PUBLIC_POSTHOG_KEY', 'ph_test_key');
+    let releaseCapture: () => void = () => undefined;
+    const captureHeld = new Promise<void>((resolve) => {
+      releaseCapture = resolve;
+    });
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = String(init?.body ?? '');
+        calls.push({ url: String(url), body });
+        if (String(url).includes('api.stripe.com')) {
+          return new Response(
+            JSON.stringify({
+              id: 'cs_test_flush',
+              url: 'https://checkout.stripe.com/c/pay/cs_test_flush',
+              amount_total: 5900,
+              currency: 'cad',
+            }),
+            { status: 200 },
+          );
+        }
+        if (body.includes('checkout_started')) await captureHeld;
+        return new Response('{"status":"Ok"}', { status: 200 });
+      }),
+    );
+    let settled = false;
+    const pending = GET(
+      new Request(
+        'https://preview.villagehale.com/api/checkout?tier=plus&utm_source=meta&utm_campaign=bf26&source_code=poster-oakville&ph_distinct_id=0123456789abcdef',
+        { headers: { 'x-vercel-ip-country': 'CA' } },
+      ),
+    ).then((res) => {
+      settled = true;
+      return res;
+    });
+    await vi.waitFor(() => {
+      expect(calls.some((call) => call.body.includes('checkout_started'))).toBe(true);
+    });
+    expect(settled).toBe(false);
+    const stripe = calls.find((call) => call.url.includes('api.stripe.com'));
+    const form = new URLSearchParams(stripe?.body);
+    expect(form.get('metadata[plan]')).toBe('plus');
+    expect(form.get('metadata[interval]')).toBe('annual');
+    expect(form.get('metadata[region]')).toBe('CA');
+    expect(form.get('metadata[source_code]')).toBe('poster-oakville');
+    expect(form.get('metadata[ph_distinct_id]')).toBe('0123456789abcdef');
+    expect(form.get('client_reference_id')).toBeNull();
+    const started = JSON.parse(
+      calls.find((call) => call.body.includes('checkout_started'))?.body ?? '{}',
+    ) as { event?: string; distinct_id?: string; properties?: Record<string, unknown> };
+    expect(started.event).toBe('checkout_started');
+    expect(started.distinct_id).toBe(checkoutPersonId('cs_test_flush'));
+    expect(started.properties).toMatchObject({
+      plan: 'plus',
+      tier: 'plus',
+      sku: 'promo_plus_annual',
+      interval: 'annual',
+      currency: 'CAD',
+      region: 'CA',
+      amount: 59,
+      value: 59,
+      utm_source: 'meta',
+      utm_campaign: 'bf26',
+      source_code: 'poster-oakville',
+    });
+    expect(JSON.stringify(started)).not.toContain('ph_distinct_id');
+    expect(calls.some((call) => call.body.includes('$create_alias'))).toBe(true);
+    releaseCapture();
+    const res = await pending;
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('https://checkout.stripe.com/c/pay/cs_test_flush');
   });
 
   it('stores fbp and fbc on the session and sends InitiateCheckout with that session id', async () => {

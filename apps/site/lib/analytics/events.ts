@@ -80,7 +80,8 @@ export type AnalyticsEvent =
   // locale (lib/analytics/funnel-views.ts). Carries the provider's attribution keys.
   | 'pricing_viewed'
   // Server-only, from /api/checkout, after Stripe returns a session id.
-  // Distinct id is `cs:` plus that id. Dark unless FUNNEL_ATTRIBUTION_ENABLED.
+  // Distinct id is `cs:` plus a hash of that id. Emits when the funnel flag
+  // is on, or when this site's web analytics flag is already on.
   | 'checkout_started'
   // Cookieless count of the banner choice. Distinct id is the constant `consent`,
   // not a visitor. No cookie is set. Dark unless FUNNEL_ATTRIBUTION_ENABLED.

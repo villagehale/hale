@@ -10,10 +10,9 @@ import { type CaptureOutcome, captureServerEvent, hashFamilyId } from './server-
  * `true` (env-only in @hale/flags).
  *
  * A family event is keyed on the hashed family id IdentifyUser uses. A checkout
- * that has no family yet passes `distinctId` (`cs:` plus the Checkout Session id)
+ * that has no family yet passes `distinctId` (`cs:` plus a hash of the session id)
  * and no family id. An event with an identifying property is refused whole,
- * not trimmed: the call sites below pass only plan, period and attribution, so a key
- * the privacy gate drops means a caller reached for something it must not send.
+ * not trimmed: a primitive key the privacy gate drops refuses the event.
  *
  * The sender is injected so tests use a fake. The PostHog sender returns
  * 'not_configured' (logged once per process by captureServerEvent) when the key is unset.

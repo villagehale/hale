@@ -54,6 +54,10 @@ describe('purchaseFromStripeEvent', () => {
       phone: '+1 (416) 555-0100',
       familyId: 'fam-1',
       sku: 'promo_plus_annual',
+      tier: null,
+      plan: 'plus',
+      interval: 'annual',
+      region: 'CA',
       attribution: { utm_source: 'google', gclid: 'Click1' },
       ads: {
         fbp: 'fb.1.1.cookie',
@@ -67,7 +71,28 @@ describe('purchaseFromStripeEvent', () => {
   it('reads the paid session amount for each promo tier and currency', () => {
     expect(
       purchaseFromStripeEvent(checkoutPaid({ amount_total: 3900, currency: 'usd' })),
-    ).toMatchObject({ value: 39, currency: 'USD' });
+    ).toMatchObject({ value: 39, currency: 'USD', region: 'US', plan: 'plus', interval: 'annual' });
+    expect(
+      purchaseFromStripeEvent(
+        checkoutPaid({
+          currency: 'usd',
+          metadata: {
+            familyId: 'fam-1',
+            sku: 'max_annual',
+            tier: 'family',
+            plan: 'max',
+            interval: 'annual',
+            region: 'US',
+          },
+        }),
+      ),
+    ).toMatchObject({
+      plan: 'max',
+      tier: 'family',
+      interval: 'annual',
+      region: 'US',
+      sku: 'max_annual',
+    });
     expect(
       purchaseFromStripeEvent(checkoutPaid({ amount_total: 9900, currency: 'cad' })),
     ).toMatchObject({ value: 99, currency: 'CAD' });

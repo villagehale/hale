@@ -1,9 +1,16 @@
 import { createHash } from 'node:crypto';
 import { type Database, schema } from '@hale/db';
-import { type Attribution, type BillingCurrency, checkoutPersonId } from '@hale/types';
+import {
+  ANALYTICS_DISTINCT_ID_KEY,
+  type Attribution,
+  type BillingCurrency,
+  analyticsDistinctId,
+  checkoutPersonId,
+} from '@hale/types';
 import { PROMO_PRICE_DISPLAY } from '@hale/types';
 import {
   type CheckoutCaptureOutcome,
+  aliasCheckoutPerson,
   captureCheckoutEvent,
 } from '~/lib/analytics/checkout-capture';
 import {
@@ -65,6 +72,11 @@ export interface PurchaseConversion {
   readonly ads: AdsCheckoutContext;
   readonly sku: string | null;
   readonly tier: 'plus' | 'family' | null;
+  /** Parent-facing plan. `family` is Max. */
+  readonly plan: 'plus' | 'max' | null;
+  readonly interval: 'annual' | 'monthly' | null;
+  /** CA for CAD, US for USD, unless the session metadata says otherwise. */
+  readonly region: 'CA' | 'US' | null;
 }
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
@@ -171,6 +183,8 @@ export function purchaseFromStripeEvent(payload: unknown): PurchaseConversion | 
   const email = (details ? readString(details.email) : null) ?? readString(object.customer_email);
   const phone = details ? readString(details.phone) : null;
   const metadata = isRecord(object.metadata) ? object.metadata : null;
+  const sku = metadata ? readString(metadata.sku) : null;
+  const tier = paidTier(metadata?.tier);
   return {
     eventId: sessionId,
     orderId: sessionId,
@@ -181,9 +195,70 @@ export function purchaseFromStripeEvent(payload: unknown): PurchaseConversion | 
     familyId: familyIdFromStripeEvent(payload),
     attribution: attributionFromStripeMetadata(metadata),
     ads: adsContextFromStripeMetadata(metadata),
-    sku: metadata ? readString(metadata.sku) : null,
-    tier: paidTier(metadata?.tier),
+    sku,
+    tier,
+    plan: purchasePlan(metadata, tier, sku),
+    interval: purchaseInterval(metadata, sku),
+    region: purchaseRegion(metadata, currency),
   };
+}
+
+function purchasePlan(
+  metadata: Record<string, unknown> | null,
+  tier: 'plus' | 'family' | null,
+  sku: string | null,
+): 'plus' | 'max' | null {
+  const explicit = readString(metadata?.plan)?.toLowerCase();
+  if (explicit === 'plus' || explicit === 'max') return explicit;
+  if (tier === 'family') return 'max';
+  if (tier === 'plus') return 'plus';
+  if (!sku) return null;
+  if (sku.includes('_max') || sku.startsWith('max_')) return 'max';
+  if (sku.includes('plus')) return 'plus';
+  return null;
+}
+
+function purchaseInterval(
+  metadata: Record<string, unknown> | null,
+  sku: string | null,
+): 'annual' | 'monthly' | null {
+  const explicit = readString(metadata?.interval)?.toLowerCase();
+  if (explicit === 'annual' || explicit === 'monthly') return explicit;
+  if (sku && Object.hasOwn(CHECKOUT_SKU_PERIOD, sku)) {
+    return CHECKOUT_SKU_PERIOD[sku as CheckoutSku];
+  }
+  return null;
+}
+
+function purchaseRegion(
+  metadata: Record<string, unknown> | null,
+  currency: string,
+): 'CA' | 'US' | null {
+  const explicit = readString(metadata?.region)?.toUpperCase();
+  if (explicit === 'CA' || explicit === 'US') return explicit;
+  if (currency === 'CAD') return 'CA';
+  if (currency === 'USD') return 'US';
+  return null;
+}
+
+/** Properties shared by family and unbound `purchase` events. No contact fields. */
+export function purchaseAnalyticsProperties(
+  purchase: PurchaseConversion,
+  options: { skuFallback?: string | null } = {},
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {
+    currency: purchase.currency,
+    value: purchase.value,
+    amount: purchase.value,
+    ...purchase.attribution,
+  };
+  const sku = purchase.sku ?? options.skuFallback ?? null;
+  if (sku) properties.sku = sku;
+  if (purchase.tier) properties.tier = purchase.tier;
+  if (purchase.plan) properties.plan = purchase.plan;
+  if (purchase.interval) properties.interval = purchase.interval;
+  if (purchase.region) properties.region = purchase.region;
+  return properties;
 }
 
 function paidTier(value: unknown): 'plus' | 'family' | null {
@@ -282,6 +357,9 @@ export function metaTestPurchaseFor(
     ads: {},
     sku: tier === 'family' ? 'promo_max_annual' : 'promo_plus_annual',
     tier,
+    plan: tier === 'family' ? 'max' : 'plus',
+    interval: 'annual',
+    region: currency === 'USD' ? 'US' : 'CA',
   };
 }
 
@@ -328,12 +406,7 @@ export async function sendPosthogPurchase(
   if (!purchase.familyId) {
     return { status: 'skipped', reason: 'not_a_purchase' };
   }
-  const properties: Record<string, unknown> = {
-    currency: purchase.currency,
-    value: purchase.value,
-    sku: purchase.sku ?? 'plus',
-    ...purchase.attribution,
-  };
+  const properties = purchaseAnalyticsProperties(purchase, { skuFallback: 'plus' });
   try {
     const outcome = await captureServerEvent(
       'purchase',
@@ -418,11 +491,15 @@ export type UnboundPurchaseCapture = (
   properties: Record<string, unknown>,
 ) => Promise<CheckoutCaptureOutcome>;
 
+export type UnboundPurchaseAlias = (distinctId: string, alias: string) => Promise<void>;
+
 /**
  * Paid checkout.session.completed with no family. PostHog distinct id is
- * `cs:` plus the session id. Properties are sku, value, currency, tier, and
- * attribution — never phone or email. Meta event_id is the session id, so a
- * browser Purchase with the same eventID dedupes. The Stripe event id and
+ * `cs:` plus a hash of the session id. Properties are region, currency, plan,
+ * tier, interval, amount, and attribution — never phone or email. A consented
+ * browser id in metadata.ph_distinct_id is aliased onto that person. Meta
+ * event_id is the session id, so a browser Purchase with the same eventID
+ * dedupes. The Stripe event id and
  * `purchase:<session id>` are claimed together; a retry or a second event for
  * the same session does not send again. Dark until FUNNEL_ATTRIBUTION_ENABLED,
  * and that includes Meta, so the claim is not written while the flag is off.
@@ -437,6 +514,7 @@ export async function deliverUnboundCheckoutPurchase(
   fetchImpl: typeof fetch = fetch,
   funnel: FunnelSender = unboundFunnelSender,
   capture: UnboundPurchaseCapture = captureCheckoutEvent,
+  alias: UnboundPurchaseAlias = aliasCheckoutPerson,
 ): Promise<PurchaseConversionReport | { status: 'skipped'; reason: ConversionSkipReason }> {
   if (!funnelAttributionEnabled(env)) {
     return { status: 'skipped', reason: 'flag_off' };
@@ -453,6 +531,16 @@ export async function deliverUnboundCheckoutPurchase(
   const claimed = await claimUnboundPurchase(database, eventId, purchase.eventId);
   if (!claimed) return { status: 'skipped', reason: 'duplicate' };
   try {
+    const browser = analyticsDistinctId(stripeEventMetadata(payload)?.[ANALYTICS_DISTINCT_ID_KEY]);
+    if (browser && browser !== person) {
+      try {
+        await alias(browser, person);
+      } catch (err) {
+        console.warn('billing conversions: unbound alias failed', {
+          err: err instanceof Error ? err.name : 'unknown',
+        });
+      }
+    }
     const [meta, posthog, funnelOutcome] = await Promise.all([
       sendMetaPurchase(purchase, env, fetchImpl),
       sendUnboundPosthogPurchase(purchase, person, capture),
@@ -469,6 +557,11 @@ export async function deliverUnboundCheckoutPurchase(
       funnel: 'provider_error',
     };
   }
+}
+
+function stripeEventMetadata(payload: unknown): Record<string, unknown> | null {
+  if (!isRecord(payload) || !isRecord(payload.data) || !isRecord(payload.data.object)) return null;
+  return isRecord(payload.data.object.metadata) ? payload.data.object.metadata : null;
 }
 
 function isClaimKey(value: string): boolean {
@@ -501,13 +594,7 @@ async function sendUnboundPosthogPurchase(
   distinctId: string,
   capture: UnboundPurchaseCapture,
 ): Promise<ConversionSendResult> {
-  const properties: Record<string, unknown> = {
-    currency: purchase.currency,
-    value: purchase.value,
-    ...purchase.attribution,
-  };
-  if (purchase.sku) properties.sku = purchase.sku;
-  if (purchase.tier) properties.tier = purchase.tier;
+  const properties = purchaseAnalyticsProperties(purchase);
   try {
     const outcome = await capture('purchase', distinctId, properties);
     if (outcome === 'not_configured') return { status: 'skipped', reason: 'not_configured' };
@@ -529,12 +616,7 @@ async function sendUnboundFunnelCheckoutCompleted(
       event: 'checkout_completed',
       distinctId,
       attribution: purchase.attribution,
-      properties: {
-        currency: purchase.currency,
-        value: purchase.value,
-        ...(purchase.sku ? { sku: purchase.sku } : {}),
-        ...(purchase.tier ? { tier: purchase.tier } : {}),
-      },
+      properties: purchaseAnalyticsProperties(purchase),
     },
     { sender, env },
   );

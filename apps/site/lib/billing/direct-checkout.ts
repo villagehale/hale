@@ -9,6 +9,7 @@ import {
   parseAttribution,
   parseFoundingPromoEndsAt,
 } from '@hale/types';
+import { siteCheckoutAnalyticsEnabled } from '../analytics/checkout-analytics';
 
 /**
  * Price selection for a Checkout Session opened from /pricing, with no account.
@@ -70,6 +71,21 @@ export function directCheckoutTier(value: string | null): DirectTier | null {
 /** `max` in the URL is PlanTier `family`. */
 export function directCheckoutTierQuery(tier: DirectTier): 'plus' | 'max' {
   return tier === 'family' ? 'max' : 'plus';
+}
+
+/** Parent-facing plan. `family` is Max. */
+export function directCheckoutPlan(tier: DirectTier): 'plus' | 'max' {
+  return directCheckoutTierQuery(tier);
+}
+
+/** Every direct /pricing price is annual today. A `_monthly` sku stays honest. */
+export function directCheckoutInterval(sku: string): 'annual' | 'monthly' {
+  return sku.endsWith('_monthly') ? 'monthly' : 'annual';
+}
+
+/** CAD is Canada. USD is the United States. */
+export function directCheckoutRegion(currency: BillingCurrency): 'CA' | 'US' {
+  return currency === 'USD' ? 'US' : 'CA';
 }
 
 function promoId(
@@ -196,7 +212,7 @@ export function directCheckoutForm(input: {
   successUrl: string;
   cancelUrl: string;
   attribution?: Attribution;
-  /** Consented PostHog distinct id. Written only while the funnel flag is on. */
+  /** Consented PostHog distinct id. Written while checkout analytics is on. */
   analyticsDistinctId?: string | null;
   /** Meta click cookies. Session metadata only, never the subscription. */
   ads?: {
@@ -207,6 +223,9 @@ export function directCheckoutForm(input: {
   };
   env?: Record<string, string | undefined>;
 }): URLSearchParams {
+  // client_reference_id stays unset. hale-web reads it as the family id, so a
+  // PostHog distinct id there would mark this checkout unknown_family and skip
+  // the unbound purchase. The consented id is metadata[ph_distinct_id].
   const form = new URLSearchParams({
     mode: 'subscription',
     'line_items[0][price]': input.priceId,
@@ -217,8 +236,11 @@ export function directCheckoutForm(input: {
     'payment_method_types[0]': 'card',
     'payment_method_types[1]': 'link',
     'metadata[tier]': input.tier,
+    'metadata[plan]': directCheckoutPlan(input.tier),
     'metadata[sku]': input.sku,
+    'metadata[interval]': directCheckoutInterval(input.sku),
     'metadata[currency]': input.currency,
+    'metadata[region]': directCheckoutRegion(input.currency),
     'metadata[source]': 'pricing_direct',
     'subscription_data[metadata][tier]': input.tier,
     'subscription_data[metadata][sku]': input.sku,
@@ -226,16 +248,16 @@ export function directCheckoutForm(input: {
     'subscription_data[metadata][source]': 'pricing_direct',
   });
   const env = input.env ?? process.env;
-  const funnelOn = env.FUNNEL_ATTRIBUTION_ENABLED === 'true';
+  const analyticsOn = siteCheckoutAnalyticsEnabled(env);
   const attribution = input.attribution ?? {};
   for (const key of ATTRIBUTION_KEYS) {
-    if (key === 'source_code' && !funnelOn) continue;
+    if (key === 'source_code' && !analyticsOn) continue;
     const value = attribution[key];
     if (!value) continue;
     form.set(`metadata[${key}]`, value);
     form.set(`subscription_data[metadata][${key}]`, value);
   }
-  const distinct = funnelOn ? analyticsDistinctId(input.analyticsDistinctId) : null;
+  const distinct = analyticsOn ? analyticsDistinctId(input.analyticsDistinctId) : null;
   if (distinct) form.set(`metadata[${ANALYTICS_DISTINCT_ID_KEY}]`, distinct);
   if (input.ads?.fbp) form.set('metadata[fbp]', input.ads.fbp);
   if (input.ads?.fbc) form.set('metadata[fbc]', input.ads.fbc);
