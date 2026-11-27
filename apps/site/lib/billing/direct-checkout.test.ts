@@ -84,6 +84,57 @@ describe('direct checkout price', () => {
     ).toEqual({ status: 'unavailable', reason: 'flag_off' });
   });
 
+  it('charges the BF price inside the window and the regular price on either side', () => {
+    const env = {
+      ...PROMO,
+      STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
+      STRIPE_PRICE_BF_PLUS_ANNUAL_USD: 'price_bf_plus_usd',
+      STRIPE_PRICE_BF_MAX_ANNUAL_CAD: 'price_bf_max_cad',
+      STRIPE_PRICE_BF_MAX_ANNUAL_USD: 'price_bf_max_usd',
+    };
+    const before = new Date('2026-11-27T04:59:59.000Z');
+    const start = new Date('2026-11-27T05:00:00.000Z');
+    const last = new Date('2026-11-28T07:59:59.000Z');
+    const end = new Date('2026-11-28T08:00:00.000Z');
+    expect(
+      selectDirectCheckoutPrice({ tier: 'plus', currency: 'CAD', now: before, env }),
+    ).toMatchObject({
+      priceId: 'price_plus_cad',
+      sku: 'promo_plus_annual',
+    });
+    expect(
+      selectDirectCheckoutPrice({ tier: 'plus', currency: 'CAD', now: start, env }),
+    ).toMatchObject({
+      priceId: 'price_bf_plus_cad',
+      sku: 'bf_plus_annual',
+    });
+    expect(
+      selectDirectCheckoutPrice({ tier: 'family', currency: 'USD', now: last, env }),
+    ).toMatchObject({
+      priceId: 'price_bf_max_usd',
+      sku: 'bf_max_annual',
+    });
+    expect(
+      selectDirectCheckoutPrice({ tier: 'plus', currency: 'USD', now: end, env }),
+    ).toMatchObject({
+      priceId: 'price_plus_usd',
+      sku: 'promo_plus_annual',
+    });
+  });
+
+  it('falls back to the regular promo price when a BF id is missing', () => {
+    const env = { ...PROMO, STRIPE_PRICE_BF_MAX_ANNUAL_CAD: 'price_bf_max_cad' };
+    const now = new Date('2026-11-27T12:00:00.000Z');
+    expect(selectDirectCheckoutPrice({ tier: 'plus', currency: 'CAD', now, env })).toMatchObject({
+      priceId: 'price_plus_cad',
+      sku: 'promo_plus_annual',
+    });
+    expect(selectDirectCheckoutPrice({ tier: 'family', currency: 'CAD', now, env })).toMatchObject({
+      priceId: 'price_bf_max_cad',
+      sku: 'bf_max_annual',
+    });
+  });
+
   it('asks Stripe for a required phone, card and Link, and no family', () => {
     const form = directCheckoutForm({
       priceId: 'price_plus_cad',
@@ -155,12 +206,13 @@ describe('GET /api/checkout', () => {
     vi.unstubAllGlobals();
   });
 
-  function request(tier: string, country?: string, extra?: Record<string, string>) {
+  function request(tier: string, country?: string, extra?: Record<string, string>, search = '') {
     const headers = new Headers(extra);
     if (country) headers.set('x-vercel-ip-country', country);
-    return new Request(`https://preview.villagehale.com/api/checkout?tier=${tier}&gclid=click`, {
-      headers,
-    });
+    return new Request(
+      `https://preview.villagehale.com/api/checkout?tier=${tier}${search}&gclid=click`,
+      { headers },
+    );
   }
 
   it('redirects CA Plus and US Max at the promo price, with a required phone and no family', async () => {
@@ -390,5 +442,63 @@ describe('GET /api/checkout', () => {
     expect(stripe.get('metadata[fbc]')).toMatch(/^fb\.1\.\d+\.ClickFace$/);
     expect(stripe.get('metadata[fbp]')).toBeNull();
     expect(calls.some((call) => call.url.includes('graph.facebook.com'))).toBe(false);
+  });
+
+  it('picks the BF price only inside the window, and ignores preview overrides in production', async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        bodies.push(String(init.body));
+        return new Response(
+          JSON.stringify({
+            url: 'https://checkout.stripe.com/c/pay/cs_test_bf',
+            amount_total: 3900,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    vi.stubEnv('STRIPE_PRICE_BF_PLUS_ANNUAL_CAD', 'price_bf_plus_cad');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.setSystemTime(new Date('2026-11-27T05:00:00.000Z'));
+    const inside = await GET(request('plus', 'CA'));
+    expect(inside.status).toBe(303);
+    expect(inside.headers.get('x-hale-price-id')).toBe('price_bf_plus_cad');
+    expect(inside.headers.get('x-hale-amount-total')).toBe('3900');
+    expect(new URLSearchParams(bodies[0]).get('line_items[0][price]')).toBe('price_bf_plus_cad');
+
+    vi.setSystemTime(new Date('2026-11-27T04:59:59.000Z'));
+    const before = await GET(request('plus', 'CA'));
+    expect(before.status).toBe(303);
+    expect(new URLSearchParams(bodies[1]).get('line_items[0][price]')).toBe('price_plus_cad');
+
+    vi.setSystemTime(new Date('2026-11-26T18:00:00.000Z'));
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.stubEnv('BLACK_FRIDAY_NOW_OVERRIDE', '2026-11-27T12:00:00.000Z');
+    const production = await GET(
+      request('plus', 'CA', undefined, '&bf=1&bf_now=2026-11-27T12:00:00.000Z'),
+    );
+    expect(production.status).toBe(303);
+    expect(new URLSearchParams(bodies[2]).get('line_items[0][price]')).toBe('price_plus_cad');
+    expect(production.headers.get('x-hale-price-id')).toBeNull();
+
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    const forced = await GET(request('plus', 'CA', undefined, '&bf=1'));
+    expect(forced.status).toBe(303);
+    expect(forced.headers.get('x-hale-price-id')).toBe('price_bf_plus_cad');
+    expect(new URLSearchParams(bodies[3]).get('line_items[0][price]')).toBe('price_bf_plus_cad');
+
+    vi.stubEnv('STRIPE_PRICE_BF_PLUS_ANNUAL_USD', 'price_bf_plus_usd');
+    const previewCad = await GET(request('plus', 'US', undefined, '&bf=1&country=CA'));
+    expect(previewCad.status).toBe(303);
+    expect(new URLSearchParams(bodies[4]).get('line_items[0][price]')).toBe('price_bf_plus_cad');
+
+    vi.stubEnv('VERCEL_ENV', 'production');
+    vi.setSystemTime(new Date('2026-11-27T12:00:00.000Z'));
+    const productionCountry = await GET(request('plus', 'US', undefined, '&country=CA&bf=1'));
+    expect(productionCountry.status).toBe(303);
+    expect(new URLSearchParams(bodies[5]).get('line_items[0][price]')).toBe('price_bf_plus_usd');
+    expect(productionCountry.headers.get('x-hale-price-id')).toBeNull();
   });
 });

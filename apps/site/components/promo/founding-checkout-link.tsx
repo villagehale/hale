@@ -73,6 +73,7 @@ export function FoundingCheckoutLink({
   currency,
   plan,
   className,
+  query = '',
   children,
 }: {
   placement: string;
@@ -81,11 +82,13 @@ export function FoundingCheckoutLink({
   /** Which paid tier the visitor picked. It is the checkout query, and the analytics event. */
   plan: PromoTier;
   className?: string;
+  /** Extra checkout query, such as a non-production clock. No leading `?`. */
+  query?: string;
   children: ReactNode;
 }) {
   const capture = useAnalytics();
   const distinctId = useConsentedDistinctId();
-  const href = pricingCheckoutTarget(plan);
+  const href = pricingCheckoutTarget(plan, query);
   return (
     <a
       href={href}
@@ -110,8 +113,14 @@ export function FoundingCheckoutLink({
           stored = null;
           sourceCode = null;
         }
-        const query = pricingCheckoutQuery({ stored, search, sourceCode, distinctId });
-        const target = query ? pricingCheckoutTarget(plan, query) : href;
+        const attributionQuery = pricingCheckoutQuery({
+          stored,
+          search,
+          sourceCode,
+          distinctId,
+        });
+        const merged = [query, attributionQuery].filter(Boolean).join('&');
+        const target = pricingCheckoutTarget(plan, merged);
         const fbq = (window as Window & { fbq?: (...args: unknown[]) => void }).fbq;
         if (readConsent() === 'granted' && typeof fbq === 'function') {
           event.preventDefault();
@@ -123,7 +132,7 @@ export function FoundingCheckoutLink({
           });
           return;
         }
-        if (query) {
+        if (attributionQuery) {
           event.preventDefault();
           window.location.assign(target);
         }

@@ -1,4 +1,4 @@
-import type { BillingPeriod } from '@hale/types';
+import { type BillingPeriod, resolveBlackFridayNow } from '@hale/types';
 import { NextResponse } from 'next/server';
 import { auth } from '~/auth';
 import { cookieHeaderHasAnalyticsOptOut } from '~/lib/analytics/opt-out';
@@ -40,7 +40,13 @@ const PERIODS: ReadonlySet<string> = new Set<BillingPeriod>(['monthly', 'annual'
 export async function POST(req: Request): Promise<Response> {
   const session = await auth();
   const externalAuthId = session?.user?.id;
-  const now = new Date();
+  const url = new URL(req.url);
+  const now = resolveBlackFridayNow({
+    now: new Date(),
+    env: process.env,
+    bf: url.searchParams.get('bf'),
+    bfNow: url.searchParams.get('bf_now'),
+  });
   const live = holidayPromoEnabled();
   if (!live) {
     if (!externalAuthId) {
@@ -129,7 +135,6 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const url = new URL(req.url);
   const attribution = attributionFromRequest({
     cookieHeader: req.headers.get('cookie'),
     search: url.searchParams,

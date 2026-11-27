@@ -62,12 +62,14 @@ export function PaidPlan({ tier }: { tier: Exclude<PlanTier, 'free'> }) {
 export function PromoOfferPlan({
   currency,
   tier,
+  amount = promoPriceLabel(tier, currency),
 }: {
   currency: BillingCurrency;
   tier: 'plus' | 'family';
+  /** The price checkout will charge. Defaults to the season yearly price. */
+  amount?: string;
 }) {
   const label = tier === 'family' ? 'Max' : 'Plus';
-  const amount = promoPriceLabel(tier, currency);
   return (
     <section className={`${styles.card} ${styles['fp-card']}`}>
       <div className={styles['fp-head']}>
@@ -99,9 +101,13 @@ export function PromoOfferPlan({
 export function PlanOffer({
   currency,
   surface,
+  plusLabel,
+  maxLabel,
 }: {
   currency: BillingCurrency;
   surface: 'founding' | 'list';
+  plusLabel?: string;
+  maxLabel?: string;
 }) {
   if (surface === 'list') {
     return (
@@ -114,8 +120,8 @@ export function PlanOffer({
   return (
     <>
       <FoundingPlan badge="Text" />
-      <PromoOfferPlan currency={currency} tier="plus" />
-      <PromoOfferPlan currency={currency} tier="family" />
+      <PromoOfferPlan currency={currency} tier="plus" amount={plusLabel} />
+      <PromoOfferPlan currency={currency} tier="family" amount={maxLabel} />
     </>
   );
 }

@@ -372,6 +372,22 @@ describe('priceTierMapFromEnv', () => {
     ).toEqual({});
   });
 
+  it('maps the four Black Friday yearly ids to Plus and Max', () => {
+    expect(
+      priceTierMapFromEnv({
+        STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
+        STRIPE_PRICE_BF_PLUS_ANNUAL_USD: 'price_bf_plus_usd',
+        STRIPE_PRICE_BF_MAX_ANNUAL_CAD: 'price_bf_max_cad',
+        STRIPE_PRICE_BF_MAX_ANNUAL_USD: 'price_bf_max_usd',
+      }),
+    ).toEqual({
+      price_bf_plus_cad: 'plus',
+      price_bf_plus_usd: 'plus',
+      price_bf_max_cad: 'family',
+      price_bf_max_usd: 'family',
+    });
+  });
+
   it('maps Max list annual ids to family', () => {
     expect(
       priceTierMapFromEnv({

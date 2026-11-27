@@ -1,4 +1,4 @@
-import { ANALYTICS_DISTINCT_ID_KEY } from '@hale/types';
+import { ANALYTICS_DISTINCT_ID_KEY, resolveBlackFridayNow } from '@hale/types';
 import { NextResponse } from 'next/server';
 import { adsCurrency, metaEventSourceUrl, sendSiteMetaCapi } from '~/lib/analytics/meta-capi';
 import { captureSiteCheckoutStarted } from '~/lib/analytics/server-capture';
@@ -19,6 +19,19 @@ import { visitorCurrencyFromHeaders } from '~/lib/billing/visitor-currency';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Preview can ask for CA or US. Vercel overwrites the geo header from the
+ * caller IP, so a query is the only way to open both currencies from one
+ * machine. Production ignores it and uses the edge country.
+ */
+function currencyHeaders(request: Request, url: URL): Headers {
+  const headers = new Headers(request.headers);
+  if (process.env.VERCEL_ENV === 'production') return headers;
+  const country = url.searchParams.get('country')?.trim().toUpperCase();
+  if (country === 'CA' || country === 'US') headers.set('x-vercel-ip-country', country);
+  return headers;
+}
+
+/**
  * Plus and Max on /pricing. A GET so the button is a link. Nothing is created
  * before Stripe: no code, no account. The browser is sent to Checkout.
  */
@@ -29,10 +42,16 @@ export async function GET(request: Request): Promise<Response> {
   const tier = directCheckoutTier(url.searchParams.get('tier'));
   if (!tier) return NextResponse.json({ error: 'invalid_tier' }, { status: 400 });
 
-  const currency = visitorCurrencyFromHeaders(request.headers);
+  const currency = visitorCurrencyFromHeaders(currencyHeaders(request, url));
   if (!currency) return NextResponse.json({ error: 'region_unsupported' }, { status: 403 });
 
-  const selected = selectDirectCheckoutPrice({ tier, currency, now: new Date() });
+  const now = resolveBlackFridayNow({
+    now: new Date(),
+    env: process.env,
+    bf: url.searchParams.get('bf'),
+    bfNow: url.searchParams.get('bf_now'),
+  });
+  const selected = selectDirectCheckoutPrice({ tier, currency, now });
   if (selected.status === 'unavailable' && selected.reason === 'flag_off') {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
@@ -75,6 +94,7 @@ export async function GET(request: Request): Promise<Response> {
   let sessionId: string | null = null;
   let checkoutValue: number | null = null;
   let checkoutCurrency: 'CAD' | 'USD' | null = null;
+  let amountTotal: number | null = null;
   try {
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
@@ -99,15 +119,16 @@ export async function GET(request: Request): Promise<Response> {
     };
     checkoutUrl = stripeHostedCheckoutUrl(json.url);
     sessionId = typeof json.id === 'string' ? json.id : null;
-    const currency = adsCurrency(
+    amountTotal = typeof json.amount_total === 'number' ? json.amount_total : null;
+    const charged = adsCurrency(
       typeof json.currency === 'string' ? json.currency : selected.currency,
     );
     const cents =
       typeof json.amount_total === 'number' && Number.isFinite(json.amount_total)
         ? json.amount_total
         : null;
-    checkoutValue = currency && cents !== null && cents >= 0 ? cents / 100 : null;
-    checkoutCurrency = currency;
+    checkoutValue = charged && cents !== null && cents >= 0 ? cents / 100 : null;
+    checkoutCurrency = charged;
   } catch (err) {
     console.warn(
       {
@@ -170,6 +191,12 @@ export async function GET(request: Request): Promise<Response> {
     }
   }
 
+  const headers = new Headers({ 'cache-control': 'no-store' });
+  if (process.env.VERCEL_ENV !== 'production') {
+    headers.set('x-hale-price-id', selected.priceId);
+    if (amountTotal !== null) headers.set('x-hale-amount-total', String(amountTotal));
+  }
+
   if (request.headers.get(CHECKOUT_JSON_HEADER) === 'json') {
     return NextResponse.json(
       {
@@ -179,12 +206,10 @@ export async function GET(request: Request): Promise<Response> {
           ? { value: checkoutValue, currency: checkoutCurrency }
           : {}),
       },
-      { headers: { 'cache-control': 'no-store' } },
+      { headers },
     );
   }
 
-  return new NextResponse(null, {
-    status: 303,
-    headers: { location: checkoutUrl, 'cache-control': 'no-store' },
-  });
+  headers.set('location', checkoutUrl);
+  return new NextResponse(null, { status: 303, headers });
 }

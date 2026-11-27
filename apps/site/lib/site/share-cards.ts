@@ -7,6 +7,11 @@ import type { Locale } from '~/i18n/routing';
 import { getTranslator } from '~/i18n/server';
 import { SITE_URL } from '~/lib/app-url';
 import {
+  blackFridayCheckoutQuery,
+  homeShareOneDay,
+  homeShareOneDayCopy,
+} from '~/lib/promo/black-friday';
+import {
   type HolidayPromo,
   type PromoOverrides,
   buildHolidayPromo,
@@ -27,10 +32,10 @@ import { SHARE_SEARCH_HEADER } from '~/lib/site/share-search-header';
  * says, so a crawler that saved the URL gets that card.
  */
 /**
- * Cache key for the painted PNG. /og caches for a day. v=d7 was the
- * "we should" headline. The new hero is d8.
+ * Cache key for the painted PNG. /og caches for a day. v=d8 was hero B
+ * with C$ on the season home prices. v=d9 is that card in a plain "$".
  */
-export const SHARE_CARD_VERSION = 'd8';
+export const SHARE_CARD_VERSION = 'd9';
 export const SHARE_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 export const SHARE_CARD_IDS = [
@@ -62,6 +67,14 @@ export interface ShareCardQuery {
   offer: boolean;
   /** Checkout only. The paid confirmation heading, otherwise the unpaid one. */
   paid: boolean;
+  /**
+   * Home card only. True while the one-day gate is open and both price ids
+   * for this currency exist. The home image URL adds `bf24=1` for that
+   * request and omits it again when the gate closes.
+   */
+  bf24?: boolean;
+  /** Non-production `bf` / `bf_now`, forwarded on the home image URL only. */
+  bfForward?: string;
 }
 
 export type ShareSearch = { [key: string]: string | string[] | undefined } | undefined;
@@ -85,13 +98,27 @@ export function shareCardQueryFrom(input: {
   const promo =
     input.locale === 'en' ? resolveHolidayPromo({ now, country, overrides, env }) : null;
   const currency = promo?.currency ?? currencyFromIpCountry(country);
+  const phase = promo?.phase ?? overrides.phase ?? promoPhase(now);
+  const bf = searchValue(input.search?.bf);
+  const bfNow = searchValue(input.search?.bf_now);
+  const oneDay =
+    phase === 'black_friday' && promo !== null
+      ? homeShareOneDay({ now, currency, env, bf, bfNow })
+      : null;
   return {
     locale: input.locale,
-    phase: promo?.phase ?? overrides.phase ?? promoPhase(now),
+    phase,
     currency,
     offer: promo !== null,
     paid: input.paid === true,
+    bf24: oneDay !== null,
+    bfForward: blackFridayCheckoutQuery({ env, bf, bfNow }),
   };
+}
+
+function searchValue(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw ?? null;
 }
 
 /** Clock, flag, and country, with no review query. Tests and the bare image URL use this. */
@@ -146,20 +173,35 @@ export async function shareQueryForRequest(
   return shareCardQueryFrom({ locale, search: resolved, country, paid });
 }
 
-export function shareCardQueryFromUrl(url: URL): ShareCardQuery {
+export function shareCardQueryFromUrl(
+  url: URL,
+  now = new Date(),
+  env: Env = process.env,
+): ShareCardQuery {
   const localeRaw = url.searchParams.get('locale');
   const locale: Locale = localeRaw === 'fr' || localeRaw === 'zh' ? localeRaw : 'en';
-  const fallback = defaultShareQuery(locale);
+  const fallback = defaultShareQuery(locale, now, env);
   const phaseRaw = url.searchParams.get('phase');
   const ccRaw = url.searchParams.get('cc');
   const offerRaw = url.searchParams.get('offer');
   const paidRaw = url.searchParams.get('paid');
+  const phase = phaseRaw === 'holiday' || phaseRaw === 'black_friday' ? phaseRaw : fallback.phase;
+  const currency = ccRaw === 'USD' || ccRaw === 'CAD' ? ccRaw : fallback.currency;
+  const offer = offerRaw === '1' ? true : offerRaw === '0' ? false : fallback.offer;
+  const bf = url.searchParams.get('bf');
+  const bfNow = url.searchParams.get('bf_now');
+  const oneDay =
+    phase === 'black_friday' && offer
+      ? homeShareOneDay({ now, currency, env, bf, bfNow })
+      : null;
   return {
     locale,
-    phase: phaseRaw === 'holiday' || phaseRaw === 'black_friday' ? phaseRaw : fallback.phase,
-    currency: ccRaw === 'USD' || ccRaw === 'CAD' ? ccRaw : fallback.currency,
-    offer: offerRaw === '1' ? true : offerRaw === '0' ? false : fallback.offer,
+    phase,
+    currency,
+    offer,
     paid: paidRaw === '1' ? true : paidRaw === '0' ? false : fallback.paid,
+    bf24: oneDay !== null,
+    bfForward: blackFridayCheckoutQuery({ env, bf, bfNow }),
   };
 }
 
@@ -184,7 +226,14 @@ export function shareCardQueryString(query: ShareCardQuery): string {
 }
 
 export function shareCardUrl(id: string, query: ShareCardQuery = defaultShareQuery('en')): string {
-  return `${SITE_URL}/og/${id}?${shareCardQueryString(query)}`;
+  const base = `${SITE_URL}/og/${id}?${shareCardQueryString(query)}`;
+  // Home only. `bf24` is the cache bump for the one-day gate. Other cards,
+  // and the home card outside the gate, stay on the query string above.
+  if (id !== 'home') return base;
+  const extra = [query.bf24 ? 'bf24=1' : null, query.bfForward ? query.bfForward : null].filter(
+    (part): part is string => part !== null,
+  );
+  return extra.length > 0 ? `${base}&${extra.join('&')}` : base;
 }
 
 export function answerShareUrl(
@@ -378,7 +427,15 @@ function paint(
   const promo = paintedPromo(query);
   const max = promo ? sharePriceLabel(promo.currency, promo.max.saleLabel) : null;
   const plus = promo ? sharePriceLabel(promo.currency, promo.plus.saleLabel) : null;
-  const prices = max && plus ? `Max ${max} · Plus ${plus}` : null;
+  // Promo prices on the home card are a plain "$" in both countries. Other
+  // cards still mark CAD with C$, because that line is the only currency cue.
+  const seasonPrices =
+    promo && id === 'home'
+      ? `Max ${promo.max.saleLabel} · Plus ${promo.plus.saleLabel}`
+      : max && plus
+        ? `Max ${max} · Plus ${plus}`
+        : null;
+  const oneDay = id === 'home' && query.bf24 ? homeShareOneDayCopy(query.currency) : null;
   return {
     id,
     alt: `Hale. ${headline}`,
@@ -386,8 +443,8 @@ function paint(
     headlineFont: hasHan(headline) ? 'Ma Shan Zheng' : 'Caveat Brush',
     slogan,
     headline,
-    flag: promo?.saleName ?? null,
-    prices,
+    flag: oneDay?.flag ?? promo?.saleName ?? null,
+    prices: oneDay?.prices ?? seasonPrices,
     footer: footerLine(query.locale),
     chat: {
       group: tx(query.locale, 'Saturday crew'),

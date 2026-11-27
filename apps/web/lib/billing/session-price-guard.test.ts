@@ -1,3 +1,4 @@
+import { BLACK_FRIDAY_WINDOW_END_ISO } from '@hale/types';
 import { describe, expect, it } from 'vitest';
 import { decidePaidSessionGrant, paidSessionPriceIds } from './session-price-guard';
 
@@ -32,6 +33,35 @@ describe('paidSessionPriceIds', () => {
 });
 
 describe('decidePaidSessionGrant', () => {
+  it('allows a Black Friday Checkout Session during the holiday window', () => {
+    const env = {
+      ...ENV,
+      STRIPE_PRICE_BF_PLUS_ANNUAL_CAD: 'price_bf_plus_cad',
+      STRIPE_PRICE_BF_MAX_ANNUAL_USD: 'price_bf_max_usd',
+    };
+    expect(
+      decidePaidSessionGrant(
+        checkout({ id: 'cs_bf', metadata: { tier: 'plus', priceId: 'price_bf_plus_cad' } }),
+        new Date('2026-11-27T12:00:00.000Z'),
+        env,
+      ),
+    ).toEqual({ status: 'allow' });
+    expect(
+      decidePaidSessionGrant(
+        checkout({ id: 'cs_bf_max', metadata: { tier: 'family', priceId: 'price_bf_max_usd' } }),
+        new Date('2026-11-27T12:00:00.000Z'),
+        env,
+      ),
+    ).toEqual({ status: 'allow' });
+    expect(
+      decidePaidSessionGrant(
+        checkout({ id: 'cs_bf_late', metadata: { tier: 'plus', priceId: 'price_bf_plus_cad' } }),
+        new Date(BLACK_FRIDAY_WINDOW_END_ISO),
+        env,
+      ),
+    ).toEqual({ status: 'allow' });
+  });
+
   it('allows a Plus or Max promo Checkout Session during the window', () => {
     expect(
       decidePaidSessionGrant(

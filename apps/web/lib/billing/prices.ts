@@ -1,6 +1,12 @@
 import type { BillingCurrency, BillingPeriod } from '@hale/types';
-import { isFoundingPromoWindowOpen, parseFoundingPromoEndsAt } from '@hale/types';
+import {
+  BLACK_FRIDAY_PRICE_DISPLAY,
+  isBlackFridayWindowOpen,
+  isFoundingPromoWindowOpen,
+  parseFoundingPromoEndsAt,
+} from '@hale/types';
 import { checkoutServerCurrencyEnabled, holidayPromoEnabled } from './flags.js';
+import { promoPriceLabel } from './price-display.js';
 import { stripePaymentLinkUrl } from './promo-preview.js';
 
 export type PaidTier = 'plus' | 'family';
@@ -32,11 +38,17 @@ export const STRIPE_PRICE_PLUS_MONTHLY_USD_ENV = 'STRIPE_PRICE_PLUS_MONTHLY_USD'
 export const STRIPE_PRICE_PLUS_ANNUAL_USD_ENV = 'STRIPE_PRICE_PLUS_ANNUAL_USD';
 export const STRIPE_PRICE_MAX_ANNUAL_CAD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_CAD';
 export const STRIPE_PRICE_MAX_ANNUAL_USD_ENV = 'STRIPE_PRICE_MAX_ANNUAL_USD';
+export const STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV = 'STRIPE_PRICE_BF_PLUS_ANNUAL_CAD';
+export const STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV = 'STRIPE_PRICE_BF_PLUS_ANNUAL_USD';
+export const STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV = 'STRIPE_PRICE_BF_MAX_ANNUAL_CAD';
+export const STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV = 'STRIPE_PRICE_BF_MAX_ANNUAL_USD';
 export const PROMO_FOUNDING_ENDS_AT_ENV = 'PROMO_FOUNDING_ENDS_AT';
 
 export type CheckoutSku =
   | 'promo_plus_annual'
   | 'promo_max_annual'
+  | 'bf_plus_annual'
+  | 'bf_max_annual'
   | 'plus_monthly'
   | 'plus_annual'
   | 'max_annual';
@@ -44,6 +56,8 @@ export type CheckoutSku =
 export const CHECKOUT_SKU_PERIOD: Readonly<Record<CheckoutSku, BillingPeriod>> = {
   promo_plus_annual: 'annual',
   promo_max_annual: 'annual',
+  bf_plus_annual: 'annual',
+  bf_max_annual: 'annual',
   plus_monthly: 'monthly',
   plus_annual: 'annual',
   max_annual: 'annual',
@@ -118,11 +132,18 @@ export function parsePaidTier(value: unknown): PaidTier | null {
 }
 
 export function isPromoAnnualSku(sku: CheckoutSku): boolean {
-  return sku === 'promo_plus_annual' || sku === 'promo_max_annual';
+  return (
+    sku === 'promo_plus_annual' ||
+    sku === 'promo_max_annual' ||
+    sku === 'bf_plus_annual' ||
+    sku === 'bf_max_annual'
+  );
 }
 
 export function paidTierFromSku(sku: CheckoutSku): PaidTier {
-  return sku === 'promo_max_annual' || sku === 'max_annual' ? 'family' : 'plus';
+  return sku === 'promo_max_annual' || sku === 'max_annual' || sku === 'bf_max_annual'
+    ? 'family'
+    : 'plus';
 }
 
 export function promoPlusAnnualPriceId(
@@ -151,6 +172,44 @@ export function promoAnnualPriceId(
   return tier === 'family'
     ? promoMaxAnnualPriceId(currency, env)
     : promoPlusAnnualPriceId(currency, env);
+}
+
+/** Black Friday yearly id for one tier and currency. Null when the env var is unset. */
+export function bfAnnualPriceId(
+  tier: PaidTier,
+  currency: BillingCurrency,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (tier === 'family') {
+    return currency === 'USD'
+      ? trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV])
+      : trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV]);
+  }
+  return currency === 'USD'
+    ? trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV])
+    : trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV]);
+}
+
+export function bfPlusPriceIdsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_BF_PLUS_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
+}
+
+export function bfMaxPriceIdsFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [
+    trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_CAD_ENV]),
+    trimId(env[STRIPE_PRICE_BF_MAX_ANNUAL_USD_ENV]),
+  ].filter((id): id is string => id !== null);
+}
+
+export function bfPriceIdsFromEnv(env: Record<string, string | undefined> = process.env): string[] {
+  return [...new Set([...bfPlusPriceIdsFromEnv(env), ...bfMaxPriceIdsFromEnv(env)])];
 }
 
 export function plusListPriceId(
@@ -251,14 +310,18 @@ export function familyPriceIdsFromEnv(
 export function plusPriceIdsFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): string[] {
-  return [...listPriceIdsFromEnv(env), ...promoPlusPriceIdsFromEnv(env)];
+  return [
+    ...listPriceIdsFromEnv(env),
+    ...promoPlusPriceIdsFromEnv(env),
+    ...bfPlusPriceIdsFromEnv(env),
+  ];
 }
 
 export function isPromoPriceId(
   priceId: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return promoPriceIdsFromEnv(env).includes(priceId);
+  return promoPriceIdsFromEnv(env).includes(priceId) || bfPriceIdsFromEnv(env).includes(priceId);
 }
 
 /** @deprecated Prefer isPromoPriceId. */
@@ -313,6 +376,21 @@ function promoSelection(
   };
 }
 
+function bfSelection(
+  tier: PaidTier,
+  currency: BillingCurrency,
+  env: Record<string, string | undefined>,
+): CheckoutPrice | null {
+  const priceId = bfAnnualPriceId(tier, currency, env);
+  if (!priceId) return null;
+  return {
+    priceId,
+    sku: tier === 'family' ? 'bf_max_annual' : 'bf_plus_annual',
+    currency,
+    period: 'annual',
+  };
+}
+
 function maxListSelection(
   currency: BillingCurrency,
   env: Record<string, string | undefined>,
@@ -359,6 +437,14 @@ export function resolveCheckoutPrice(input: {
     return { status: 'unavailable', reason: 'flag_off' };
   }
 
+  // Price gate [2026-11-27T05:00Z, 2026-11-28T08:00Z). The holiday flag stays
+  // required, so a preview tester with the flag off keeps the season price.
+  // A missing BF id falls through.
+  if (holidayPromoEnabled(env) && isBlackFridayWindowOpen(input.now)) {
+    const bf = bfSelection(tier, input.currency, env);
+    if (bf) return { status: 'selected', price: bf };
+  }
+
   if (foundingWindowOpen(input.now, env)) {
     const promo = promoSelection(tier, input.currency, env);
     if (!promo) return { status: 'unavailable', reason: 'no_price' };
@@ -382,4 +468,23 @@ export function resolveCheckoutPrice(input: {
     if (cad) return { status: 'selected', price: cad };
   }
   return { status: 'unavailable', reason: 'no_price' };
+}
+
+/** The yearly label checkout will charge. The one-day price, or the season price. */
+export function chargedAnnualLabel(input: {
+  tier: PaidTier;
+  currency: BillingCurrency;
+  now: Date;
+  env?: Record<string, string | undefined>;
+  preview?: boolean;
+}): string {
+  const selected = resolveCheckoutPrice({ ...input, period: 'annual' });
+  if (
+    selected.status === 'selected' &&
+    (selected.price.sku === 'bf_plus_annual' || selected.price.sku === 'bf_max_annual')
+  ) {
+    const key = selected.price.sku === 'bf_max_annual' ? 'family' : 'plus';
+    return BLACK_FRIDAY_PRICE_DISPLAY[key][input.currency].perYear;
+  }
+  return promoPriceLabel(input.tier, input.currency);
 }

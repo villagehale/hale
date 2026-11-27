@@ -8,7 +8,15 @@ import { PROMO_OFFER_ID, type PromoPhase } from '~/lib/promo/holiday';
  * offer section or the footer is on screen, so it never covers the real CTA.
  * Server HTML ships it hidden; with no JavaScript it simply never appears.
  */
-export function PromoStickyReveal({ children, phase }: { children: ReactNode; phase: PromoPhase }) {
+export function PromoStickyReveal({
+  children,
+  phase,
+  className,
+}: {
+  children: ReactNode;
+  phase: PromoPhase;
+  className?: string;
+}) {
   const [show, setShow] = useState(false);
   useEffect(() => {
     const covered = new Set<Element>();
@@ -41,7 +49,7 @@ export function PromoStickyReveal({ children, phase }: { children: ReactNode; ph
   }, []);
   return (
     <div
-      className="rd promo-sticky"
+      className={className ? `rd promo-sticky ${className}` : 'rd promo-sticky'}
       data-promo-phase={phase}
       data-show={show ? 'true' : 'false'}
       inert={!show}

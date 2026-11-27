@@ -1,6 +1,7 @@
 import {
   CHECKOUT_REGION_UNSUPPORTED_MESSAGE,
   currencyFromIpCountry,
+  resolveBlackFridayNow,
   serverCheckoutCurrency,
 } from '@hale/types';
 import type { Metadata } from 'next';
@@ -14,7 +15,7 @@ import stage from '~/components/hale/connect/connect.module.css';
 import { authConfigured } from '~/lib/auth-config';
 import { signInHref } from '~/lib/auth/redirect';
 import { checkoutServerCurrencyEnabled } from '~/lib/billing/flags';
-import { promoPriceLabel } from '~/lib/billing/price-display';
+import { chargedAnnualLabel } from '~/lib/billing/prices';
 import {
   familyMayUseFoundingCheckout,
   newVisitorFoundingAllowed,
@@ -102,7 +103,7 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
       });
     }
   }
-  const now = new Date();
+  const now = resolveBlackFridayNow({ now: new Date(), env: process.env });
   if (!newVisitorFoundingAllowed(now, token, process.env, previewCookie)) {
     // Sale on, new-visitor checkout off: returning families still pay after sign-in.
     // Both flags off stays a 404. familyMayUseFoundingCheckout(null) is the sale
@@ -131,8 +132,8 @@ export default async function FoundingJoinPage({ searchParams }: PageProps) {
       <div className={stage.pairRow}>
         <FreeJoinCard />
         <FoundingJoinForm
-          plusLabel={promoPriceLabel('plus', currency)}
-          maxLabel={promoPriceLabel('family', currency)}
+          plusLabel={chargedAnnualLabel({ tier: 'plus', currency, now })}
+          maxLabel={chargedAnnualLabel({ tier: 'family', currency, now })}
           smsNumber={haleTextsNumber()}
           cancelled={checkout === 'cancelled'}
         />

@@ -1365,3 +1365,315 @@
     background: #000;
   }
 }
+
+/* One-day bar. Hard colours, so light and dark paint the same chip.
+   The season bar returns when this is not rendered.
+   Desktop is one centered row with the struck price and Ends in.
+   At 640px and below the top bar and the sticky share one row:
+   sticker, today's price, Ends at midnight, the clock, See prices. */
+.rd.bf-banner {
+  position: relative;
+  z-index: 11;
+  overflow: visible;
+  background: #0b0b0c;
+  color: #f5f5f7;
+  padding: 11px 40px 11px 14px;
+}
+.rd .bf-banner-link,
+.rd .bf-banner-link:hover,
+.rd .bf-banner-link:visited,
+.rd .bf-sticky-link,
+.rd .bf-sticky-link:hover,
+.rd .bf-sticky-link:visited {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.rd.bf-banner .bf-desk {
+  display: none;
+}
+.rd .bf-mob {
+  display: contents;
+}
+.rd .bf-sticker {
+  display: inline-block;
+  flex: none;
+  padding: 2px 9px 4px;
+  border-radius: 4px;
+  background: #ffe066;
+  color: #1c1c1e;
+  font-size: 23px;
+  line-height: 1.05;
+  white-space: nowrap;
+  transform: rotate(-1.5deg);
+}
+.rd .bf-lead {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+.rd .bf-count {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+.rd .bf-ends-in {
+  color: #a8a8a8;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.rd .bf-prices {
+  min-width: 0;
+  color: #f5f5f7;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.rd .bf-prices s {
+  color: #8a8a8a;
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.rd .bf-ends {
+  color: #a8a8a8;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.rd .bf-clock {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 5px;
+  border: 1px solid #3a3a3c;
+  border-radius: 9px;
+  background: #161618;
+}
+.rd .bf-clock.is-hold {
+  visibility: hidden;
+}
+.rd .bf-unit-wrap {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+.rd .bf-unit {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 23px;
+}
+.rd .bf-digit {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.rd .bf-colon {
+  color: #6b6b6b;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 17px;
+}
+.rd .bf-unit-label {
+  color: #b5b5b5;
+  font-size: 7.5px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.rd .bf-see {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #ffe066;
+  color: #1c1c1e;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.rd.bf-banner .bf-close {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8a8a8a;
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.rd.bf-banner .bf-close:hover {
+  color: #fff;
+  background: #1f1f21;
+}
+.rd .bf-close:focus-visible {
+  outline: 2px solid #ffe066;
+  outline-offset: 2px;
+}
+@media (min-width: 641px) {
+  .rd.bf-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 56px;
+    padding: 0 24px;
+  }
+  .rd.bf-banner .bf-banner-link {
+    gap: 28px;
+    max-width: 1200px;
+  }
+  .rd.bf-banner .bf-desk {
+    display: contents;
+  }
+  .rd.bf-banner .bf-mob {
+    display: none;
+  }
+  .rd.bf-banner .bf-desk .bf-sticker {
+    padding: 2px 10px;
+    font-size: 26px;
+  }
+  .rd.bf-banner .bf-desk .bf-prices {
+    font-size: 15px;
+  }
+  .rd.bf-banner .bf-desk .bf-see {
+    height: 36px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+  .rd.bf-banner .bf-desk .bf-clock {
+    padding: 5px 10px 4px;
+    border-radius: 10px;
+  }
+  .rd.bf-banner .bf-desk .bf-digit {
+    font-size: 20px;
+  }
+  .rd.bf-banner .bf-desk .bf-colon {
+    line-height: 20px;
+  }
+  .rd.bf-banner .bf-desk .bf-unit-label {
+    font-size: 9px;
+  }
+  .rd.bf-banner .bf-desk .bf-unit {
+    min-width: 0;
+  }
+  .rd.bf-banner .bf-close {
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    font-size: 22px;
+  }
+}
+.rd.promo-sticky.bf-sticky {
+  padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+}
+.rd.promo-sticky.bf-sticky .promo-sticky-in {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  min-height: 0;
+  padding: 11px 16px;
+  overflow: visible;
+  border: 1px solid #3a3a3c;
+  border-radius: 16px;
+  background: #0b0b0c;
+  color: #f5f5f7;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+/* 390 French, and every locale at 360, cannot hold gap 16 plus the
+   specified chip and pill inside the padded row. The type sizes stay.
+   Gap stays 16 down to 361px. At 360 the gap drops to 4. */
+@media (max-width: 400px) {
+  :lang(fr) .rd .bf-see {
+    padding: 0 8px;
+  }
+  :lang(fr) .rd .bf-clock {
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+}
+@media (max-width: 360px) {
+  .rd .bf-banner-link,
+  .rd .bf-banner-link:hover,
+  .rd .bf-banner-link:visited,
+  .rd .bf-sticky-link,
+  .rd .bf-sticky-link:hover,
+  .rd .bf-sticky-link:visited {
+    gap: 4px;
+  }
+  .rd .bf-see {
+    padding: 0 8px;
+  }
+  .rd .bf-clock {
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+  .rd .bf-unit {
+    min-width: 18px;
+  }
+  .rd.bf-banner {
+    padding: 11px 36px 11px 10px;
+  }
+  .rd.promo-sticky.bf-sticky .promo-sticky-in {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+}
+.rd.promo-sticky.bf-sticky .bf-close,
+.rd.promo-sticky.bf-sticky .bf-close:hover {
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #3a3a3c;
+  border-radius: 999px;
+  background: #2a2a2c;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  transform: none;
+}

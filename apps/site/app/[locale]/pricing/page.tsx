@@ -8,7 +8,7 @@ import { sitePriceSurface } from '~/lib/billing/site-price-surface';
 import { visitorCheckoutCurrency } from '~/lib/billing/visitor-currency';
 import { intakePrefill } from '~/lib/intake-prefill';
 import { pageSource } from '~/lib/page-source';
-import { requestHolidayPromo } from '~/lib/promo/server';
+import { requestBlackFridayOffer, requestHolidayPromo } from '~/lib/promo/server';
 import { shareCardImage, shareQueryForRequest } from '~/lib/site/share-cards';
 import { pricingJsonLd } from '~/lib/site/structured-data';
 import { readSmsNumber } from '~/lib/text-entry';
@@ -58,18 +58,19 @@ export default async function PricingPage({ params, searchParams }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd(locale)) }}
       />
       <RedesignPricing
-      regionBlocked={checkoutCurrency === null}
-      noChargeLine={
-        checkoutWasCancelled(search) ? getTranslator(locale, 'Pricing')('noCharge') : null
-      }
-      locale={locale}
-      smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
-      prefill={intakePrefill(locale)}
-      source={await pageSource(searchParams)}
-      promo={await requestHolidayPromo(locale, searchParams)}
-      priceSurface={priceSurface}
-      currency={currency}
-    />
+        regionBlocked={checkoutCurrency === null}
+        noChargeLine={
+          checkoutWasCancelled(search) ? getTranslator(locale, 'Pricing')('noCharge') : null
+        }
+        locale={locale}
+        smsNumber={readSmsNumber(process.env.NEXT_PUBLIC_HALE_SMS_NUMBER)}
+        prefill={intakePrefill(locale)}
+        source={await pageSource(searchParams)}
+        promo={await requestHolidayPromo(locale, searchParams)}
+        blackFriday={await requestBlackFridayOffer(locale, searchParams)}
+        priceSurface={priceSurface}
+        currency={currency}
+      />
     </>
   );
 }

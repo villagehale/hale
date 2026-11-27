@@ -10,6 +10,7 @@ export * from './agent.js';
 export * from './entitlements.js';
 export * from './registration-season.js';
 export * from './promo.js';
+export * from './black-friday.js';
 export * from './attribution.js';
 export * from './gcal-classify.js';
 export * from './village.js';
