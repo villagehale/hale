@@ -3,11 +3,11 @@ import { fileURLToPath } from 'node:url';
 import { PROMO_PRICE_DISPLAY, currencyFromIpCountry } from '@hale/types';
 import { describe, expect, it, vi } from 'vitest';
 import { tx } from '~/components/redesign/tx';
-import { H1 } from '~/lib/site/narrative';
 import type { Locale } from '~/i18n/routing';
 import { allAnswers } from '~/lib/answers/index';
-import { buildHolidayPromo } from '~/lib/promo/holiday';
 import { SITE_URL } from '~/lib/app-url';
+import { buildHolidayPromo } from '~/lib/promo/holiday';
+import { H1 } from '~/lib/site/narrative';
 import { generateMetadata as pricingMetadata } from '../../app/[locale]/pricing/page';
 import {
   HOME_CARD,
@@ -22,7 +22,6 @@ import {
   shareCardQueryString,
   shareCardUrl,
   shareCardVisibleText,
-  sharePriceLabel,
 } from './share-cards';
 
 const LOCALES: Locale[] = ['en', 'fr', 'zh'];
@@ -134,7 +133,7 @@ describe('share card query', () => {
     );
   });
 
-  it('bumps only the home image during the one-day gate, and paints that line', () => {
+  it('bumps the home and pricing images during the one-day gate, and paints that line', () => {
     const inside = new Date('2026-11-27T12:00:00.000Z');
     const after = new Date('2026-11-28T08:00:00.000Z');
     const before = new Date('2026-11-27T04:59:59.000Z');
@@ -146,9 +145,9 @@ describe('share card query', () => {
     expect(shareCardUrl('home', shut)).toBe(`${SITE_URL}/og/home?${shareCardQueryString(shut)}`);
     expect(shareCardUrl('home', early)).toBe(`${SITE_URL}/og/home?${shareCardQueryString(early)}`);
     expect(shareCardUrl('pricing', open)).toBe(
-      `${SITE_URL}/og/pricing?${shareCardQueryString(open)}`,
+      `${SITE_URL}/og/pricing?${shareCardQueryString(open)}&bf24=1`,
     );
-    expect(shareCardUrl('pricing', open)).not.toContain('bf24');
+    expect(shareCardUrl('pricing', shut)).not.toContain('bf24');
     const cad = paintShareCard('home', open);
     expect(cad.flag).toBe('Ends Friday at midnight');
     expect(cad.prices).toBe('Plus $39/yr · Max $59/yr');
@@ -158,7 +157,23 @@ describe('share card query', () => {
     expect(paintShareCard('home', usd).prices).toBe('Plus $29/yr · Max $49/yr');
     expect(paintShareCard('home', shut).flag).toBe('Black Friday Sale');
     expect(paintShareCard('home', shut).prices).toBe('Max $99/yr · Plus $59/yr');
-    expect(paintShareCard('pricing', open).headline).toBe('Black Friday Sale: Max for C$99/yr.');
+    const pricingOpen = paintShareCard('pricing', open);
+    expect(pricingOpen.headline).toBe('Black Friday: Max for $59/yr.');
+    expect(pricingOpen.alt).toBe('Hale. Black Friday: Max for $59/yr.');
+    expect(pricingOpen.prices).toBe('Max $59/yr · Plus $39/yr');
+    const pricingUsd = paintShareCard('pricing', usd);
+    expect(pricingUsd.alt).toBe('Hale. Black Friday: Max for $49/yr.');
+    expect(pricingUsd.prices).toBe('Max $49/yr · Plus $29/yr');
+    expect(paintShareCard('pricing', shut).alt).toBe('Hale. Black Friday Sale: Max for $99/yr.');
+    expect(paintShareCard('pricing', early).alt).toBe('Hale. Black Friday Sale: Max for $79/yr.');
+    for (const alt of [
+      pricingOpen.alt,
+      pricingUsd.alt,
+      paintShareCard('pricing', shut).alt,
+      paintShareCard('pricing', early).alt,
+    ]) {
+      expect(alt).not.toMatch(/C\$|\bCAD\b|\bUSD\b/);
+    }
     const missing = shareCardQueryFrom({
       locale: 'en',
       now: inside,
@@ -254,10 +269,10 @@ describe('share card copy', () => {
   it('uses the pricing page H1 when the offer is on in English, and the yearly line otherwise', () => {
     const promo = buildHolidayPromo('black_friday', 'CAD');
     const on = paintShareCard('pricing', query({ locale: 'en', offer: true }));
-    expect(on.headline).toBe(
-      `${promo.saleName}: Max for ${sharePriceLabel('CAD', promo.max.saleLabel)}.`,
-    );
-    expect(on.headline).toBe('Black Friday Sale: Max for C$99/yr.');
+    expect(on.headline).toBe(`${promo.saleName}: Max for ${promo.max.saleLabel}.`);
+    expect(on.headline).toBe('Black Friday Sale: Max for $99/yr.');
+    expect(on.alt).toBe('Hale. Black Friday Sale: Max for $99/yr.');
+    expect(on.alt).not.toMatch(/C\$|\bCAD\b|\bUSD\b/);
     expect(
       paintShareCard('pricing', query({ locale: 'en', offer: true, currency: 'USD' })).headline,
     ).toBe('Black Friday Sale: Max for $79/yr.');
@@ -337,7 +352,7 @@ describe('share card copy', () => {
       expect(card.headline, locale).toBe(tx(locale, H1));
       expect(card.alt, locale).toBe(`Hale. ${tx(locale, H1)}`);
       expect(card.slogan?.marked, locale).toBe(HOME_CARD[locale].marked);
-      expect(card.headline, locale).not.toContain("we should");
+      expect(card.headline, locale).not.toContain('we should');
     }
     expect(HOME_CARD.en.plain).toBe(H1);
     expect(HOME_CARD.en.marked).toBe('Now it’s Hale.');
@@ -406,6 +421,14 @@ describe('share card copy', () => {
   });
 });
 
+function imageAlt(images: unknown): string {
+  const first = Array.isArray(images) ? images[0] : images;
+  if (first && typeof first === 'object' && 'alt' in first && first.alt != null) {
+    return String(first.alt);
+  }
+  return '';
+}
+
 describe('pricing metadata image', () => {
   it('follows a preview holiday query into the image URL', async () => {
     vi.useFakeTimers();
@@ -428,6 +451,43 @@ describe('pricing metadata image', () => {
       );
     } finally {
       process.env.VERCEL_ENV = previous;
+      vi.useRealTimers();
+    }
+  });
+
+  it('sets the og and twitter alts from the one-day gate, in a plain $', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-26T18:00:00.000Z'));
+    vi.stubEnv('HOLIDAY_PROMO_ENABLED', 'true');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    vi.stubEnv('STRIPE_PRICE_BF_PLUS_ANNUAL_CAD', 'price_bf_plus_cad');
+    vi.stubEnv('STRIPE_PRICE_BF_PLUS_ANNUAL_USD', 'price_bf_plus_usd');
+    vi.stubEnv('STRIPE_PRICE_BF_MAX_ANNUAL_CAD', 'price_bf_max_cad');
+    vi.stubEnv('STRIPE_PRICE_BF_MAX_ANNUAL_USD', 'price_bf_max_usd');
+    const meta = (search: Record<string, string>) =>
+      pricingMetadata({
+        params: Promise.resolve({ locale: 'en' as const }),
+        searchParams: Promise.resolve(search),
+      });
+    try {
+      const cad = await meta({ bf_now: '2026-11-27T12:00:00.000Z', promo_cc: 'CA' });
+      const usd = await meta({ bf_now: '2026-11-27T12:00:00.000Z', promo_cc: 'US' });
+      const season = await meta({ bf_now: '2026-11-28T08:00:00.000Z', promo_cc: 'CA' });
+      expect(imageAlt(cad.openGraph?.images)).toBe('Hale. Black Friday: Max for $59/yr.');
+      expect(imageAlt(cad.twitter?.images)).toBe('Hale. Black Friday: Max for $59/yr.');
+      expect(imageAlt(usd.openGraph?.images)).toBe('Hale. Black Friday: Max for $49/yr.');
+      expect(imageAlt(usd.twitter?.images)).toBe('Hale. Black Friday: Max for $49/yr.');
+      expect(imageAlt(season.openGraph?.images)).toBe('Hale. Black Friday Sale: Max for $99/yr.');
+      expect(imageAlt(season.twitter?.images)).toBe('Hale. Black Friday Sale: Max for $99/yr.');
+      for (const alt of [
+        imageAlt(cad.openGraph?.images),
+        imageAlt(usd.openGraph?.images),
+        imageAlt(season.openGraph?.images),
+      ]) {
+        expect(alt).not.toMatch(/C\$|\bCAD\b|\bUSD\b/);
+      }
+    } finally {
+      vi.unstubAllEnvs();
       vi.useRealTimers();
     }
   });
