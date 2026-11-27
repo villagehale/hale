@@ -7,8 +7,13 @@ const RUNNER = join(dirname(fileURLToPath(import.meta.url)), 'run-coach-reaction
 
 function run(flags, extraEnv = {}) {
   const { ANTHROPIC_API_KEY: _key, ...env } = process.env;
+  const child = { ...env, ...extraEnv };
+  // Recorded requests keep tools in skill order. The layout flag reorders
+  // them, so a cached-only replay drops it here. The runner does not read
+  // the flag itself. A live run (no --cached-only) keeps the caller's value.
+  if (flags.includes('--cached-only')) child.PROMPT_CACHE_LAYOUT_ENABLED = undefined;
   return spawnSync(process.execPath, [RUNNER, ...flags], {
-    env: { ...env, ...extraEnv },
+    env: child,
     encoding: 'utf8',
     timeout: 120_000,
   });

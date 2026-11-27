@@ -229,12 +229,6 @@ async function main() {
     console.error('coach-reaction: --broken replays the cache; pass it with --cached-only.');
     process.exit(2);
   }
-  // The committed recordings are the request with tools in skill order.
-  // PROMPT_CACHE_LAYOUT_ENABLED reorders tools and splits system blocks, so a
-  // cached-only run with that flag on misses every key and exits before the
-  // calibration lines. Replay the recorded request. A live run still records
-  // whatever layout the process has.
-  if (cachedOnly) process.env.PROMPT_CACHE_LAYOUT_ENABLED = undefined;
   installEvalSpendCap();
   const getClient = lazyAnthropic('coach-reaction');
   const cost = makeCost();
