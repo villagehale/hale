@@ -62,6 +62,37 @@ describe('landing — the redesign hero', () => {
     expect(css).toContain('.rd h1 { font-size: 54px;');
   });
 
+  it('paints the script line white in dark mode and keeps the yellow stripe', () => {
+    const css = readFileSync(fileURLToPath(new URL('./redesign.css', import.meta.url)), 'utf8');
+    const light = css.match(/\.rd \.hero h1 \.h1-name \{\s*width: fit-content;[^}]+\}/)?.[0] ?? '';
+    expect(light).toContain('color: #1C1C1E;');
+    expect(light).toContain(
+      'background: linear-gradient(transparent 52%, #FFE066 52%, #FFE066 92%, transparent 92%);',
+    );
+    const stripe =
+      'background: linear-gradient(transparent 52%, #FFE066 52%, #FFE066 92%, transparent 92%);';
+    const explicit = [
+      ':root[data-theme="dark"] .rd .hero h1 .h1-name,',
+      ':root.dark .rd .hero h1 .h1-name {',
+      '  color: #FFFFFF;',
+      `  ${stripe}`,
+      '}',
+    ].join('\n');
+    const os = [
+      '@media (prefers-color-scheme: dark) {',
+      '  :root:not([data-theme="light"]):not(.light) .rd .hero h1 .h1-name {',
+      '    color: #FFFFFF;',
+      `    ${stripe}`,
+      '  }',
+      '}',
+    ].join('\n');
+    expect(css).toContain(explicit);
+    expect(css).toContain(os);
+    expect(css.replace(os, '')).not.toContain(
+      ':root:not([data-theme="light"]):not(.light) .rd .hero h1 .h1-name',
+    );
+  });
+
   it('shows Library playgroup on the hero calendar', () => {
     expect(text).toContain('Library playgroup');
     expect(text).not.toContain('EarlyON');
