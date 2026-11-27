@@ -16,8 +16,10 @@ import {
   blackFridayClockLabels,
   blackFridayCloseLabel,
   blackFridayEndsInLabel,
+  blackFridayEndsLine,
   blackFridayPlainAmount,
   blackFridaySeePrices,
+  blackFridayShortPriceLine,
 } from '~/lib/promo/black-friday';
 import { bfInter, bfMono, heroBrush } from '~/lib/site/display-fonts';
 
@@ -175,19 +177,39 @@ function PriceLine({ offer, locale }: { offer: BlackFridayOffer; locale: Locale 
   );
 }
 
-/** The two rows. Desktop CSS lays them out as one line. */
-export function BlackFridayRows({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
+/** Desktop row: struck price, Ends in, the clock, See prices. */
+function BlackFridayDesktopCluster({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
   return (
-    <>
-      <span className="bf-row bf-row-1">
+    <span className="bf-desk">
+      <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
+      <PriceLine offer={offer} locale={locale} />
+      <BlackFridayCount serverNow={offer.serverNow} locale={locale} labeled />
+      <span className={`bf-see ${bfInter.className}`}>{blackFridaySeePrices(locale)}</span>
+    </span>
+  );
+}
+
+/**
+ * One row shared by the mobile top bar and the sticky.
+ * Today's price, no strike and no unit, then the midnight line.
+ */
+export function BlackFridayMobileCluster({
+  offer,
+  locale,
+}: {
+  offer: BlackFridayOffer;
+  locale: Locale;
+}) {
+  return (
+    <span className="bf-mob">
+      <span className="bf-lead">
         <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
-        <BlackFridayCount serverNow={offer.serverNow} locale={locale} labeled />
+        <span className={`bf-prices ${bfInter.className}`}>{blackFridayShortPriceLine(locale, offer)}</span>
+        <span className={`bf-ends ${bfMono.className}`}>{blackFridayEndsLine(locale)}</span>
       </span>
-      <span className="bf-row bf-row-2">
-        <PriceLine offer={offer} locale={locale} />
-        <span className={`bf-see ${bfInter.className}`}>{blackFridaySeePrices(locale)}</span>
-      </span>
-    </>
+      <BlackFridayClock serverNow={offer.serverNow} locale={locale} />
+      <span className={`bf-see ${bfInter.className}`}>{blackFridaySeePrices(locale)}</span>
+    </span>
   );
 }
 
@@ -229,7 +251,8 @@ export function BlackFridayBanner({
         href={localeHref(locale, '/pricing')}
         aria-label={blackFridayBarLabel(locale, offer)}
       >
-        <BlackFridayRows offer={offer} locale={locale} />
+        <BlackFridayDesktopCluster offer={offer} locale={locale} />
+        <BlackFridayMobileCluster offer={offer} locale={locale} />
       </a>
       <BlackFridayClose locale={locale} onDismiss={dismiss} />
     </div>

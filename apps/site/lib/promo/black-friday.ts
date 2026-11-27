@@ -281,14 +281,14 @@ export function blackFridayHeardPrice(
   return `${saleLabel.replace('/yr', ' a year')}, regular price ${regularLabel.replace('/yr', ' a year')}.`;
 }
 
-/** Sticky only. The top bar uses "Ends in" beside the clock. */
+/** Mobile top bar and the sticky. Desktop uses "Ends in" beside the clock. */
 export function blackFridayEndsLine(locale: 'en' | 'fr' | 'zh'): string {
   if (locale === 'fr') return 'Se termine à minuit.';
   if (locale === 'zh') return '午夜结束。';
   return 'Ends at midnight.';
 }
 
-/** Today's price on the sticky. No strike, no unit. */
+/** Today's price on the mobile bar and the sticky. No strike, no unit. */
 export function blackFridayShortPriceLine(locale: 'en' | 'fr' | 'zh', offer: BlackFridayOffer): string {
   const bits: string[] = [];
   if (offer.plus) bits.push(`Plus ${blackFridayPlainAmount(locale, offer.plus.sale, false)}`);
