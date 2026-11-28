@@ -179,7 +179,7 @@ describe('resolveBlackFridayOffer', () => {
     expect(blackFridayPlanButton('en', 'max', '$59/yr')).toBe('Get Max, $59/yr');
     expect(blackFridayPlanButton('fr', 'plus', '$39/yr')).toBe('Prends Plus, 39 $/an');
     expect(blackFridayPlanButton('zh', 'max', '$49/yr')).toBe('开通 Max，每年 $49');
-    expect(blackFridayMaxHeadline('fr', '$59/yr')).toBe('Black Friday : Max à 59 $/an.');
+    expect(blackFridayMaxHeadline('fr', '$59/yr')).toBe('Cyber Monday : Max à 59 $/an.');
     expect(blackFridayCloseHeadline('zh', '$49/yr')).toBe('今日 Max 每年 $49。');
   });
 });
@@ -210,7 +210,7 @@ describe('sticky promo bar', () => {
 
   it('keeps the season bar on both sides of the window and replaces it inside', () => {
     const before = bar('2026-11-27T04:59:59.000Z', 'US');
-    expect(before).toContain('Black Friday Sale');
+    expect(before).toContain('Cyber Monday Sale');
     expect(before).toContain('Max $79/yr, Plus $39/yr');
     expect(before).toContain('Join by Dec 31');
     expect(before).not.toContain('Plus $29');
@@ -288,7 +288,7 @@ describe('sticky promo bar', () => {
 
   it('uses the visitor region and stays quiet about a price it cannot charge', () => {
     expect(blackFridaySentence('en', '$39', '$59')).toBe(
-      'Black Friday: yearly Plus $39 and Max $59, today only.',
+      'Cyber Monday: yearly Plus $39 and Max $59, today only.',
     );
     expect(blackFridaySentence('fr', '$39', '$59')).toContain("aujourd'hui seulement");
     expect(blackFridaySentence('zh', '$29', '$49')).toContain('仅限今日');
@@ -349,7 +349,7 @@ describe('in-window pages name only today’s price', () => {
   it('localizes the French and Chinese pricing page, including the countdown', () => {
     const french = page('fr', false);
     const fr = french.pricing;
-    expect(fr).toContain('Black Friday : Max à 59 $/an.');
+    expect(fr).toContain('Cyber Monday : Max à 59 $/an.');
     expect(fr).toContain('Prends Plus, 39 $/an');
     expect(fr).toContain('Prends Max, 59 $/an');
     expect(fr).toContain("Ce prix reste quand tu renouvelles.");
@@ -364,12 +364,12 @@ describe('in-window pages name only today’s price', () => {
     expect(fr).not.toContain('Fin vendredi');
     expect(fr).not.toContain('Ends at midnight');
     expect(fr).not.toMatch(
-      /Lock in|Get Plus|Get Max|Join by Dec|Ends Friday|Ends in|Today only|regular price| a year|Billed yearly|Black Friday:|Max for |This price stays/,
+      /Lock in|Get Plus|Get Max|Join by Dec|Ends Monday|Ends in|Today only|regular price| a year|Billed yearly|Cyber Monday:|Max for |This price stays/,
     );
 
     const chinese = page('zh', false);
     const zh = chinese.pricing;
-    expect(zh).toContain('黑色星期五：Max 每年 $59。');
+    expect(zh).toContain('网一：Max 每年 $59。');
     expect(zh).toContain('开通 Plus，每年 $39');
     expect(zh).toContain('开通 Max，每年 $59');
     expect(zh).toContain('续订时这个价格不变。');
@@ -380,7 +380,7 @@ describe('in-window pages name only today’s price', () => {
     expect(chinese.pricingHtml).toContain('href="/zh/pricing"');
     expect(chinese.pricingHtml).toContain('aria-label="关闭"');
     expect(zh).not.toMatch(
-      /Lock in|Get Plus|Get Max|Join by Dec|Ends Friday|Ends in|Today only|regular price|Black Friday:|Max for |This price stays/,
+      /Lock in|Get Plus|Get Max|Join by Dec|Ends Monday|Ends in|Today only|regular price|Cyber Monday:|Max for |This price stays/,
     );
   });
 });

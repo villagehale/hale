@@ -67,7 +67,7 @@ export function FoundingCheckout({
   const perYear = `$${amount}/yr`;
   const display = { symbol: base.symbol, amount, perYear };
   const planName = tier === 'family' ? 'Max' : 'Plus';
-  const saleName = phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale';
+  const saleName = phase === 'black_friday' ? 'Cyber Monday Sale' : 'Holiday Sale';
 
   async function begin() {
     if (busy || !ready) return;

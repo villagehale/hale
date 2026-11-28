@@ -65,7 +65,7 @@ function tierCard(currency: BillingCurrency, tier: PromoTier): BlackFridayTier {
 }
 
 /** Home share card, while the gate is open. No time zone. */
-export const HOME_SHARE_ONE_DAY_ENDS = 'Ends Friday at midnight';
+export const HOME_SHARE_ONE_DAY_ENDS = 'Ends Monday at midnight';
 
 export function homeShareOneDayCopy(currency: BillingCurrency): { flag: string; prices: string } {
   const plus = BLACK_FRIDAY_PRICE_DISPLAY.plus[currency].banner;
@@ -166,19 +166,19 @@ export function blackFridaySentence(
 ): string {
   if (locale === 'fr') {
     if (plus && max) {
-      return `Black Friday : Plus ${plus} et Max ${max} par année, aujourd'hui seulement.`;
+      return `Cyber Monday : Plus ${plus} et Max ${max} par année, aujourd'hui seulement.`;
     }
-    if (plus) return `Black Friday : Plus ${plus} par année, aujourd'hui seulement.`;
-    return `Black Friday : Max ${max} par année, aujourd'hui seulement.`;
+    if (plus) return `Cyber Monday : Plus ${plus} par année, aujourd'hui seulement.`;
+    return `Cyber Monday : Max ${max} par année, aujourd'hui seulement.`;
   }
   if (locale === 'zh') {
-    if (plus && max) return `黑色星期五：年付 Plus ${plus}、Max ${max}，仅限今日。`;
-    if (plus) return `黑色星期五：年付 Plus ${plus}，仅限今日。`;
-    return `黑色星期五：年付 Max ${max}，仅限今日。`;
+    if (plus && max) return `网一：年付 Plus ${plus}、Max ${max}，仅限今日。`;
+    if (plus) return `网一：年付 Plus ${plus}，仅限今日。`;
+    return `网一：年付 Max ${max}，仅限今日。`;
   }
-  if (plus && max) return `Black Friday: yearly Plus ${plus} and Max ${max}, today only.`;
-  if (plus) return `Black Friday: yearly Plus ${plus}, today only.`;
-  return `Black Friday: yearly Max ${max}, today only.`;
+  if (plus && max) return `Cyber Monday: yearly Plus ${plus} and Max ${max}, today only.`;
+  if (plus) return `Cyber Monday: yearly Plus ${plus}, today only.`;
+  return `Cyber Monday: yearly Max ${max}, today only.`;
 }
 
 /** "$39/yr" in the page's money style. An unrecognized label is returned as-is. */
@@ -236,9 +236,9 @@ export function blackFridayPlanButton(
 
 export function blackFridayMaxHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
   const price = blackFridayPriceLabel(locale, saleLabel);
-  if (locale === 'fr') return `Black Friday : Max à ${price}.`;
-  if (locale === 'zh') return `黑色星期五：Max ${price}。`;
-  return `Black Friday: Max for ${price}.`;
+  if (locale === 'fr') return `Cyber Monday : Max à ${price}.`;
+  if (locale === 'zh') return `网一：Max ${price}。`;
+  return `Cyber Monday: Max for ${price}.`;
 }
 
 export function blackFridayCloseHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
@@ -317,8 +317,8 @@ export function blackFridayBarLabel(locale: 'en' | 'fr' | 'zh', offer: BlackFrid
   if (offer.max) bits.push(`Max ${blackFridayPlainAmount(locale, offer.max.sale, true)}`);
   const see = blackFridaySeePrices(locale);
   const prices = bits.join(' · ');
-  if (locale === 'zh') return `Black Friday。${prices}。${see}`;
-  return `Black Friday. ${prices}. ${see}.`;
+  if (locale === 'zh') return `网一。${prices}。${see}`;
+  return `Cyber Monday. ${prices}. ${see}.`;
 }
 
 /** Under the clock digits. Not uppercased. */
