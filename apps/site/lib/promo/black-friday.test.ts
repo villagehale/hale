@@ -55,12 +55,12 @@ describe('resolveBlackFridayOffer', () => {
       env: IDS,
     });
     const last = resolveBlackFridayOffer({
-      now: new Date('2026-11-28T07:59:59.000Z'),
+      now: new Date('2026-12-01T07:59:59.000Z'),
       country: 'CA',
       env: IDS,
     });
     const after = resolveBlackFridayOffer({
-      now: new Date('2026-11-28T08:00:00.000Z'),
+      now: new Date('2026-12-01T08:00:00.000Z'),
       country: 'US',
       env: IDS,
     });
@@ -131,7 +131,7 @@ describe('resolveBlackFridayOffer', () => {
       now: new Date('2026-11-26T18:00:00.000Z'),
       country: 'US',
       env,
-      search: { bf_now: '2026-11-28T07:59:59.000Z' },
+      search: { bf_now: '2026-12-01T07:59:59.000Z' },
     });
     expect(pinned?.max?.banner).toBe('$49');
     expect(
@@ -139,13 +139,13 @@ describe('resolveBlackFridayOffer', () => {
         now: new Date('2026-11-26T18:00:00.000Z'),
         country: 'US',
         env,
-        search: { bf_now: '2026-11-28T08:00:00.000Z' },
+        search: { bf_now: '2026-12-01T08:00:00.000Z' },
       }),
     ).toBeNull();
   });
 
-  it('keeps BF prices after an ET Friday ends, and hides the midnight sentence', () => {
-    const at = new Date('2026-11-28T04:59:59.000Z');
+  it('keeps BF prices after an ET Monday ends, and hides the midnight sentence', () => {
+    const at = new Date('2026-12-01T04:59:59.000Z');
     const offer = resolveBlackFridayOffer({ now: at, country: 'US', env: IDS });
     expect(offer?.plus?.banner).toBe('$29');
     expect(offer?.max?.banner).toBe('$49');
@@ -237,13 +237,13 @@ describe('sticky promo bar', () => {
     expect(canadaStart).not.toContain('$99');
     expect(canadaStart).not.toMatch(/C\$|US\$/);
 
-    const afterEtMidnight = bar('2026-11-28T04:59:59.000Z', 'US');
+    const afterEtMidnight = bar('2026-12-01T04:59:59.000Z', 'US');
     expect(afterEtMidnight).toContain('Plus $29 · Max $49');
     expect(afterEtMidnight).toContain('Ends at midnight.');
     expect(afterEtMidnight).not.toContain('ended');
     expect(afterEtMidnight).not.toContain('Join by Dec 31');
 
-    const after = bar('2026-11-28T08:00:00.000Z', 'US');
+    const after = bar('2026-12-01T08:00:00.000Z', 'US');
     expect(after).toContain('Max $79/yr, Plus $39/yr');
     expect(after).toContain('Join by Dec 31');
     expect(after).not.toContain('Plus $29');
@@ -262,14 +262,14 @@ describe('sticky promo bar', () => {
     const hidden = bar(
       '2026-11-26T18:00:00.000Z',
       'US',
-      { bf: '1', bf_now: '2026-11-28T06:00:00.000Z' },
+      { bf: '1', bf_now: '2026-12-01T06:00:00.000Z' },
       { ...IDS, VERCEL_ENV: 'preview' },
     );
     expect(hidden).toContain('Plus $29 · Max $49');
     expect(
       blackFridayCountdownCopy(
         'en',
-        blackFridayCountdownRemainingMs(Date.parse('2026-11-28T06:00:00.000Z'), 'America/New_York'),
+        blackFridayCountdownRemainingMs(Date.parse('2026-12-01T06:00:00.000Z'), 'America/New_York'),
       ),
     ).toBeNull();
     expect(hidden).not.toContain('ended');

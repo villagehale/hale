@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLACK_FRIDAY_LOCAL_FRIDAY_END,
   BLACK_FRIDAY_PRICE_DISPLAY,
   BLACK_FRIDAY_WINDOW_END_ISO,
   BLACK_FRIDAY_WINDOW_END_MS,
@@ -15,17 +16,25 @@ const OUTSIDE = new Date('2026-11-26T18:00:00.000Z');
 const INSIDE = new Date('2026-11-27T15:00:00.000Z');
 
 describe('Black Friday window', () => {
-  it('opens at 05:00:00Z on the 27th and closes at 08:00:00Z on the 28th', () => {
+  it('opens at 05:00:00Z on the 27th and closes at 08:00:00Z on Dec 1', () => {
     expect(BLACK_FRIDAY_WINDOW_START_ISO).toBe('2026-11-27T05:00:00.000Z');
-    expect(BLACK_FRIDAY_WINDOW_END_ISO).toBe('2026-11-28T08:00:00.000Z');
+    expect(BLACK_FRIDAY_WINDOW_END_ISO).toBe('2026-12-01T08:00:00.000Z');
+    expect(BLACK_FRIDAY_LOCAL_FRIDAY_END).toEqual({
+      year: 2026,
+      month: 11,
+      day: 30,
+      hour: 23,
+      minute: 59,
+      second: 59,
+    });
     expect(isBlackFridayWindowOpen(new Date('2026-11-27T04:59:59.000Z'))).toBe(false);
     expect(isBlackFridayWindowOpen(new Date('2026-11-27T05:00:00.000Z'))).toBe(true);
-    expect(isBlackFridayWindowOpen(new Date('2026-11-28T07:59:59.000Z'))).toBe(true);
-    expect(isBlackFridayWindowOpen(new Date('2026-11-28T08:00:00.000Z'))).toBe(false);
+    expect(isBlackFridayWindowOpen(new Date('2026-12-01T07:59:59.000Z'))).toBe(true);
+    expect(isBlackFridayWindowOpen(new Date('2026-12-01T08:00:00.000Z'))).toBe(false);
   });
 
   it('hides an ET countdown at local 23:59:59 while the gate stays open', () => {
-    const at = Date.parse('2026-11-28T04:59:59.000Z');
+    const at = Date.parse('2026-12-01T04:59:59.000Z');
     expect(blackFridayVisitorCountdownEndMs('America/New_York')).toBe(at);
     expect(blackFridayCountdownRemainingMs(at, 'America/New_York')).toBe(0);
     expect(blackFridayCountdownRemainingMs(at - 1000, 'America/New_York')).toBe(1000);
@@ -39,7 +48,7 @@ describe('Black Friday window', () => {
     const thursdayNoonToronto = Date.parse('2026-11-26T17:00:00.000Z');
     const remaining = blackFridayCountdownRemainingMs(thursdayNoonToronto, 'America/Toronto');
     expect(remaining).toBeGreaterThan(24 * 60 * 60 * 1000);
-    expect(blackFridayCountdownClock(remaining)).toBe('35:59:59');
+    expect(blackFridayCountdownClock(remaining)).toBe('107:59:59');
   });
 
   it('caps a Hawaii countdown at the gate end', () => {

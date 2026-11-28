@@ -438,8 +438,8 @@ describe('resolveCheckoutPrice', () => {
     };
     const before = new Date('2026-11-27T04:59:59.000Z');
     const start = new Date('2026-11-27T05:00:00.000Z');
-    const last = new Date('2026-11-28T07:59:59.000Z');
-    const end = new Date('2026-11-28T08:00:00.000Z');
+    const last = new Date('2026-12-01T07:59:59.000Z');
+    const end = new Date('2026-12-01T08:00:00.000Z');
     expect(
       resolveCheckoutPrice({ currency: 'CAD', period: 'monthly', now: before, env }),
     ).toMatchObject({
@@ -474,6 +474,27 @@ describe('resolveCheckoutPrice', () => {
     expect(chargedAnnualLabel({ tier: 'plus', currency: 'USD', now: start, env })).toBe('$29/yr');
     expect(chargedAnnualLabel({ tier: 'family', currency: 'CAD', now: last, env })).toBe('$59/yr');
     expect(chargedAnnualLabel({ tier: 'plus', currency: 'USD', now: end, env })).toBe('$39/yr');
+  });
+
+  it('picks the founding holiday price at 2026-12-01T08:00Z, not the BF price', () => {
+    const env = {
+      ...PROMO,
+      STRIPE_PRICE_BF_PLUS_ANNUAL_USD: 'price_bf_plus_usd',
+      STRIPE_PRICE_BF_MAX_ANNUAL_CAD: 'price_bf_max_cad',
+    };
+    const closed = new Date('2026-12-01T08:00:00.000Z');
+    expect(
+      resolveCheckoutPrice({ currency: 'USD', period: 'annual', now: closed, env }),
+    ).toMatchObject({ price: { priceId: 'price_plus_usd', sku: 'promo_plus_annual' } });
+    expect(
+      resolveCheckoutPrice({
+        currency: 'CAD',
+        period: 'annual',
+        now: closed,
+        env,
+        tier: 'family',
+      }),
+    ).toMatchObject({ price: { priceId: 'price_max_cad', sku: 'promo_max_annual' } });
   });
 
   it('falls back to CAD list when USD list is unset after the window', () => {
