@@ -31,7 +31,6 @@ import {
   blackFridayPlanButton,
   blackFridayRefundLine,
   blackFridayRenewalCopy,
-  blackFridayTodayTag,
   blackFridayYearlyNote,
 } from '~/lib/promo/black-friday';
 import { type HolidayPromo, FOUNDING_REFUND_LINE } from '~/lib/promo/holiday';
@@ -178,7 +177,7 @@ export function RedesignPricing({
     <h3>{t(plusMonthlyLabel(currency))}</h3>
     <p className="hs-tier-meta">{t(orAnnualLabel(currency))}</p>
     </>)}
-    {blackFriday?.plus ? <p className="promo-tier-tag" data-promo-phase={promo?.phase ?? 'black_friday'}>{blackFridayTodayTag(locale)}</p> : promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{`${promo.saleName}: locked in. Join by Dec 31.`}</p> : null}
+    {blackFriday?.plus ? null : promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{`${promo.saleName}: locked in. Join by Dec 31.`}</p> : null}
     <p className="hs-tier-body">{t("More done for you, all year.")}</p>
     <ul className="hs-checks"><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Knows your family")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Keeps them, season to season")}</span></li><li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span>{t("Signs them up Dec 1.")}</span></li></ul>
     <div className="hs-tier-cta">{plusCard ? <FoundingCheckoutLink className="hs-btn-primary" placement="pricing_plus" phase={checkoutPhase} currency={checkoutCurrency} plan="plus" query={blackFriday?.checkoutQuery ?? ''}>{blackFriday?.plus ? blackFridayPlanButton(locale, 'plus', blackFriday.plus.saleLabel) : `Lock in ${plusCard.saleLabel}`}</FoundingCheckoutLink> : list || yearlyOnly ? <TextDoor className="hs-btn-primary" placement="pricing_tier" locale={locale} smsNumber={smsNumber} prefill={prefill} mode={mode} source={source}>{t("Text Hale")}</TextDoor> : <button type="button" className="hs-btn-soon" disabled>{t("Coming soon")}</button>}</div>
@@ -188,7 +187,7 @@ export function RedesignPricing({
     {maxCard ? (<>
     <TierSalePrice price={maxCard} locale={locale} />
     {promo ? <p className="hs-tier-meta promo-tier-refund">Billed yearly. {FOUNDING_REFUND_LINE}</p> : null}
-    {blackFriday?.max ? <p className="promo-tier-tag" data-promo-phase={promo?.phase ?? 'black_friday'}>{blackFridayTodayTag(locale)}</p> : promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{`${promo.saleName}: locked in. Join by Dec 31.`}</p> : null}
+    {blackFriday?.max ? null : promo ? <p className="promo-tier-tag" data-promo-phase={promo.phase}>{`${promo.saleName}: locked in. Join by Dec 31.`}</p> : null}
     </>) : (<>
     <h3>{t(maxAnnualLabel(currency))}</h3>
     </>)}

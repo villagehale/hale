@@ -181,7 +181,7 @@ function PriceLine({ offer, locale }: { offer: BlackFridayOffer; locale: Locale 
 function BlackFridayDesktopCluster({ offer, locale }: { offer: BlackFridayOffer; locale: Locale }) {
   return (
     <span className="bf-desk">
-      <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
+      <span className={`bf-sticker ${heroBrush.className}`}>Cyber Monday</span>
       <PriceLine offer={offer} locale={locale} />
       <BlackFridayCount serverNow={offer.serverNow} locale={locale} labeled />
       <span className={`bf-see ${bfInter.className}`}>{blackFridaySeePrices(locale)}</span>
@@ -203,7 +203,7 @@ export function BlackFridayMobileCluster({
   return (
     <span className="bf-mob">
       <span className="bf-lead">
-        <span className={`bf-sticker ${heroBrush.className}`}>Black Friday</span>
+        <span className={`bf-sticker ${heroBrush.className}`}>Cyber Monday</span>
         <span className={`bf-prices ${bfInter.className}`}>{blackFridayShortPriceLine(locale, offer)}</span>
         <span className={`bf-ends ${bfMono.className}`}>{blackFridayEndsLine(locale)}</span>
       </span>

@@ -67,7 +67,9 @@ export function FoundingCheckout({
   const perYear = `$${amount}/yr`;
   const display = { symbol: base.symbol, amount, perYear };
   const planName = tier === 'family' ? 'Max' : 'Plus';
-  const saleName = phase === 'black_friday' ? 'Black Friday Sale' : 'Holiday Sale';
+  // Holiday Sale in both phases. Cyber Monday is only the one-day site price.
+  const saleName = 'Holiday Sale';
+  void phase;
 
   async function begin() {
     if (busy || !ready) return;

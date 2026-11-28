@@ -76,7 +76,7 @@ function query(partial: Partial<ShareCardQuery> & Pick<ShareCardQuery, 'locale'>
 describe('share card query', () => {
   const on = { HOLIDAY_PROMO_ENABLED: 'true', VERCEL_ENV: 'production' };
 
-  it('is Black Friday through Nov 30 and Holiday from Dec 1, Toronto', () => {
+  it('is the black_friday phase through Nov 30 and holiday from Dec 1, Toronto', () => {
     const before = shareCardQueryFrom({
       locale: 'en',
       now: new Date('2026-11-30T23:59:59-05:00'),
@@ -150,7 +150,7 @@ describe('share card query', () => {
     );
     expect(shareCardUrl('pricing', open)).not.toContain('bf24');
     const cad = paintShareCard('home', open);
-    expect(cad.flag).toBe('Ends Friday at midnight');
+    expect(cad.flag).toBe('Ends Monday at midnight');
     expect(cad.prices).toBe('Plus $39/yr · Max $59/yr');
     expect(cad.headline).toBe(HOME_CARD.en.plain);
     expect(cad.flag).not.toMatch(/PT|ET|time zone/i);
@@ -160,7 +160,7 @@ describe('share card query', () => {
     expect(shut.bf24).toBe(false);
     expect(paintShareCard('home', shut).flag).toBe('Holiday Sale');
     expect(paintShareCard('home', shut).prices).toBe('Max $99/yr · Plus $59/yr');
-    expect(paintShareCard('pricing', open).headline).toBe('Black Friday Sale: Max for C$99/yr.');
+    expect(paintShareCard('pricing', open).headline).toBe('Holiday Sale: Max for C$99/yr.');
     const missing = shareCardQueryFrom({
       locale: 'en',
       now: inside,
@@ -219,7 +219,7 @@ describe('share card query', () => {
       VERCEL_ENV: 'preview',
     });
     expect(stale.bf24).toBe(false);
-    expect(paintShareCard('home', stale).flag).toBe('Black Friday Sale');
+    expect(paintShareCard('home', stale).flag).toBe('Holiday Sale');
     expect(paintShareCard('home', stale).prices).toBe('Max $99/yr · Plus $59/yr');
   });
 
@@ -259,10 +259,10 @@ describe('share card copy', () => {
     expect(on.headline).toBe(
       `${promo.saleName}: Max for ${sharePriceLabel('CAD', promo.max.saleLabel)}.`,
     );
-    expect(on.headline).toBe('Black Friday Sale: Max for C$99/yr.');
+    expect(on.headline).toBe('Holiday Sale: Max for C$99/yr.');
     expect(
       paintShareCard('pricing', query({ locale: 'en', offer: true, currency: 'USD' })).headline,
-    ).toBe('Black Friday Sale: Max for $79/yr.');
+    ).toBe('Holiday Sale: Max for $79/yr.');
     expect(paintShareCard('pricing', query({ locale: 'en', offer: false })).headline).toBe(
       'More done for you, all year.',
     );

@@ -29,7 +29,8 @@ describe('FoundingCheckout', () => {
         }),
       ),
     );
-    expect(body).toContain('Black Friday Sale');
+    expect(body).toContain('Holiday Sale');
+    expect(body).not.toMatch(/Cyber Monday|Black Friday/);
     expect(body).toContain('Plus');
     expect(body).toContain('Billed $59/yr, starting today.');
     expect(body).toContain('Renews once a year at the same price while you stay subscribed.');
