@@ -70,8 +70,8 @@ for (const { phase, currency } of CASES) {
       const offer = html.match(/id="founding"[\s\S]*?<\/section>/)?.[0] ?? '';
 
       it('leads with the sale name and features the Max sale price', () => {
-        expect(body).toContain(phase === 'black_friday' ? 'Cyber Monday Sale' : 'Holiday Sale');
-        expect(body).not.toContain(phase === 'black_friday' ? 'Holiday Sale' : 'Cyber Monday Sale');
+        expect(body).toContain('Holiday Sale');
+        expect(body).not.toMatch(/Cyber Monday|Black Friday|网络星期一|黑色星期五/);
         expect(html).toContain('id="founding"');
         const sale = want.max[1].replace('$', '').replace('/yr', '');
         expect(offer).toMatch(/class="promo-offer-tier"[^>]*>Max</);

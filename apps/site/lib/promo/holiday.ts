@@ -15,9 +15,10 @@ import {
  * Holiday 2026 promo, as the marketing site shows it.
  *
  * Barton's decisions (Nov 2026), held here so every surface reads one source:
- *  - "Cyber Monday Sale" before HOLIDAY_SALE_STARTS_AT, then "Holiday Sale"
- *    through Dec 31. The phase is picked per request from that instant
- *    (America/Toronto), so the switch needs no deploy.
+ *  - "Holiday Sale" on every founding surface, in both phases. The phase
+ *    is still picked per request from HOLIDAY_SALE_STARTS_AT
+ *    (America/Toronto), so the switch needs no deploy. Cyber Monday is
+ *    only the one-day price, and only while that gate is open.
  *  - Both paid tiers are on sale, billed yearly, locked for as long as the
  *    family stays a member (Barton, Nov 16 1:07 PM ET):
  *      Canada: Plus $59/yr, Max $99/yr. US: Plus $39/yr, Max $79/yr.
@@ -86,7 +87,7 @@ function tierPrice(currency: BillingCurrency, tier: PromoTier): PromoTierPrice {
 export interface HolidayPromo {
   phase: PromoPhase;
   /** The sale name, which leads every promo surface. */
-  saleName: 'Cyber Monday Sale' | 'Holiday Sale';
+  saleName: 'Holiday Sale';
   /** Which amounts this visitor sees. Never printed next to a price. */
   currency: BillingCurrency;
   symbol: '$';
@@ -102,7 +103,7 @@ export const promoPhase = promoPhaseAt;
 export function buildHolidayPromo(phase: PromoPhase, currency: BillingCurrency): HolidayPromo {
   return {
     phase,
-    saleName: phase === 'black_friday' ? 'Cyber Monday Sale' : 'Holiday Sale',
+    saleName: 'Holiday Sale',
     currency,
     symbol: '$',
     plus: tierPrice(currency, 'plus'),

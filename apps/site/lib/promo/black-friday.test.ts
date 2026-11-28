@@ -210,7 +210,8 @@ describe('sticky promo bar', () => {
 
   it('keeps the season bar on both sides of the window and replaces it inside', () => {
     const before = bar('2026-11-27T04:59:59.000Z', 'US');
-    expect(before).toContain('Cyber Monday Sale');
+    expect(before).toContain('Holiday Sale');
+    expect(before).not.toMatch(/Cyber Monday|Black Friday/);
     expect(before).toContain('Max $79/yr, Plus $39/yr');
     expect(before).toContain('Join by Dec 31');
     expect(before).not.toContain('Plus $29');
@@ -288,10 +289,21 @@ describe('sticky promo bar', () => {
 
   it('uses the visitor region and stays quiet about a price it cannot charge', () => {
     expect(blackFridaySentence('en', '$39', '$59')).toBe(
-      'Cyber Monday: yearly Plus $39 and Max $59, today only.',
+      'Cyber Monday: yearly Plus $39 and Max $59.',
     );
-    expect(blackFridaySentence('fr', '$39', '$59')).toContain("aujourd'hui seulement");
-    expect(blackFridaySentence('zh', '$29', '$49')).toContain('仅限今日');
+    expect(blackFridaySentence('en', '$39', null)).toBe('Cyber Monday: yearly Plus $39.');
+    expect(blackFridaySentence('en', null, '$59')).toBe('Cyber Monday: yearly Max $59.');
+    expect(blackFridaySentence('fr', '$39', '$59')).toBe(
+      'Cyber Monday : Plus $39 et Max $59 par année.',
+    );
+    expect(blackFridaySentence('fr', '$39', null)).toBe('Cyber Monday : Plus $39 par année.');
+    expect(blackFridaySentence('fr', null, '$59')).toBe('Cyber Monday : Max $59 par année.');
+    expect(blackFridaySentence('zh', '$29', '$49')).toBe('网络星期一：年付 Plus $29、Max $49。');
+    expect(blackFridaySentence('zh', '$29', null)).toBe('网络星期一：年付 Plus $29。');
+    expect(blackFridaySentence('zh', null, '$49')).toBe('网络星期一：年付 Max $49。');
+    expect(blackFridaySentence('en', '$39', '$59')).not.toMatch(/today only/i);
+    expect(blackFridaySentence('fr', '$39', '$59')).not.toContain("aujourd'hui seulement");
+    expect(blackFridaySentence('zh', '$29', '$49')).not.toContain('仅限今日');
     expect(blackFridaySentence('en', '$39', '$59')).not.toMatch(/C\$|US\$|founding|first\s100/i);
   });
 });
@@ -369,7 +381,7 @@ describe('in-window pages name only today’s price', () => {
 
     const chinese = page('zh', false);
     const zh = chinese.pricing;
-    expect(zh).toContain('网一：Max 每年 $59。');
+    expect(zh).toContain('网络星期一：Max 每年 $59。');
     expect(zh).toContain('开通 Plus，每年 $39');
     expect(zh).toContain('开通 Max，每年 $59');
     expect(zh).toContain('续订时这个价格不变。');

@@ -166,19 +166,19 @@ export function blackFridaySentence(
 ): string {
   if (locale === 'fr') {
     if (plus && max) {
-      return `Cyber Monday : Plus ${plus} et Max ${max} par année, aujourd'hui seulement.`;
+      return `Cyber Monday : Plus ${plus} et Max ${max} par année.`;
     }
-    if (plus) return `Cyber Monday : Plus ${plus} par année, aujourd'hui seulement.`;
-    return `Cyber Monday : Max ${max} par année, aujourd'hui seulement.`;
+    if (plus) return `Cyber Monday : Plus ${plus} par année.`;
+    return `Cyber Monday : Max ${max} par année.`;
   }
   if (locale === 'zh') {
-    if (plus && max) return `网一：年付 Plus ${plus}、Max ${max}，仅限今日。`;
-    if (plus) return `网一：年付 Plus ${plus}，仅限今日。`;
-    return `网一：年付 Max ${max}，仅限今日。`;
+    if (plus && max) return `网络星期一：年付 Plus ${plus}、Max ${max}。`;
+    if (plus) return `网络星期一：年付 Plus ${plus}。`;
+    return `网络星期一：年付 Max ${max}。`;
   }
-  if (plus && max) return `Cyber Monday: yearly Plus ${plus} and Max ${max}, today only.`;
-  if (plus) return `Cyber Monday: yearly Plus ${plus}, today only.`;
-  return `Cyber Monday: yearly Max ${max}, today only.`;
+  if (plus && max) return `Cyber Monday: yearly Plus ${plus} and Max ${max}.`;
+  if (plus) return `Cyber Monday: yearly Plus ${plus}.`;
+  return `Cyber Monday: yearly Max ${max}.`;
 }
 
 /** "$39/yr" in the page's money style. An unrecognized label is returned as-is. */
@@ -237,7 +237,7 @@ export function blackFridayPlanButton(
 export function blackFridayMaxHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: string): string {
   const price = blackFridayPriceLabel(locale, saleLabel);
   if (locale === 'fr') return `Cyber Monday : Max à ${price}.`;
-  if (locale === 'zh') return `网一：Max ${price}。`;
+  if (locale === 'zh') return `网络星期一：Max ${price}。`;
   return `Cyber Monday: Max for ${price}.`;
 }
 
@@ -246,12 +246,6 @@ export function blackFridayCloseHeadline(locale: 'en' | 'fr' | 'zh', saleLabel: 
   if (locale === 'fr') return `Max à ${price}, aujourd'hui.`;
   if (locale === 'zh') return `今日 Max ${price}。`;
   return `Max for ${price}, today.`;
-}
-
-export function blackFridayTodayTag(locale: 'en' | 'fr' | 'zh'): string {
-  if (locale === 'fr') return "Aujourd'hui seulement.";
-  if (locale === 'zh') return '仅限今日。';
-  return 'Today only.';
 }
 
 export function blackFridayYearlyNote(locale: 'en' | 'fr' | 'zh'): string {
@@ -317,7 +311,7 @@ export function blackFridayBarLabel(locale: 'en' | 'fr' | 'zh', offer: BlackFrid
   if (offer.max) bits.push(`Max ${blackFridayPlainAmount(locale, offer.max.sale, true)}`);
   const see = blackFridaySeePrices(locale);
   const prices = bits.join(' · ');
-  if (locale === 'zh') return `网一。${prices}。${see}`;
+  if (locale === 'zh') return `网络星期一。${prices}。${see}`;
   return `Cyber Monday. ${prices}. ${see}.`;
 }
 
