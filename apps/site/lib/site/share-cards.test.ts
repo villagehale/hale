@@ -136,7 +136,7 @@ describe('share card query', () => {
 
   it('bumps only the home image during the one-day gate, and paints that line', () => {
     const inside = new Date('2026-11-27T12:00:00.000Z');
-    const after = new Date('2026-11-28T08:00:00.000Z');
+    const after = new Date('2026-12-01T08:00:00.000Z');
     const before = new Date('2026-11-27T04:59:59.000Z');
     const open = shareCardQueryFrom({ locale: 'en', now: inside, country: 'CA', env: BF_ENV });
     const shut = shareCardQueryFrom({ locale: 'en', now: after, country: 'CA', env: BF_ENV });
@@ -156,7 +156,9 @@ describe('share card query', () => {
     expect(cad.flag).not.toMatch(/PT|ET|time zone/i);
     const usd = shareCardQueryFrom({ locale: 'en', now: inside, country: 'US', env: BF_ENV });
     expect(paintShareCard('home', usd).prices).toBe('Plus $29/yr · Max $49/yr');
-    expect(paintShareCard('home', shut).flag).toBe('Black Friday Sale');
+    expect(shut.phase).toBe('holiday');
+    expect(shut.bf24).toBe(false);
+    expect(paintShareCard('home', shut).flag).toBe('Holiday Sale');
     expect(paintShareCard('home', shut).prices).toBe('Max $99/yr · Plus $59/yr');
     expect(paintShareCard('pricing', open).headline).toBe('Black Friday Sale: Max for C$99/yr.');
     const missing = shareCardQueryFrom({
@@ -212,7 +214,7 @@ describe('share card query', () => {
     const bumpOnly = new URL(
       `${SITE_URL}/og/home?v=${SHARE_CARD_VERSION}&locale=en&phase=black_friday&cc=CAD&offer=1&paid=0&bf24=1`,
     );
-    const stale = shareCardQueryFromUrl(bumpOnly, new Date('2026-11-28T08:00:00.000Z'), {
+    const stale = shareCardQueryFromUrl(bumpOnly, new Date('2026-12-01T08:00:00.000Z'), {
       ...BF_ENV,
       VERCEL_ENV: 'preview',
     });

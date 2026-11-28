@@ -437,7 +437,7 @@ export function resolveCheckoutPrice(input: {
     return { status: 'unavailable', reason: 'flag_off' };
   }
 
-  // Price gate [2026-11-27T05:00Z, 2026-11-28T08:00Z). The holiday flag stays
+  // Price gate [2026-11-27T05:00Z, 2026-12-01T08:00Z). The holiday flag stays
   // required, so a preview tester with the flag off keeps the season price.
   // A missing BF id falls through.
   if (holidayPromoEnabled(env) && isBlackFridayWindowOpen(input.now)) {

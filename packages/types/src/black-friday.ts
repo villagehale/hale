@@ -3,10 +3,10 @@ import type { BillingCurrency } from './promo.js';
 /**
  * Black Friday 2026 price gate.
  *
- * Half-open [2026-11-27T05:00:00Z, 2026-11-28T08:00:00Z): Friday 00:00
- * America/Toronto through Friday 23:59:59 America/Los_Angeles. Checkout,
+ * Half-open [2026-11-27T05:00:00Z, 2026-12-01T08:00:00Z): Friday 00:00
+ * America/Toronto through Monday 23:59:59 America/Los_Angeles. Checkout,
  * the bar, and the price a new session charges all read this window.
- * The visitor countdown is separate: Friday 23:59:59 in their own zone,
+ * The visitor countdown is separate: Monday 23:59:59 in their own zone,
  * and never later than this gate end.
  *
  * Display amounts are whole dollars. Checkout charges the Stripe price ids in
@@ -15,16 +15,16 @@ import type { BillingCurrency } from './promo.js';
  */
 
 export const BLACK_FRIDAY_WINDOW_START_ISO = '2026-11-27T05:00:00.000Z';
-export const BLACK_FRIDAY_WINDOW_END_ISO = '2026-11-28T08:00:00.000Z';
+export const BLACK_FRIDAY_WINDOW_END_ISO = '2026-12-01T08:00:00.000Z';
 
 export const BLACK_FRIDAY_WINDOW_START_MS = Date.parse(BLACK_FRIDAY_WINDOW_START_ISO);
 export const BLACK_FRIDAY_WINDOW_END_MS = Date.parse(BLACK_FRIDAY_WINDOW_END_ISO);
 
-/** Friday 27 Nov 2026, 23:59:59, as a wall clock in the visitor's zone. */
+/** Monday 30 Nov 2026, 23:59:59, as a wall clock in the visitor's zone. */
 export const BLACK_FRIDAY_LOCAL_FRIDAY_END = {
   year: 2026,
   month: 11,
-  day: 27,
+  day: 30,
   hour: 23,
   minute: 59,
   second: 59,
@@ -47,7 +47,7 @@ export const BLACK_FRIDAY_PRICE_DISPLAY: Record<
   },
 };
 
-/** Inclusive start, exclusive end. `07:59:59Z` on the 28th is on; `08:00:00Z` is off. */
+/** Inclusive start, exclusive end. `07:59:59Z` on Dec 1 is on; `08:00:00Z` is off. */
 export function isBlackFridayWindowOpen(now: Date): boolean {
   const t = now.getTime();
   return t >= BLACK_FRIDAY_WINDOW_START_MS && t < BLACK_FRIDAY_WINDOW_END_MS;
@@ -123,8 +123,8 @@ export function zonedWallClockToUtcMs(
 
 /**
  * When this visitor's "Ends Friday at midnight" line hits zero.
- * Friday 23:59:59 in `timeZone`, capped at the gate end so a zone west of
- * Pacific (Hawaii) stops at 2026-11-28T08:00:00Z with the gate.
+ * Monday 23:59:59 in `timeZone`, capped at the gate end so a zone west of
+ * Pacific (Hawaii) stops at 2026-12-01T08:00:00Z with the gate.
  */
 export function blackFridayVisitorCountdownEndMs(timeZone: string): number {
   const local = zonedWallClockToUtcMs(timeZone, BLACK_FRIDAY_LOCAL_FRIDAY_END);
